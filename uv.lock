@@ -31,7 +31,6 @@ dependencies = [
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pyvista" },
-    { name = "rich" },
     { name = "treeparse" },
 ]
 
@@ -55,7 +54,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyvista", specifier = ">=0.44,<0.45" },
-    { name = "rich" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "treeparse", directory = "/home/wr1/projects/treeparse" },
 ]

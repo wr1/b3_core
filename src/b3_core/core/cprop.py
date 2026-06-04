@@ -2,6 +2,7 @@
 
 import json
 import hashlib
+import logging
 import os
 from .mesh import create_grooved_mesh
 from .analysis import geom_analysis
@@ -13,8 +14,9 @@ from frd2vtu import frd2vtu
 import pyvista as pv
 from ..post.skins import postprocess
 from ..result import CoreResult
-from pydantic import BaseModel, Field, validator
-from rich.console import Console
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class Material(BaseModel):
@@ -38,13 +40,15 @@ class CpropInput(BaseModel):
     backend: str = "ccx"
     validate_with_ccx: bool = False
 
-    @validator("element_type")
+    @field_validator("element_type")
+    @classmethod
     def validate_element_type(cls, v):
         if v not in ("C3D8", "C3D20"):
             raise ValueError(f"element_type must be 'C3D8' or 'C3D20', got {v!r}")
         return v
 
-    @validator("backend")
+    @field_validator("backend")
+    @classmethod
     def validate_backend(cls, v):
         if v not in ("ccx", "fenicsx", "mfem"):
             raise ValueError(
@@ -52,7 +56,8 @@ class CpropInput(BaseModel):
             )
         return v
 
-    @validator("xgr", "ygr")
+    @field_validator("xgr", "ygr")
+    @classmethod
     def validate_grooves(cls, v):
         for groove in v:
             if len(groove) != 4:
@@ -61,7 +66,8 @@ class CpropInput(BaseModel):
                 )
         return v
 
-    @validator("curvature")
+    @field_validator("curvature")
+    @classmethod
     def validate_curvature(cls, v):
         allowed = {"kx", "ky"}
         extra = set(v) - allowed
@@ -75,9 +81,8 @@ class CpropInput(BaseModel):
         return v
 
 
-def _run_ccx_backend(mesh, name, dct, status=None):
-    if status is not None:
-        status.update("Generating CCX input files")
+def _run_ccx_backend(mesh, name, dct):
+    logger.info("generating CCX input files")
     inpfiles = vtstoccx(
         mesh,
         f"{name}.inp",
@@ -87,37 +92,31 @@ def _run_ccx_backend(mesh, name, dct, status=None):
         element_type=dct.get("element_type", "C3D8"),
     )
 
-    if status is not None:
-        status.update("Running CCX simulations")
+    logger.info("running CCX simulations")
     outfiles = runccx(inpfiles)
 
-    if status is not None:
-        status.update("Converting FRD to VTU")
+    logger.info("converting FRD to VTU")
     frd2vtu(outfiles)
 
     vtus = [pv.read(f.replace(".frd", ".vtu")) for f in outfiles]
     datfiles = [f.replace(".frd", ".dat") for f in outfiles]
 
-    if status is not None:
-        status.update("Postprocessing CCX results")
+    logger.info("postprocessing CCX results")
     return postprocess(vtus, datfiles, dct["thickness"])
 
 
-def _run_fenicsx_backend(mesh, dct, status=None):
-    if status is not None:
-        status.update("Running FEniCSx simulations")
+def _run_fenicsx_backend(mesh, dct):
+    logger.info("running FEniCSx simulations")
     return runfenicsx(mesh, dct["resin"], dct["core"], dct.get("face"))
 
 
-def _run_mfem_backend(mesh, dct, status=None):
-    if status is not None:
-        status.update("Running MFEM simulations")
+def _run_mfem_backend(mesh, dct):
+    logger.info("running MFEM simulations")
     return runmfem(mesh, dct["resin"], dct["core"], dct.get("face"))
 
 
 def cprop(json_data):
     """Run FEA analysis on a JSON configuration."""
-    console = Console()
     if isinstance(json_data, str):
         dct = json.load(open(json_data, "r"))
         dirname = os.path.dirname(json_data)
@@ -127,64 +126,61 @@ def cprop(json_data):
 
     # Validate input
     validated = CpropInput(**dct)
-    dct = validated.dict()
+    dct = validated.model_dump()
 
     dct["hash"] = hashlib.md5(str(dct).encode()).hexdigest()
 
     name = f"{dirname}/run{dct['hash']}"
     oname = f"{name}.json"
-    log_file = f"{name}.log"
 
     if os.path.isfile(oname):
         raise FileExistsError(f"Output file {oname} already exists")
 
-    with open(log_file, "w") as log:
-        with console.status("[bold green]Running FEA analysis...") as status:
-            status.update("Creating mesh")
-            mesh = create_grooved_mesh(
-                dct["thickness"],
-                dct["dx"],
-                dct["dy"],
-                dct["xgr"],
-                dct["ygr"],
-                madd=dct["madd"],
-                tface=dct.get("face", {}).get("thickness", 0.0),
-                kx=dct.get("curvature", {}).get("kx", 0.0),
-                ky=dct.get("curvature", {}).get("ky", 0.0),
+    logger.info("creating mesh")
+    mesh = create_grooved_mesh(
+        dct["thickness"],
+        dct["dx"],
+        dct["dy"],
+        dct["xgr"],
+        dct["ygr"],
+        madd=dct["madd"],
+        tface=dct.get("face", {}).get("thickness", 0.0),
+        kx=dct.get("curvature", {}).get("kx", 0.0),
+        ky=dct.get("curvature", {}).get("ky", 0.0),
+    )
+
+    logger.info("performing geometric analysis")
+    geom_output = geom_analysis(mesh)
+
+    geom_output["rho_infused"] = (
+        dct["core"]["rho"] * (1.0 - geom_output["resin_vf"])
+        + dct["resin"]["rho"] * geom_output["resin_vf"]
+    )
+
+    backend = dct["backend"]
+    if backend == "ccx":
+        output = _run_ccx_backend(mesh, name, dct)
+        if dct["validate_with_ccx"]:
+            fenicsx_output = _run_fenicsx_backend(mesh, dct)
+            output["fenicsx_validation"] = validate_against_ccx(
+                output, fenicsx_output, label="fenicsx"
+            )
+    else:
+        if backend == "fenicsx":
+            output = _run_fenicsx_backend(mesh, dct)
+        else:
+            output = _run_mfem_backend(mesh, dct)
+        if dct["validate_with_ccx"]:
+            ccx_output = _run_ccx_backend(mesh, name, dct)
+            output["ccx_validation"] = validate_against_ccx(
+                ccx_output, output, label=backend
             )
 
-            status.update("Performing geometric analysis")
-            geom_output = geom_analysis(mesh)
+    output.update(geom_output)
+    output.update(dct)
 
-            geom_output["rho_infused"] = (
-                dct["core"]["rho"] * (1.0 - geom_output["resin_vf"])
-                + dct["resin"]["rho"] * geom_output["resin_vf"]
-            )
-
-            backend = dct["backend"]
-            if backend == "ccx":
-                output = _run_ccx_backend(mesh, name, dct, status=status)
-                if dct["validate_with_ccx"]:
-                    fenicsx_output = _run_fenicsx_backend(mesh, dct, status=status)
-                    output["fenicsx_validation"] = validate_against_ccx(
-                        output, fenicsx_output, label="fenicsx"
-                    )
-            else:
-                if backend == "fenicsx":
-                    output = _run_fenicsx_backend(mesh, dct, status=status)
-                else:
-                    output = _run_mfem_backend(mesh, dct, status=status)
-                if dct["validate_with_ccx"]:
-                    ccx_output = _run_ccx_backend(mesh, name, dct, status=status)
-                    output["ccx_validation"] = validate_against_ccx(
-                        ccx_output, output, label=backend
-                    )
-
-            output.update(geom_output)
-            output.update(dct)
-
-            json.dump(output, open(oname, "w"), indent=4)
-            console.print(f"[bold green]Written to {oname}[/bold green]")
+    json.dump(output, open(oname, "w"), indent=4)
+    logger.info("written results to %s", oname)
     return output
 
 

@@ -11,7 +11,6 @@ dependencies = [
     "matplotlib~=3.9",
     "pyvista>=0.44,<0.45",
     "frd2vtu @ git+https://github.com/wr1/frd2vtu.git",
-    "rich",
     "pydantic>=2.0",
     "treeparse",
     "b3_mat",
