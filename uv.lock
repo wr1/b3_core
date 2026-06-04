@@ -27,6 +27,7 @@ dependencies = [
     { name = "b3-mat" },
     { name = "frd2vtu" },
     { name = "matplotlib" },
+    { name = "mfem" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydantic" },
@@ -39,16 +40,13 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-mfem = [
-    { name = "mfem" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "b3-mat", directory = "../b3_mat" },
     { name = "frd2vtu", git = "https://github.com/wr1/frd2vtu.git" },
     { name = "matplotlib", specifier = "~=3.9" },
-    { name = "mfem", marker = "extra == 'mfem'" },
+    { name = "mfem" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydantic", specifier = ">=2.0" },
@@ -57,7 +55,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "treeparse", directory = "/home/wr1/projects/treeparse" },
 ]
-provides-extras = ["mfem", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "b3-mat"

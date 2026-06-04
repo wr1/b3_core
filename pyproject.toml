@@ -13,11 +13,11 @@ dependencies = [
     "frd2vtu @ git+https://github.com/wr1/frd2vtu.git",
     "pydantic>=2.0",
     "treeparse",
+    "mfem",
     "b3_mat",
 ]
 
 [project.optional-dependencies]
-mfem = ["mfem"]
 dev = ["pytest>=8", "ruff"]
 
 [project.scripts]
