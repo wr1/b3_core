@@ -1,0 +1,13 @@
+{
+    "_comment": "Symmetric crossed grooves: identical 10 mm-pitch / 8 mm-deep families in both x and y. The square in-plane symmetry should give Exx ~= Eyy with a higher resin_vf and area_increase than the uniaxial case.",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, 8, 3]],
+    "ygr": [[10, 10, 8, 3]],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.3, 0, 0.3],
+    "backend": "mfem",
+    "validate_with_ccx": true
+}

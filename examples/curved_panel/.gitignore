@@ -1,0 +1,3 @@
+# Per-case solver artifacts (run<HASH>.json + per-loadcase files, logs, case.json).
+# Regenerate with sweep.py / curve_field.py. The committed renders live in img/.
+out/

@@ -1,0 +1,13 @@
+{
+    "_comment": "Baseline: ungrooved homogeneous core. MFEM true-PBC must recover the isotropic input tensor (Exx=Eyy=Ezz, resin_vf=0). Correctness anchor for the gallery.",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [],
+    "ygr": [],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.3, 0, 0.3],
+    "backend": "mfem",
+    "validate_with_ccx": true
+}

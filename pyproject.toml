@@ -1,0 +1,46 @@
+[project]
+name = "b3_core"
+version = "0.1.0"
+description = "Homogenized elastic properties for sandwich-panel cores with sawcuts and machined grooves, via periodic-BC FEA (CalculiX / FEniCSx / MFEM)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib~=3.9",
+    "pyvista>=0.44,<0.45",
+    "frd2vtu @ git+https://github.com/wr1/frd2vtu.git",
+    "rich",
+    "pydantic>=2.0",
+    "treeparse",
+    "b3_mat",
+]
+
+[project.optional-dependencies]
+mfem = ["mfem"]
+dev = ["pytest>=8", "ruff"]
+
+[project.scripts]
+b3_core = "b3_core.core.run:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/b3_core"]
+
+[tool.uv.sources]
+b3_mat = { path = "../b3_mat" }
+treeparse = { path = "/home/wr1/projects/treeparse" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"

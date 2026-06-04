@@ -1,0 +1,12 @@
+{
+    "_comment": "Representative curved-panel RVE: deep x-grooves that run nearly through a 30 mm core, leaving a 3 mm foam ligament at the bottom (depth = thickness - 3 = 27, top-mouth so depth is negative). For other cores keep the 3 mm floor: 25 mm -> depth -22, 50 mm -> depth -47. A mold curvature kx>0 opens these grooves (more infused resin); kx<0 closes them, pinching at the mouth. Sweep/curve scripts override curvature.kx. PVC foam + epoxy.",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, -27, 3]],
+    "ygr": [],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.4, -0.2, 0, 0.2, 0.4],
+    "backend": "mfem"
+}
