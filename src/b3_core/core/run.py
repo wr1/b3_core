@@ -20,6 +20,14 @@ def cmd_datasheet(path: str, output: str, png: str):
     print(f"Wrote {out_pdf}" + (f" and {png}" if png else ""))
 
 
+def cmd_deformed(path: str, output: str, warp: float):
+    from b3_core.deformed import render_deformed_modes
+
+    out = output or str(Path(path).with_name(Path(path).stem + "_deformed.png"))
+    render_deformed_modes(path, out, warp=warp)
+    print(f"Wrote {out}")
+
+
 def _parse_grooves(s: str):
     return [[float(x) for x in g.split(",")] for g in s.split(";") if g.strip()]
 
@@ -92,6 +100,20 @@ def main():
                            help="Output PDF path (default: <case>.pdf)."),
                     option(flags=["--png"], arg_type=str, default="",
                            help="Also export a PNG to this path."),
+                ],
+            ),
+            command(
+                name="deformed",
+                help="Render the 6 periodic deformation modes (PNG) for a JSON case.",
+                callback=cmd_deformed,
+                arguments=[
+                    argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+                options=[
+                    option(flags=["--output", "-o"], arg_type=str, default="",
+                           help="Output PNG path (default: <case>_deformed.png)."),
+                    option(flags=["--warp"], arg_type=float, default=0.3,
+                           help="Displacement warp factor (unit strain = 1.0)."),
                 ],
             ),
             command(

@@ -75,6 +75,20 @@ generate("examples/mfem_patterns/two_sided.json", "card.pdf", out_png="card.png"
 
 ![Example datasheet](docs/datasheet_example.png)
 
+## Periodic deformation modes
+
+Separate from the datasheet, `b3_core deformed` warps the RVE by the true
+periodic displacement `u = E·x + w` for each of the six unit-strain load cases
+(xx, yy, zz, yz, xz, xy) and renders a 2×3 montage — resin grooves coloured by
+displacement magnitude, core translucent. Because the fluctuation `w` is
+periodic, opposite faces deform compatibly (the visual check on the periodic BC).
+
+```bash
+uv run b3_core deformed examples/mfem_patterns/two_sided.json -o modes.png --warp 0.3
+```
+
+![Periodic deformation modes](docs/deformed_example.png)
+
 ## License
 
 MIT
