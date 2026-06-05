@@ -28,6 +28,41 @@ def cmd_deformed(path: str, output: str, warp: float):
     print(f"Wrote {out}")
 
 
+def cmd_view(path: str, what: str, output: str, serve: str, warp: float):
+    from b3_core.viz import GroovedCoreView
+
+    view = GroovedCoreView.from_json(path)
+    stem = Path(path).stem
+    if serve:
+        view.serve(serve)
+        print(f"Wrote interactive viewer {serve}")
+        return
+
+    single = {
+        "geometry": lambda p: view.geometry_png(p, cutaway=False),
+        "slices": view.slices_png,
+        "deformation": lambda p: view.deformation_png(p, warp=warp),
+        "modulus": view.modulus_surface_png,
+        "polar": view.modulus_polar_png,
+        "heatmap": view.stiffness_heatmap_png,
+    }
+    if what == "gallery":
+        out = output or f"{stem}_gallery.png"
+        view.gallery(out)
+        print(f"Wrote {out}")
+    elif what == "all":
+        out = Path(output) if output else Path(f"{stem}_viz")
+        out.mkdir(parents=True, exist_ok=True)
+        for name, fn in single.items():
+            fn(out / f"{name}.png")
+        view.gallery(out / "gallery.png")
+        print(f"Wrote {len(single) + 1} figures to {out}")
+    else:
+        out = output or f"{stem}_{what}.png"
+        single[what](out)
+        print(f"Wrote {out}")
+
+
 def _parse_grooves(s: str):
     return [[float(x) for x in g.split(",")] for g in s.split(";") if g.strip()]
 
@@ -114,6 +149,27 @@ def main():
                            help="Output PNG path (default: <case>_deformed.png)."),
                     option(flags=["--warp"], arg_type=float, default=0.3,
                            help="Displacement warp factor (unit strain = 1.0)."),
+                ],
+            ),
+            command(
+                name="view",
+                help="Visualize a grooved core (geometry, slices, modulus, gallery).",
+                callback=cmd_view,
+                arguments=[
+                    argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+                options=[
+                    option(flags=["--what"], arg_type=str, default="gallery",
+                           choices=["geometry", "slices", "deformation", "modulus",
+                                    "polar", "heatmap", "gallery", "all"],
+                           help="Which view to render (default: gallery)."),
+                    option(flags=["--output", "-o"], arg_type=str, default="",
+                           help="Output file (single view) or directory (--what all)."),
+                    option(flags=["--serve"], arg_type=str, default="",
+                           help="Export an interactive HTML viewer to this path "
+                                "(needs the [interactive] extra)."),
+                    option(flags=["--warp"], arg_type=float, default=0.3,
+                           help="Warp factor for --what deformation."),
                 ],
             ),
             command(

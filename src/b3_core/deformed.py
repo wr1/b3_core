@@ -1,84 +1,68 @@
 """Periodic deformed-shape view of the six unit-strain load cases.
 
-Separate from the datasheet: solves the RVE with the MFEM backend and warps the
-mesh by the true periodic displacement ``u = E.x + w`` for each macroscopic
-strain (xx, yy, zz, yz, xz, xy), rendering a 2x3 montage. Because the
-fluctuation ``w`` is periodic, opposite faces deform compatibly — the visual
-check that the periodic BC is doing its job.
+Separate from the datasheet: warps the RVE by the true periodic displacement
+``u = E.x + w`` for each macroscopic strain (xx, yy, zz, yz, xz, xy) and renders
+a 2x3 montage. Because the fluctuation ``w`` is periodic, opposite faces deform
+compatibly — the visual check that the periodic BC is doing its job. Built on the
+shared :mod:`b3_core.viz` layer (CoreModel, CoreTheme, headless bootstrap).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 import numpy as np
 
-from b3_core.core.mesh import create_grooved_mesh
-from b3_core.io import mfem_backend
+from b3_core.viz._deps import ensure_headless, require_pyvista
+from b3_core.viz.model import CoreModel
+from b3_core.viz.theme import DEFAULT_THEME, CoreTheme
 
 logger = logging.getLogger(__name__)
 
-# Backend load-case order (see io/fenicsx.LOAD_CASES).
 LOAD_CASES = ("xx", "yy", "zz", "yz", "xz", "xy")
 _DEFAULT_WARP = 0.3  # unit strain is 100%; scale down so the shape stays readable
 
 
 def render_deformed_modes(
-    json_path: str | Path,
+    case: str | Path | CoreModel,
     out_png: str | Path,
     *,
     warp: float = _DEFAULT_WARP,
     window: tuple[int, int] = (1500, 1000),
+    theme: CoreTheme = DEFAULT_THEME,
 ) -> Path:
     """Render the six periodic deformation modes of a case to ``out_png``.
 
-    Each subplot shows the RVE warped by its load case's displacement field —
-    resin grooves solid (coloured by displacement magnitude), core translucent.
-    Returns the output path.
+    ``case`` is a JSON path or a prepared :class:`~b3_core.viz.CoreModel`. Each
+    subplot shows the RVE warped by its load case, resin grooves coloured by
+    displacement magnitude and the core translucent. Returns the output path.
     """
-    import pyvista as pv
+    pv = require_pyvista()
+    model = case if isinstance(case, CoreModel) else CoreModel.from_json(case)
+    logger.info("rendering periodic deformation modes for %s", model.name)
 
-    json_path = Path(json_path)
-    inp = json.loads(json_path.read_text())
-    mesh = create_grooved_mesh(
-        thickness=inp["thickness"], dx=inp["dx"], dy=inp["dy"],
-        xcuts=inp["xgr"], ycuts=inp["ygr"], madd=tuple(inp.get("madd", [0])),
-        tface=(inp.get("face") or {}).get("thickness", 0.0),
-        kx=(inp.get("curvature") or {}).get("kx", 0.0),
-        ky=(inp.get("curvature") or {}).get("ky", 0.0),
-    )
-    logger.info("running MFEM backend for the periodic displacement fields")
-    details = mfem_backend.runmfem(
-        mesh, inp["resin"], inp["core"], inp.get("face"), return_details=True
-    )
-
-    # Same vertex order the backend used; grid in mm, displacement in metres.
-    grid = mesh.cast_to_unstructured_grid()
-    try:
-        pv.start_xvfb()
-    except Exception:  # pragma: no cover - display already present / unsupported
-        pass
-
+    grid = model.mesh.cast_to_unstructured_grid()
+    ensure_headless()
     plotter = pv.Plotter(shape=(2, 3), off_screen=True, window_size=window)
-    plotter.set_background("white")
-    for i, case in enumerate(LOAD_CASES):
+    plotter.set_background(theme.background)
+    for i, lc in enumerate(LOAD_CASES):
         plotter.subplot(i // 3, i % 3)
         g = grid.copy()
-        g["u"] = np.asarray(details.displacements[case]) * 1000.0  # m -> mm
+        g["u"] = model.displacements(lc) * 1000.0  # m -> mm
         g["umag_mm"] = np.linalg.norm(g["u"], axis=1)
         warped = g.warp_by_vector("u", factor=warp)
         core = warped.threshold(0.5, scalars="resin", invert=True)
         resin = warped.threshold(0.5, scalars="resin")
         if core.n_cells:
-            plotter.add_mesh(core, color="#d9d9d9", opacity=0.1)
+            plotter.add_mesh(core, color=theme.core_color, opacity=theme.core_opacity)
         if resin.n_cells:
             plotter.add_mesh(
-                resin, scalars="umag_mm", cmap="viridis", show_edges=True,
-                edge_color="#333333", line_width=0.3, show_scalar_bar=False,
+                resin, scalars="umag_mm", cmap=theme.cmap_displacement,
+                show_edges=True, edge_color=theme.edge_color,
+                line_width=theme.edge_width, show_scalar_bar=False,
             )
-        plotter.add_text(f"strain {case}", font_size=10, color="black")
+        plotter.add_text(f"strain {lc}", font_size=10, color="black")
         plotter.camera_position = "iso"
 
     out_png = Path(out_png)

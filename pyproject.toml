@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+interactive = ["trame", "trame-vtk", "trame-vuetify"]
 dev = ["pytest>=8", "ruff"]
 
 [project.scripts]

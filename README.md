@@ -56,6 +56,42 @@ for the full raw output dict.
 
 See `examples/curved_panel/` and `examples/mfem_patterns/` for galleries.
 
+## Visualization
+
+`b3_core.viz` is a unified, high-level layer that makes a grooved-core design
+understandable at a glance — geometry, phases, the FE mesh, orthogonal slices,
+periodic deformation, and the homogenised stiffness tensor — for both
+publication figures and interactive exploration. `GroovedCoreView` is the
+one-call entry point; `CoreScene` is a fluent pyvista builder; `CoreModel`
+caches the mesh + MFEM homogenisation; `CoreTheme` is the shared styling.
+
+```python
+from b3_core.viz import GroovedCoreView
+
+view = GroovedCoreView.from_json("examples/mfem_patterns/two_sided.json")
+view.gallery("board.png")                 # composite publication board
+view.modulus_surface_png("modulus.png")   # directional Young's modulus E(n)
+view.show()                               # native interactive window
+view.serve("core.html")                   # interactive HTML viewer ([interactive] extra)
+```
+
+```bash
+uv run b3_core view examples/mfem_patterns/two_sided.json --what gallery -o board.png
+uv run b3_core view examples/mfem_patterns/two_sided.json --what all -o out/
+```
+
+The composite board — 3D geometry, an internal-architecture cutaway, the
+directional modulus **surface** `E(n)` (it bulges along stiff directions), the
+orthogonal cuts with the mesh, the signed 6×6 `C_eff` heatmap and the polar
+`E(θ)` plots:
+
+![Visualization gallery](docs/viz_gallery.png)
+
+The directional Young's-modulus surface alone — the clearest single view of the
+effective anisotropy:
+
+![Directional modulus surface](docs/modulus_surface.png)
+
 ## Datasheet
 
 `b3_core datasheet` renders a one-page report of a case — RVE/geometry, materials
