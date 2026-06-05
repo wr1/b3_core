@@ -130,3 +130,8 @@ dmypy.json
 
 # Private notes repo (separate inner git repo)
 notes/
+
+# Large render artifacts (commit the GIF showcase, keep MP4s local)
+docs/*.mp4
+examples/anim_out/
+examples/viz_out/

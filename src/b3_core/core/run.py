@@ -28,6 +28,18 @@ def cmd_deformed(path: str, output: str, warp: float):
     print(f"Wrote {out}")
 
 
+def cmd_animate(path: str, output: str, gif: bool, seconds: float, fps: int,
+                size: int, vertical: bool):
+    from b3_core.viz.animate import render_explainer
+
+    out = output or f"{Path(path).stem}_explainer.mp4"
+    window = (1080, 1920) if vertical else (size, size)
+    paths = render_explainer(
+        path, out, seconds=(seconds or None), fps=fps, size=window, gif=gif
+    )
+    print("Wrote " + ", ".join(str(p) for p in paths))
+
+
 def cmd_view(path: str, what: str, output: str, serve: str, warp: float):
     from b3_core.viz import GroovedCoreView
 
@@ -149,6 +161,28 @@ def main():
                            help="Output PNG path (default: <case>_deformed.png)."),
                     option(flags=["--warp"], arg_type=float, default=0.3,
                            help="Displacement warp factor (unit strain = 1.0)."),
+                ],
+            ),
+            command(
+                name="animate",
+                help="Render a social-media explainer animation (MP4 + GIF).",
+                callback=cmd_animate,
+                arguments=[
+                    argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+                options=[
+                    option(flags=["--output", "-o"], arg_type=str, default="",
+                           help="Output MP4 path (default: <case>_explainer.mp4)."),
+                    option(flags=["--gif"], arg_type=bool, default=True,
+                           help="Also write a sibling looping GIF."),
+                    option(flags=["--seconds"], arg_type=float, default=0.0,
+                           help="Total duration (0 = storyboard default ~15 s)."),
+                    option(flags=["--fps"], arg_type=int, default=30,
+                           help="Frames per second."),
+                    option(flags=["--size"], arg_type=int, default=1080,
+                           help="Square frame size in px (ignored with --vertical)."),
+                    option(flags=["--vertical"], arg_type=bool, default=False,
+                           help="Render 1080x1920 vertical (reels/stories)."),
                 ],
             ),
             command(

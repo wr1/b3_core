@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 interactive = ["trame", "trame-vtk", "trame-vuetify"]
+anim = ["imageio", "imageio-ffmpeg", "pillow"]
 dev = ["pytest>=8", "ruff"]
 
 [project.scripts]

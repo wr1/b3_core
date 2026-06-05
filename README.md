@@ -125,6 +125,25 @@ uv run b3_core deformed examples/mfem_patterns/two_sided.json -o modes.png --war
 
 ![Periodic deformation modes](docs/deformed_example.png)
 
+## Animation
+
+`b3_core animate` renders a short, silent-friendly "how it works" explainer
+(MP4 + looping GIF) for social media — grooved geometry → resin infusion → FE
+mesh → orthogonal slices → the **curvature sim** (grooves taper, the core drapes,
+and the homogenised `E(κ)` curve grows) → the emergent stiffness tensor. Built on
+`b3_core.viz`; needs the `[anim]` extra (`uv sync --extra anim`).
+
+```bash
+uv run b3_core animate examples/mfem_patterns/two_sided.json -o explainer.mp4
+```
+
+```python
+from b3_core.viz.animate import render_explainer
+render_explainer("examples/mfem_patterns/two_sided.json", "explainer.mp4", gif=True)
+```
+
+![Explainer animation](docs/explainer.gif)
+
 ## License
 
 MIT
