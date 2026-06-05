@@ -1,3 +1,5 @@
+<img src="docs/b3.svg" width="120" align="right" alt="b3 logo">
+
 # b3_core
 
 Homogenized elastic properties for sandwich-panel cores with sawcuts and

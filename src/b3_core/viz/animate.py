@@ -44,6 +44,7 @@ ANIM_THEME = CoreTheme(
 )
 
 _TITLE = "Grooved-core homogenisation · b3_core"
+_LOGO_PATH = Path(__file__).parent / "assets" / "b3_logo.png"
 
 
 # --------------------------------------------------------------------------- #
@@ -74,6 +75,20 @@ def _font(size: int, *, bold: bool = False):
 def _hex_rgba(hex_color: str, alpha: int = 255):
     h = hex_color.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
+
+
+def _load_logo(path, target_w: int):
+    """Load and width-scale a logo to an RGBA image, or None if unavailable."""
+    if path is None:
+        return None
+    _, Image, _, _ = _require_anim()
+    p = Path(path)
+    if not p.is_file():
+        logger.warning("logo not found at %s; skipping", p)
+        return None
+    img = Image.open(p).convert("RGBA")
+    w, h = img.size
+    return img.resize((target_w, max(1, round(h * target_w / w))))
 
 
 # --------------------------------------------------------------------------- #
@@ -168,11 +183,15 @@ def _inset_plot(stations, upto: float, theme: CoreTheme, px: int):
     return Image.fromarray(buf)
 
 
-def _compose(raw, *, title, caption, progress, theme, inset=None, big=None):
+def _compose(raw, *, title, caption, progress, theme, inset=None, big=None, logo=None):
     _, Image, ImageDraw, _ = _require_anim()
     img = Image.fromarray(raw).convert("RGB")
     W, H = img.size
     draw = ImageDraw.Draw(img, "RGBA")
+
+    if logo is not None:
+        lw = logo.size[0]
+        img.paste(logo, (W - lw - int(W * 0.025), int(H * 0.025)), logo)
     f_title = _font(max(12, W // 42))
     f_cap = _font(max(14, W // 26), bold=True)
     f_big = _font(max(12, W // 34))
@@ -392,15 +411,18 @@ def render_explainer(
     theme: CoreTheme = ANIM_THEME,
     kappa_max: float = 0.012,
     stations: int = 6,
+    logo=_LOGO_PATH,
 ) -> list[Path]:
     """Render the explainer to ``out`` (MP4) and, if ``gif``, a sibling GIF.
 
     ``seconds`` overrides the storyboard's total duration (scene lengths scale to
-    fit). Returns the written paths.
+    fit). ``logo`` is a PNG branded top-right (None to disable). Returns the
+    written paths.
     """
     imageio, Image, _, _ = _require_anim()
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    logo_img = _load_logo(logo, max(64, size[0] // 9))
 
     model = CoreModel.from_json(case)
     logger.info("precomputing %d curvature stations (MFEM)", stations)
@@ -433,7 +455,7 @@ def render_explainer(
                 raw = fn(ctx, t)
                 frame = _compose(
                     raw, title=_TITLE, caption=caption, progress=(idx + 1) / total,
-                    theme=theme, inset=ctx.inset, big=ctx.big,
+                    theme=theme, inset=ctx.inset, big=ctx.big, logo=logo_img,
                 )
                 mp4_writer.append_data(frame)
                 if gif_writer is not None and idx % gif_step == 0:
