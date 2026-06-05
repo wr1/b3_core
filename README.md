@@ -23,6 +23,7 @@ against ccx.
 - Python ≥ 3.11, `uv`
 - CalculiX (`ccx`) on PATH (default backend)
 - `frd2vtu`, `treeparse`, `mfem`, `b3_mat` (resolved via `pyproject.toml`)
+- `typst` on PATH (only for `b3_core datasheet`)
 
 ```bash
 uv sync   # core + ccx + mfem backends
@@ -54,6 +55,25 @@ print(result.resin_volume_fraction, result.surface_area_factor)
 for the full raw output dict.
 
 See `examples/curved_panel/` and `examples/mfem_patterns/` for galleries.
+
+## Datasheet
+
+`b3_core datasheet` renders a one-page report of a case — RVE/geometry, materials
+and analysis settings, the internal groove structure with the mesh (plan + side
+cross-sections), a 3D isometric of the resin-filled grooves, and the homogenised
+engineering constants + 6×6 effective stiffness (via the MFEM backend). Needs the
+[`typst`](https://typst.app) binary on PATH.
+
+```bash
+uv run b3_core datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
+```
+
+```python
+from b3_core.datasheet import generate
+generate("examples/mfem_patterns/two_sided.json", "card.pdf", out_png="card.png")
+```
+
+![Example datasheet](docs/datasheet_example.png)
 
 ## License
 

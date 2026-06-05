@@ -12,6 +12,14 @@ def cmd_json(path: str):
     cprop(path)
 
 
+def cmd_datasheet(path: str, output: str, png: str):
+    from b3_core.datasheet import generate
+
+    out_pdf = output or str(Path(path).with_suffix(".pdf"))
+    generate(path, out_pdf, out_png=(png or None))
+    print(f"Wrote {out_pdf}" + (f" and {png}" if png else ""))
+
+
 def _parse_grooves(s: str):
     return [[float(x) for x in g.split(",")] for g in s.split(";") if g.strip()]
 
@@ -70,6 +78,20 @@ def main():
                 callback=cmd_json,
                 arguments=[
                     argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+            ),
+            command(
+                name="datasheet",
+                help="Render a one-page datasheet (PDF/PNG) for a JSON case.",
+                callback=cmd_datasheet,
+                arguments=[
+                    argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+                options=[
+                    option(flags=["--output", "-o"], arg_type=str, default="",
+                           help="Output PDF path (default: <case>.pdf)."),
+                    option(flags=["--png"], arg_type=str, default="",
+                           help="Also export a PNG to this path."),
                 ],
             ),
             command(
