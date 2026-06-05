@@ -239,12 +239,25 @@ def _shot(ctx: _Ctx):
 # --------------------------------------------------------------------------- #
 def _scene_geometry(ctx, t):
     p = _new_frame(ctx)
-    core = geometry.split_phases(ctx.model.mesh)["core"]
-    zmin, zmax = core.bounds[4], core.bounds[5]
-    level = zmin + ease(t) * (zmax - zmin) * 1.06
-    shown = core.clip(normal=(0, 0, 1), origin=(0, 0, level), invert=True) if t < 0.99 else core
-    if shown.n_cells:
-        p.add_mesh(shown, color=ctx.theme.core_color, opacity=1.0, smooth_shading=True)
+    ph = geometry.split_phases(ctx.model.mesh)
+    core, grooves = ph["core"], ph["resin"]
+    zmin, zmax = ctx.model.mesh.bounds[4], ctx.model.mesh.bounds[5]
+    level = zmin + ease(t) * (zmax - zmin) * 1.08
+
+    def _rise(m):
+        if t >= 0.99 or m.n_cells == 0:
+            return m
+        return m.clip(normal=(0, 0, 1), origin=(0, 0, level), invert=True)
+
+    # Translucent core envelope so the machined groove network reads through it;
+    # grooves are solid slate channels (they fill with resin in the next scene).
+    cshow = _rise(core)
+    if cshow.n_cells:
+        p.add_mesh(cshow, color=ctx.theme.core_color, opacity=0.16, smooth_shading=True)
+    gshow = _rise(grooves)
+    if gshow.n_cells:
+        p.add_mesh(gshow, color="#6b7488", show_edges=True,
+                   edge_color=ctx.theme.resin_color, line_width=0.6)
     _camera(ctx, zoom=1.05)
     return _shot(ctx)
 
