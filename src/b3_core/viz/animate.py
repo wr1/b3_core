@@ -20,7 +20,7 @@ import matplotlib
 import numpy as np
 
 from b3_core.core.mesh import create_grooved_mesh
-from b3_core.viz import geometry, tensor
+from b3_core.viz import geometry
 from b3_core.viz._deps import ensure_headless, require_pyvista
 from b3_core.viz.model import CoreModel
 from b3_core.viz.theme import CoreTheme
@@ -28,6 +28,9 @@ from b3_core.viz.theme import CoreTheme
 matplotlib.use("Agg")
 
 logger = logging.getLogger(__name__)
+
+# Periodic homogenisation load cases (backend order).
+_LOAD_CASES = ("xx", "yy", "zz", "yz", "xz", "xy")
 
 # Dark, high-contrast theme tuned for silent social-media viewing.
 ANIM_THEME = CoreTheme(
@@ -205,12 +208,12 @@ class _Ctx:
     model: CoreModel
     theme: CoreTheme
     stations: tuple
-    C: np.ndarray
     size: tuple
     kappa_max: float
     gt: float = 0.0          # global progress 0..1 (set by the timeline)
     inset: object = None
     big: list = field(default_factory=list)
+    strain_plotter: object = None   # lazily-built 2x3 montage for the strain finale
 
 
 def _new_frame(ctx: _Ctx):
@@ -331,22 +334,38 @@ def _scene_curvature(ctx, t):
     return _shot(ctx)
 
 
-def _scene_properties(ctx, t):
-    p = _new_frame(ctx)
-    surf = tensor.modulus_surface(ctx.C, resolution=90)
-    e = 0.15 + 0.85 * ease(t)
-    surf.points = surf.points * e
-    p.add_mesh(surf, scalars="value_GPa", cmap=ctx.theme.cmap_modulus,
-               scalar_bar_args={"title": "E [GPa]", "color": "white"})
-    _camera(ctx, zoom=1.15, az0=30.0, az_span=120.0)
-    ec = tensor.engineering_constants(ctx.C)
-    ctx.big = [
-        "homogenised properties",
-        f"E = ({ec['E_x']/1e9:.2f}, {ec['E_y']/1e9:.2f}, {ec['E_z']/1e9:.2f}) GPa",
-        f"G = ({ec['G_xy']/1e9:.2f}, {ec['G_xz']/1e9:.2f}, {ec['G_yz']/1e9:.2f}) GPa",
-        f"nu = ({ec['nu_xy']:.2f}, {ec['nu_xz']:.2f}, {ec['nu_yz']:.2f})",
-    ]
-    return _shot(ctx)
+def _scene_strains(ctx, t):
+    """2x3 montage of the six periodic load cases, deformed (translucent)."""
+    pv = require_pyvista()
+    if ctx.strain_plotter is None:
+        ensure_headless()
+        ctx.strain_plotter = pv.Plotter(
+            shape=(2, 3), off_screen=True, window_size=list(ctx.size), border=False
+        )
+    p = ctx.strain_plotter
+    p.clear()
+    grid = ctx.model.mesh.cast_to_unstructured_grid()
+    warp = 0.35 * ease(min(1.0, t / 0.6))  # deform in over the first 60%, then hold
+    fsz = max(12, ctx.size[0] // 64)
+    for i, lc in enumerate(_LOAD_CASES):
+        p.subplot(i // 3, i % 3)
+        p.set_background(ctx.theme.background)
+        g = grid.copy()
+        g["u"] = ctx.model.displacements(lc) * 1000.0  # m -> mm
+        g["umag_mm"] = np.linalg.norm(g["u"], axis=1)
+        warped = g.warp_by_vector("u", factor=warp)
+        core = warped.threshold(0.5, scalars="resin", invert=True)
+        resin = warped.threshold(0.5, scalars="resin")
+        if core.n_cells:
+            p.add_mesh(core, color=ctx.theme.core_color, opacity=0.10)
+        if resin.n_cells:
+            p.add_mesh(resin, scalars="umag_mm", cmap=ctx.theme.cmap_displacement,
+                       opacity=0.72, show_scalar_bar=False)
+        p.add_text(f"strain {lc}", font_size=fsz, color="white")
+        p.camera_position = "iso"
+    ctx.big = []
+    ctx.inset = None
+    return p.screenshot(return_img=True)
 
 
 _SCENES = [
@@ -355,7 +374,7 @@ _SCENES = [
     ("periodic FE mesh (C3D8)", 1.5, _scene_mesh),
     ("orthogonal slices reveal the nesting", 2.5, _scene_slices),
     ("curvature sim — drape + effective properties", 4.0, _scene_curvature),
-    ("homogenised stiffness  C_eff", 2.5, _scene_properties),
+    ("periodic strain response · six unit load cases", 3.0, _scene_strains),
 ]
 
 
@@ -386,7 +405,6 @@ def render_explainer(
     model = CoreModel.from_json(case)
     logger.info("precomputing %d curvature stations (MFEM)", stations)
     station_data = _curvature_stations(model.inp, kappa_max, n=stations)
-    C = model.stiffness
 
     scale = (seconds / sum(s for _, s, _ in _SCENES)) if seconds else 1.0
     plan = [(cap, max(1, round(sec * scale * fps)), fn) for cap, sec, fn in _SCENES]
@@ -395,7 +413,7 @@ def render_explainer(
     ensure_headless()
     pv = require_pyvista()
     plotter = pv.Plotter(off_screen=True, window_size=list(size))
-    ctx = _Ctx(plotter, model, theme, station_data, C, size, kappa_max)
+    ctx = _Ctx(plotter, model, theme, station_data, size, kappa_max)
 
     mp4_writer = imageio.get_writer(
         str(out), fps=fps, codec="libx264", quality=8, macro_block_size=None
@@ -427,6 +445,8 @@ def render_explainer(
         if gif_writer is not None:
             gif_writer.close()
         plotter.close()
+        if ctx.strain_plotter is not None:
+            ctx.strain_plotter.close()
 
     written = [out] + ([gif_path] if gif else [])
     logger.info("wrote %s", ", ".join(str(p) for p in written))
