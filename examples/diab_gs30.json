@@ -1,0 +1,13 @@
+{
+    "_comment": "DIAB GS30 (GSC30) 'Grid Scored' finishing, from the DIAB finishing data sheet (rev3, July 2020). Divinycell foam grid-scored in BOTH directions (formable for curved molds): V/U-shaped cuts at 30 mm center-to-center, kerf width ~0.9 mm, cut almost through to ~2 mm from the bottom of the sheet (a light fibreglass scrim reinforces the uncut face). Modelled on a 20 mm sheet -> single-sided groove depth 18 mm. RVE = one 30x30 mm grid cell (periodic), grooves shared across the cell edges. Core: isotropic approximation of Divinycell H60; resin: infusion epoxy. NOTE: the mesh-refinement offsets (madd) slightly widen the thin 0.9 mm kerf, so resin_vf (~0.07) reads a bit above the ideal ~0.053; this is a coarse illustrative RVE, not a validated result.",
+    "dx": 30,
+    "dy": 30,
+    "thickness": 20,
+    "xgr": [[0, 30, 18.0, 0.9]],
+    "ygr": [[0, 30, 18.0, 0.9]],
+    "core":  {"E": 70000000,   "nu": 0.32, "rho": 60},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd": [-0.15, 0, 0.15],
+    "backend": "mfem",
+    "validate_with_ccx": false
+}
