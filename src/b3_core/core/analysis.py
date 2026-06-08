@@ -27,14 +27,7 @@ def geom_analysis(mesh):
     corearea_nogrooves = dx * dy * 2
     area_increase = core_area_notxy / corearea_nogrooves
 
-    out = {"area_increase": float(area_increase), "resin_vf": float(resin_vf)}
-    if "halo_fraction" in ma.cell_data:
-        hf = np.asarray(ma.cell_data["halo_fraction"])
-        # halo_vf: volume fraction of the damaged band; halo_resin_equiv: the
-        # opened-cell volume (porosity-weighting is applied by the caller).
-        out["halo_vf"] = float(volumes[hf > 0].sum() / total_volume)
-        out["halo_resin_equiv"] = float((hf * volumes).sum() / total_volume)
-    return out
+    return {"area_increase": float(area_increase), "resin_vf": float(resin_vf)}
 
 
 if __name__ == "__main__":

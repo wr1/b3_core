@@ -11,10 +11,10 @@ Voigt order matches the rest of the package: (xx, yy, zz, yz, xz, xy), engineeri
 shear (gamma = 2*eps). Geometry is scaled mm -> m so results are SI, exactly as
 the MFEM backend does.
 
-It also applies the kerf-damage halo: when the mesh carries a graded
-``halo_fraction`` (foam cells opened by grid-scoring), each such cell gets a
-distance-graded blend ``phi*C_resin + (1-phi)*C_foam`` with ``phi = porosity *
-halo_fraction`` — a per-cell stiffness, which the periodic solver takes directly.
+It also applies the stochastic resin halo: a ``ScoreField`` gives the resin
+probability ``P`` at each integration point (groove walls/root, distance ->
+survival function); foam Gauss points get a rule-of-mixtures stiffness
+``P*C_resin + (1-P)*C_foam``, integrated per Gauss point.
 """
 
 from __future__ import annotations
@@ -114,8 +114,23 @@ def _shape_grads_center():
     return g
 
 
+def _shape_values():
+    """Trilinear shape-function values at the 8 Gauss points -> (8 gp, 8 node)."""
+    out = []
+    for zk in _GP:
+        for ej in _GP:
+            for xi in _GP:
+                N = np.array([
+                    0.125 * (1 + xa * xi) * (1 + ya * ej) * (1 + za * zk)
+                    for xa, ya, za in _HEX_NODES
+                ])
+                out.append(N)
+    return np.array(out)
+
+
 _DN = _shape_grads()       # (8, 8, 3)
 _DN_C = _shape_grads_center()
+_N = _shape_values()       # (8 gp, 8 node)
 
 # (bx + 2by + 4bz) corner sign-pattern -> local slot matching _HEX_NODES order.
 _CANON_LUT = np.array([0, 1, 3, 2, 4, 5, 7, 6])
@@ -176,17 +191,21 @@ def _periodic_masters(points: np.ndarray):
 # --------------------------------------------------------------------------- #
 # core homogenisation
 # --------------------------------------------------------------------------- #
-def homogenize_aniso(points_m, cells, elem_C):
-    """Periodic homogenisation with a per-element 6x6 stiffness.
+def homogenize_aniso(points_m, cells, gp_C):
+    """Periodic homogenisation with a per-Gauss-point 6x6 stiffness.
 
-    ``elem_C`` is ``(n_elem, 6, 6)`` — one stiffness per cell, so graded phases
-    (e.g. the kerf-damage halo) are handled directly. Returns (stiffness, info).
+    ``gp_C`` is ``(n_elem, 8, 6, 6)`` — one stiffness per Gauss point, so a graded
+    material field (e.g. the stochastic resin halo) integrates exactly. A
+    ``(n_elem, 6, 6)`` array (constant per element) is broadcast. Returns
+    (stiffness 6x6, info).
     """
     from scipy.sparse import csr_matrix
     from scipy.sparse.linalg import factorized
 
     cells = _canonicalize(points_m, cells)
-    elem_C = np.asarray(elem_C, dtype=float)
+    gp_C = np.asarray(gp_C, dtype=float)
+    if gp_C.ndim == 3:
+        gp_C = np.broadcast_to(gp_C[:, None], (len(cells), 8, 6, 6))
     n_elem = len(cells)
     master_of, n_master = _periodic_masters(points_m)
     ndof = 3 * n_master
@@ -196,18 +215,20 @@ def homogenize_aniso(points_m, cells, elem_C):
     fe = np.zeros((n_elem, 24, 6))          # macro-strain load: integral B^T C eps0
     Bc = np.zeros((n_elem, 6, 24))          # B at element centre
     vol = np.zeros(n_elem)
+    T1 = np.zeros((6, 6))                   # integral of C (energy-reduction term)
     edofs = np.zeros((n_elem, 24), dtype=np.int64)
     for e, conn in enumerate(cells):
         X = points_m[conn]                  # (8,3)
-        C = elem_C[e]
         for gp in range(8):
             J = _DN[gp].T @ X               # (3,3)
             dN_xyz = _DN[gp] @ np.linalg.inv(J)
             B = _bmat(dN_xyz)
             w = abs(np.linalg.det(J))       # |detJ| * Gauss weight(=1)
+            C = gp_C[e, gp]
             Ke[e] += (B.T @ C @ B) * w
             fe[e] += (B.T @ C) * w
             vol[e] += w
+            T1 += C * w
         Jc = _DN_C.T @ X
         Bc[e] = _bmat(_DN_C @ np.linalg.inv(Jc))
         mdofs = master_of[conn]
@@ -241,13 +262,10 @@ def homogenize_aniso(points_m, cells, elem_C):
         we = W[edofs[e]]                    # (24, 6)
         elem_strain[e] = _UNIT.T + (Bc[e] @ we).T   # row k = eps0_k + Bc w_k
 
-    # Exact energy reduction (matches the MFEM backend): the volume-averaged
-    # constituent stiffness plus the corrector coupling L^T W. Element-centre
-    # strains above are kept only for the failure post-processing.
+    # Exact energy reduction (matches the MFEM backend): the integral of the
+    # constituent stiffness (T1, accumulated over Gauss points above) plus the
+    # corrector coupling L^T W. Element-centre strains feed the failure check.
     total_vol = vol.sum()
-    T1 = np.zeros((6, 6))
-    for e in range(n_elem):
-        T1 += vol[e] * elem_C[e]
     stiffness = (T1 + L.T @ W) / total_vol
     stiffness = 0.5 * (stiffness + stiffness.T)
 
@@ -315,20 +333,42 @@ def resin_failure_index(
     }
 
 
-def foam_porosity(core: dict, scoring: dict | None) -> float:
-    """Resin-filled fraction of an opened foam cell = 1 - rho_foam/rho_solid."""
-    solid = (scoring or {}).get("solid_density", 1400.0)
-    return float(np.clip(1.0 - core["rho"] / solid, 0.0, 1.0))
+def _unit_grid(resolution: int) -> np.ndarray:
+    t = (np.arange(resolution) + 0.5) / resolution        # cell-centred in [0,1]
+    return np.stack(np.meshgrid(t, t, t, indexing="ij"), -1).reshape(-1, 3)
 
 
-def runnumpy(mesh, resin, core, face=None, *, scoring=None, return_details=False):
+def gauss_point_resin_P(points_m, cells, score_field, *, strategy="exact",
+                        resolution=3, idw_power=2.0) -> np.ndarray:
+    """P(resin) at each element's 8 Gauss points -> (n_elem, 8).
+
+    ``strategy="exact"`` samples the field at the Gauss point; ``"local_cloud"``
+    samples a ``resolution**3`` cloud of material sub-points per element and
+    inverse-distance-weights them to each Gauss point (sub-element averaging).
+    """
+    Xe = points_m[cells]                                  # (n, 8, 3) metres
+    gp = np.einsum("gn,enj->egj", _N, Xe) * 1000.0        # (n, 8, 3) mm Gauss coords
+    n = len(cells)
+    if strategy == "exact":
+        return score_field.resin_probability(gp.reshape(-1, 3)).reshape(n, 8)
+    ref = _unit_grid(resolution)                          # (M, 3) in [0,1]
+    lo, hi = Xe.min(axis=1), Xe.max(axis=1)               # (n, 3) element AABB
+    cloud = (lo[:, None, :] + ref[None, :, :] * (hi - lo)[:, None, :]) * 1000.0   # (n,M,3) mm
+    Pc = score_field.resin_probability(cloud.reshape(-1, 3)).reshape(n, -1)       # (n, M)
+    dist = np.linalg.norm(gp[:, :, None, :] - cloud[:, None, :, :], axis=-1)      # (n, 8, M)
+    w = 1.0 / np.maximum(dist, 1e-9) ** idw_power
+    return (w * Pc[:, None, :]).sum(-1) / w.sum(-1)       # (n, 8)
+
+
+def runnumpy(mesh, resin, core, face=None, *, score_field=None, scoring=None,
+             return_details=False):
     """Drop-in for runmfem using the numpy anisotropic homogeniser.
 
-    Accepts isotropic or orthotropic material dicts. When the mesh carries a
-    kerf-damage ``halo_fraction`` (from ``scoring``), each halo cell gets a graded
-    stiffness ``phi*C_resin + (1-phi)*C_foam`` with ``phi = porosity * fraction``.
-    Mirrors the MFEM result and adds the per-element strain field for the failure
-    check.
+    Accepts isotropic or orthotropic material dicts. With a ``score_field``
+    (stochastic resin halo), foam Gauss points get a rule-of-mixtures stiffness
+    ``P*C_resin + (1-P)*C_foam``, P = the field's resin probability; the sampling
+    strategy ("exact" / "local_cloud" IDW) comes from ``scoring['sampling']``.
+    Mirrors the MFEM result and adds the per-element strain field for failure.
     """
     grid = mesh.scale((1e-3, 1e-3, 1e-3), inplace=False)
     if hasattr(grid, "cast_to_unstructured_grid"):
@@ -337,7 +377,7 @@ def runnumpy(mesh, resin, core, face=None, *, scoring=None, return_details=False
     if not np.all(cell_block[:, 0] == 8):
         raise ValueError("numpy backend supports linear hexahedral cells only")
     points = np.asarray(grid.points, dtype=np.float64)
-    cells = np.asarray(cell_block[:, 1:], dtype=np.int64)
+    cells = _canonicalize(points, np.asarray(cell_block[:, 1:], dtype=np.int64))
 
     resin_cells = np.asarray(grid.cell_data["resin"], dtype=bool)
     face_cells = np.asarray(grid.cell_data["face"], dtype=bool)
@@ -347,22 +387,32 @@ def runnumpy(mesh, resin, core, face=None, *, scoring=None, return_details=False
         attr[face_cells] = 3
 
     C_core, C_resin = material_C(core), material_C(resin)
-    elem_C = np.broadcast_to(C_core, (grid.n_cells, 6, 6)).copy()
-    elem_C[attr == 2] = C_resin
+    C_face = None
     if (attr == 3).any():
         face_mat = dict(face) if face else {}
         face_mat.setdefault("E", 12_000_000_000.0)
         face_mat.setdefault("nu", 0.3)
-        elem_C[attr == 3] = material_C(face_mat)
+        C_face = material_C(face_mat)
 
-    # Graded kerf-damage halo: opened cells filled with resin (porosity-scaled).
-    if "halo_fraction" in grid.cell_data:
-        phi = foam_porosity(core, scoring) * np.asarray(grid.cell_data["halo_fraction"])
-        m = phi > 0
-        p = phi[m][:, None, None]
-        elem_C[m] = p * C_resin + (1.0 - p) * C_core
+    # Neat per-Gauss-point stiffness, then the graded resin halo on foam cells.
+    gp_C = np.broadcast_to(C_core, (grid.n_cells, 8, 6, 6)).copy()
+    gp_C[attr == 2] = C_resin
+    if C_face is not None:
+        gp_C[attr == 3] = C_face
+    if score_field is not None and getattr(score_field, "active", False):
+        foam = np.flatnonzero(attr == 1)
+        if len(foam):
+            sampling = (scoring or {}).get("sampling") or {}
+            P = gauss_point_resin_P(
+                points, cells[foam], score_field,
+                strategy=sampling.get("strategy", "exact"),
+                resolution=int(sampling.get("resolution", 3)),
+                idw_power=float(sampling.get("idw_power", 2.0)),
+            )                                       # (n_foam, 8)
+            p = P[:, :, None, None]
+            gp_C[foam] = p * C_resin + (1.0 - p) * C_core
 
-    stiffness, info = homogenize_aniso(points, cells, elem_C)
+    stiffness, info = homogenize_aniso(points, cells, gp_C)
     properties, compliance = _properties_from_stiffness(stiffness)
 
     if not return_details:

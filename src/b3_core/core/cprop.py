@@ -14,6 +14,7 @@ from frd2vtu import frd2vtu
 import pyvista as pv
 from ..post.skins import postprocess
 from ..result import CoreResult
+from .scoring import effective_resin_vf
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,9 @@ class Material(BaseModel):
     nu12: float | None = None
     nu13: float | None = None
     nu23: float | None = None
-    # mean foam cell diameter (mm); enables the kerf-damage halo with `scoring`
-    cell_size: float | None = Field(None, gt=0)
+    # foam cell size (mm): scalar (uniform) or {mean, std, dist} distribution;
+    # enables the stochastic resin halo (P=1 at a cut surface -> 0 at max cell size)
+    cell_size: float | dict | None = None
 
     @property
     def is_orthotropic(self) -> bool:
@@ -72,8 +74,8 @@ class CpropInput(BaseModel):
     madd: list[float] = [0]
     face: dict = {}
     curvature: dict = {}
-    # kerf-damage halo: {"damage_cells": float, "solid_density": kg/m3}. Active
-    # only with core.cell_size; halo reach = damage_cells * cell_size each side.
+    # resin-halo tuning: {"damage_cells": float, "sampling": {...}}. Active only
+    # with core.cell_size; halo reach = damage_cells * (max cell size).
     scoring: dict = {}
     element_type: str = "C3D8"
     backend: str = "ccx"
@@ -160,7 +162,7 @@ def _run_numpy_backend(mesh, dct):
     logger.info("running numpy anisotropic homogenisation")
     return runnumpy(
         mesh, dct["resin"], dct["core"], dct.get("face"),
-        scoring=dct.get("scoring"),
+        score_field=_score_field(dct), scoring=dct.get("scoring"),
     ).properties
 
 
@@ -169,12 +171,26 @@ def _is_orthotropic(dct):
 
 
 def halo_reach(dct) -> float:
-    """Kerf-damage halo reach s_halo (mm) = damage_cells * core.cell_size, or 0."""
+    """Resin-halo reach s_halo (mm) = damage_cells * (max cell size), or 0.
+
+    The reach is the cell-size distribution's support max (where P(resin) -> 0).
+    """
     cell_size = (dct.get("core") or {}).get("cell_size")
-    scoring = dct.get("scoring") or {}
-    if cell_size and scoring:
-        return float(scoring.get("damage_cells", 1.0)) * float(cell_size)
-    return 0.0
+    if cell_size is None:
+        return 0.0
+    from .scoring import survival
+
+    _, reach = survival(cell_size)
+    return float((dct.get("scoring") or {}).get("damage_cells", 1.0)) * reach
+
+
+def _score_field(dct):
+    """ScoreField for the case, or None when the halo is inactive."""
+    if halo_reach(dct) <= 0.0:
+        return None
+    from .scoring import ScoreField
+
+    return ScoreField(dct)
 
 
 def _needs_numpy(dct) -> bool:
@@ -219,12 +235,11 @@ def cprop(json_data):
     logger.info("performing geometric analysis")
     geom_output = geom_analysis(mesh)
 
-    eff_vf = geom_output["resin_vf"]
-    if "halo_resin_equiv" in geom_output:
-        from ..io.aniso import foam_porosity
-
-        eff_vf += foam_porosity(dct["core"], dct.get("scoring")) * geom_output["halo_resin_equiv"]
+    field = _score_field(dct)
+    eff_vf, halo_vf = effective_resin_vf(mesh, field, geom_output["resin_vf"])
+    if field is not None:
         geom_output["effective_resin_vf"] = eff_vf
+        geom_output["halo_vf"] = halo_vf
     geom_output["rho_infused"] = (
         dct["core"]["rho"] * (1.0 - eff_vf) + dct["resin"]["rho"] * eff_vf
     )

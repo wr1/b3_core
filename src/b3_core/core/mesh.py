@@ -105,11 +105,9 @@ def _mark_resin(resin, coord, c, thickness, centres, halfwidths, depths, slopes)
 def _mark_halo(frac, coord, c, thickness, centres, halfwidths, depths, slopes, s_halo):
     """Geometric kerf-damage halo: cells just outside each groove wall.
 
-    For a cell at in-plane gap ``s = |c - c0| - hw_z`` beyond the (z-dependent)
-    kerf wall, within the groove's z-depth and the band ``0 <= s < s_halo``, the
-    geometric halo fraction ramps linearly ``1 -> 0`` with distance from the wall
-    (material-agnostic; the backend scales it by foam porosity and blends resin
-    into foam). A cell touched by two grooves keeps the larger fraction.
+    Returns a value >0 for cells within ``s_halo`` of a (z-dependent) kerf wall,
+    used only to flag the band for visualisation; the actual graded material is
+    evaluated from the ScoreField at integration points by the numpy backend.
     """
     for c0, hw, d, s in zip(centres, halfwidths, depths, slopes, strict=True):
         if d > 0:
@@ -158,6 +156,14 @@ def create_grooved_mesh(
     fz = create_z_mesh(
         xcuts + ycuts, thickness + tface, meshadd=madd, absadd=[thickness + tol]
     )
+    if s_halo > 0:
+        # z sub-lines just past each groove root (a cut surface) so the root halo
+        # is resolved; root at z=depth (depth>0) or z=thickness+depth (depth<0).
+        hz = np.linspace(0.0, 1.0, 3)[1:]
+        roots = [d + s_halo * hz if d > 0 else (thickness + d) - s_halo * hz
+                 for cut in xcuts + ycuts if (d := cut[2]) != 0]
+        if roots:
+            fz = np.append(fz, np.clip(np.concatenate(roots), 0.0, thickness + tface))
     # Groove centres and nominal half-widths. An opened groove flares from the
     # nominal half-width at the root to ``*_mouth`` at the surface; lay several
     # in-plane grid lines across that taper zone (this axis only, so y/z stay
@@ -172,9 +178,9 @@ def create_grooved_mesh(
     xoff = xhw[:, None] + np.outer(x_mouth - xhw, fracs)
     yoff = yhw[:, None] + np.outer(y_mouth - yhw, fracs)
     if s_halo > 0:
-        # extra in-plane lines across the kerf-damage halo band so the graded
-        # opened_fraction is resolved by several cells (nominal wall = inner edge).
-        hf = np.linspace(0.0, 1.0, 4)[1:]
+        # extra in-plane lines across the halo band so the graded resin field is
+        # resolved by a few cells (sub-element sampling smooths within).
+        hf = np.linspace(0.0, 1.0, 3)[1:]
         xoff = np.concatenate([xoff, xhw[:, None] + s_halo * hf[None, :]], axis=1)
         yoff = np.concatenate([yoff, yhw[:, None] + s_halo * hf[None, :]], axis=1)
     xlines = np.clip(
@@ -198,13 +204,13 @@ def create_grooved_mesh(
     grd.cell_data["face"] = face
     grd.cell_data["resin"] = is_resin
 
-    halo_fraction = np.zeros(len(c))
+    # Mark the halo band (foam cells within s_halo of a groove wall/root) for viz
+    # only; the material itself comes from the ScoreField at integration points.
+    halo = np.zeros(len(c))
     if s_halo > 0:
-        halo_fraction = _mark_halo(halo_fraction, 0, c, thickness, xc, xhw, hx, sx, s_halo)
-        halo_fraction = _mark_halo(halo_fraction, 1, c, thickness, yc, yhw, hy, sy, s_halo)
-        halo_fraction[is_resin | face] = 0.0   # halo lives only in the foam
-    grd.cell_data["halo_fraction"] = halo_fraction
-    grd.cell_data["halo"] = halo_fraction > 0
+        halo = _mark_halo(halo, 0, c, thickness, xc, xhw, hx, sx, s_halo)
+        halo = _mark_halo(halo, 1, c, thickness, yc, yhw, hy, sy, s_halo)
+    grd.cell_data["halo"] = (halo > 0) & (~is_resin) & (~face)
     return grd
 
 

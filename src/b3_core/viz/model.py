@@ -74,14 +74,15 @@ class CoreModel:
     @property
     def geom(self) -> dict:
         if self._geom is None:
-            g = geom_analysis(self.mesh)
-            eff = g["resin_vf"]
-            if "halo_resin_equiv" in g:
-                from b3_core.io.aniso import foam_porosity
+            from b3_core.core.cprop import _score_field
+            from b3_core.core.scoring import effective_resin_vf
 
-                por = foam_porosity(self.inp["core"], self.inp.get("scoring"))
-                eff = g["resin_vf"] + por * g["halo_resin_equiv"]
+            g = geom_analysis(self.mesh)
+            field = _score_field(self.inp)
+            eff, halo_vf = effective_resin_vf(self.mesh, field, g["resin_vf"])
+            if field is not None:
                 g["effective_resin_vf"] = eff
+                g["halo_vf"] = halo_vf
             g["rho_infused"] = (
                 self.inp["core"]["rho"] * (1.0 - eff)
                 + self.inp["resin"]["rho"] * eff
@@ -99,13 +100,14 @@ class CoreModel:
     def details(self):
         if self._details is None:
             if self._needs_numpy():
+                from b3_core.core.cprop import _score_field
                 from b3_core.io import aniso
 
                 logger.info("running numpy anisotropic backend for %s", self.name)
                 self._details = aniso.runnumpy(
                     self.mesh, self.inp["resin"], self.inp["core"],
-                    self.inp.get("face"), scoring=self.inp.get("scoring"),
-                    return_details=True,
+                    self.inp.get("face"), score_field=_score_field(self.inp),
+                    scoring=self.inp.get("scoring"), return_details=True,
                 )
             else:
                 logger.info("running MFEM backend for %s", self.name)

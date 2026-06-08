@@ -1,5 +1,5 @@
 {
-    "_comment": "DIAB GS30 grid-scored core WITH the kerf-damage halo correction (see notes/refs/laustsen2014_grid_scored_rve.md). Same nominal geometry as diab_gs30.json, but the grid-scoring tears open foam cells along each cut: 'cell_size' (mean foam cell diameter, mm) sets how far the damage reaches and 'scoring.damage_cells' how many cell-diameters beyond each kerf wall. Opened cells fill with resin (porosity-scaled), graded by distance from the cut wall -> a resin-rich halo that raises the effective resin Vf and stiffness above the sharp-kerf nominal (toward the physically-effective values the paper's CT scan, Fig 13, implies). Requires the numpy backend (auto-routed).",
+    "_comment": "DIAB GS30 grid-scored core WITH the stochastic resin halo (see notes/refs/laustsen2014_grid_scored_rve.md). Same nominal geometry as diab_gs30.json, but the saw cut opens foam cells along the groove walls and root; opened cells take up resin. 'cell_size' is the foam cell-size distribution: a scalar (uniform, P(resin)=1-d/cell_size) or {mean, std, dist:'lognormal'|'normal'}. The resin-presence probability P = survival function of that distribution vs distance to the nearest CUT surface (groove walls + root, NOT the un-sawn outer faces), evaluated at integration points; local stiffness is a rule of mixtures P*C_resin+(1-P)*C_foam. scoring.sampling = 'exact' (P at each Gauss point) or 'local_cloud' (sub-point cloud, inverse-distance-weighted to Gauss points). Requires the numpy backend (auto-routed).",
     "dx": 30,
     "dy": 30,
     "thickness": 20,
@@ -13,7 +13,7 @@
         "cell_size": 0.6
     },
     "resin": {"E": 3000000000, "nu": 0.3, "rho": 1100},
-    "scoring": {"damage_cells": 1.0, "solid_density": 1400},
+    "scoring": {"damage_cells": 1.0, "sampling": {"strategy": "local_cloud", "resolution": 3}},
     "madd": [-0.15, 0, 0.15],
     "backend": "numpy",
     "validate_with_ccx": false
