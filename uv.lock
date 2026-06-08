@@ -181,6 +181,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pyvista" },
+    { name = "scipy" },
     { name = "treeparse" },
 ]
 
@@ -215,6 +216,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyvista", specifier = ">=0.44,<0.45" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "scipy" },
     { name = "trame", marker = "extra == 'interactive'" },
     { name = "trame-vtk", marker = "extra == 'interactive'" },
     { name = "trame-vuetify", marker = "extra == 'interactive'" },

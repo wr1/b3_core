@@ -1,13 +1,18 @@
 {
-    "_comment": "DIAB GS30 (GSC30) 'Grid Scored' finishing, from the DIAB finishing data sheet (rev3, July 2020). Divinycell foam grid-scored in BOTH directions (formable for curved molds): V/U-shaped cuts at 30 mm center-to-center, kerf width ~0.9 mm, cut almost through to ~2 mm from the bottom of the sheet (a light fibreglass scrim reinforces the uncut face). Modelled on a 20 mm sheet -> single-sided groove depth 18 mm. RVE = one 30x30 mm grid cell (periodic), grooves shared across the cell edges. Core: isotropic approximation of Divinycell H60; resin: infusion epoxy. NOTE: the mesh-refinement offsets (madd) slightly widen the thin 0.9 mm kerf, so resin_vf (~0.07) reads a bit above the ideal ~0.053; this is a coarse illustrative RVE, not a validated result.",
+    "_comment": "DIAB GS30 (GSC30) 'Grid Scored' core, modelled per Laustsen et al. (2014), J. Sandwich Struct. Mater. 16(5):481-510 (see notes/refs/laustsen2014_grid_scored_rve.md). Divinycell H60 foam grid-scored in both directions at 30 mm center-to-center, ~1 mm kerf, cut to ~2 mm from the bottom (single-sided, scrim on the uncut face). RVE = one 30x30 mm periodic cell on a 20 mm sheet (groove depth 18 mm). Core uses the paper's ORTHOTROPIC H60 foam (in-plane E=32 MPa, through-thickness E=70 MPa) -> requires backend 'numpy' (the ccx/mfem integrators are isotropic-only). Resin = epoxy 'Resin A' (E=3 GPa). b3_core's full-FE periodic result is in the same ballpark as the paper's rule-of-mixtures Table 2 (E~(132,132,262), G~(20,57,57) MPa), agreeing best on E33 and the shear moduli.",
     "dx": 30,
     "dy": 30,
     "thickness": 20,
-    "xgr": [[0, 30, 18.0, 0.9]],
-    "ygr": [[0, 30, 18.0, 0.9]],
-    "core":  {"E": 70000000,   "nu": 0.32, "rho": 60},
-    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "xgr": [[0, 30, 18.0, 1.0]],
+    "ygr": [[0, 30, 18.0, 1.0]],
+    "core": {
+        "E1": 32000000, "E2": 32000000, "E3": 70000000,
+        "G12": 19000000, "G13": 19000000, "G23": 19000000,
+        "nu12": 0.3, "nu13": 0.3, "nu23": 0.3,
+        "rho": 60
+    },
+    "resin": {"E": 3000000000, "nu": 0.3, "rho": 1100},
     "madd": [-0.15, 0, 0.15],
-    "backend": "mfem",
+    "backend": "numpy",
     "validate_with_ccx": false
 }

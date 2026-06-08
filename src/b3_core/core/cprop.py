@@ -14,15 +14,49 @@ from frd2vtu import frd2vtu
 import pyvista as pv
 from ..post.skins import postprocess
 from ..result import CoreResult
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
+_ORTHO_FIELDS = ("E1", "E2", "E3", "G12", "G13", "G23", "nu12", "nu13", "nu23")
+
 
 class Material(BaseModel):
-    E: float = Field(..., gt=0)
-    nu: float = Field(..., ge=0, lt=0.5)
+    """Isotropic (E, nu) or orthotropic (E1..nu23) elastic material.
+
+    Orthotropic axes are 1=x, 2=y, 3=z. Orthotropic materials require the
+    `numpy` backend (the ccx/mfem integrators are isotropic-only).
+    """
+
     rho: float = Field(..., gt=0)
+    # isotropic
+    E: float | None = Field(None, gt=0)
+    nu: float | None = Field(None, ge=0, lt=0.5)
+    # orthotropic (engineering constants)
+    E1: float | None = Field(None, gt=0)
+    E2: float | None = Field(None, gt=0)
+    E3: float | None = Field(None, gt=0)
+    G12: float | None = Field(None, gt=0)
+    G13: float | None = Field(None, gt=0)
+    G23: float | None = Field(None, gt=0)
+    nu12: float | None = None
+    nu13: float | None = None
+    nu23: float | None = None
+
+    @property
+    def is_orthotropic(self) -> bool:
+        return self.E1 is not None
+
+    @model_validator(mode="after")
+    def _check_complete(self):
+        iso = self.E is not None and self.nu is not None
+        ortho = all(getattr(self, f) is not None for f in _ORTHO_FIELDS)
+        if not (iso or ortho):
+            raise ValueError(
+                "Material must be isotropic (E, nu) or orthotropic "
+                f"({', '.join(_ORTHO_FIELDS)})"
+            )
+        return self
 
 
 class CpropInput(BaseModel):
@@ -50,9 +84,9 @@ class CpropInput(BaseModel):
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v):
-        if v not in ("ccx", "fenicsx", "mfem"):
+        if v not in ("ccx", "fenicsx", "mfem", "numpy"):
             raise ValueError(
-                f"backend must be 'ccx', 'fenicsx', or 'mfem', got {v!r}"
+                f"backend must be 'ccx', 'fenicsx', 'mfem' or 'numpy', got {v!r}"
             )
         return v
 
@@ -115,6 +149,17 @@ def _run_mfem_backend(mesh, dct):
     return runmfem(mesh, dct["resin"], dct["core"], dct.get("face"))
 
 
+def _run_numpy_backend(mesh, dct):
+    from ..io.aniso import runnumpy
+
+    logger.info("running numpy anisotropic homogenisation")
+    return runnumpy(mesh, dct["resin"], dct["core"], dct.get("face")).properties
+
+
+def _is_orthotropic(dct):
+    return any((dct.get(p) or {}).get("E1") is not None for p in ("core", "resin"))
+
+
 def cprop(json_data):
     """Run FEA analysis on a JSON configuration."""
     if isinstance(json_data, str):
@@ -158,7 +203,14 @@ def cprop(json_data):
     )
 
     backend = dct["backend"]
-    if backend == "ccx":
+    # Orthotropic constituents need the anisotropic numpy backend (ccx/mfem
+    # integrators are isotropic-only), so route there regardless of the request.
+    if _is_orthotropic(dct):
+        backend = "numpy"
+
+    if backend == "numpy":
+        output = _run_numpy_backend(mesh, dct)
+    elif backend == "ccx":
         output = _run_ccx_backend(mesh, name, dct)
         if dct["validate_with_ccx"]:
             fenicsx_output = _run_fenicsx_backend(mesh, dct)

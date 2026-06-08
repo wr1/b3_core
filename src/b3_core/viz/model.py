@@ -80,14 +80,28 @@ class CoreModel:
         return self._geom
 
     # -- homogenisation -----------------------------------------------------
+    def _orthotropic(self) -> bool:
+        return any(
+            (self.inp.get(p) or {}).get("E1") is not None for p in ("core", "resin")
+        )
+
     @property
     def details(self):
         if self._details is None:
-            logger.info("running MFEM backend for %s", self.name)
-            self._details = mfem_backend.runmfem(
-                self.mesh, self.inp["resin"], self.inp["core"],
-                self.inp.get("face"), return_details=True,
-            )
+            if self.inp.get("backend") == "numpy" or self._orthotropic():
+                from b3_core.io import aniso
+
+                logger.info("running numpy anisotropic backend for %s", self.name)
+                self._details = aniso.runnumpy(
+                    self.mesh, self.inp["resin"], self.inp["core"],
+                    self.inp.get("face"), return_details=True,
+                )
+            else:
+                logger.info("running MFEM backend for %s", self.name)
+                self._details = mfem_backend.runmfem(
+                    self.mesh, self.inp["resin"], self.inp["core"],
+                    self.inp.get("face"), return_details=True,
+                )
         return self._details
 
     @property
