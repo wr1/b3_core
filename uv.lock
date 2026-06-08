@@ -2178,7 +2178,7 @@ wheels = [
 
 [[package]]
 name = "treeparse"
-version = "0.3.0"
+version = "0.3.1"
 source = { directory = "/home/wr1/projects/treeparse" }
 dependencies = [
     { name = "pydantic" },

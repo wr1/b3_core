@@ -10,6 +10,11 @@ check builds on.
 Voigt order matches the rest of the package: (xx, yy, zz, yz, xz, xy), engineering
 shear (gamma = 2*eps). Geometry is scaled mm -> m so results are SI, exactly as
 the MFEM backend does.
+
+It also applies the kerf-damage halo: when the mesh carries a graded
+``halo_fraction`` (foam cells opened by grid-scoring), each such cell gets a
+distance-graded blend ``phi*C_resin + (1-phi)*C_foam`` with ``phi = porosity *
+halo_fraction`` — a per-cell stiffness, which the periodic solver takes directly.
 """
 
 from __future__ import annotations
@@ -171,12 +176,17 @@ def _periodic_masters(points: np.ndarray):
 # --------------------------------------------------------------------------- #
 # core homogenisation
 # --------------------------------------------------------------------------- #
-def homogenize_aniso(points_m, cells, attr, C_by_attr):
-    """Periodic homogenisation. Returns (stiffness 6x6, info dict)."""
+def homogenize_aniso(points_m, cells, elem_C):
+    """Periodic homogenisation with a per-element 6x6 stiffness.
+
+    ``elem_C`` is ``(n_elem, 6, 6)`` — one stiffness per cell, so graded phases
+    (e.g. the kerf-damage halo) are handled directly. Returns (stiffness, info).
+    """
     from scipy.sparse import csr_matrix
     from scipy.sparse.linalg import factorized
 
     cells = _canonicalize(points_m, cells)
+    elem_C = np.asarray(elem_C, dtype=float)
     n_elem = len(cells)
     master_of, n_master = _periodic_masters(points_m)
     ndof = 3 * n_master
@@ -189,7 +199,7 @@ def homogenize_aniso(points_m, cells, attr, C_by_attr):
     edofs = np.zeros((n_elem, 24), dtype=np.int64)
     for e, conn in enumerate(cells):
         X = points_m[conn]                  # (8,3)
-        C = C_by_attr[attr[e]]
+        C = elem_C[e]
         for gp in range(8):
             J = _DN[gp].T @ X               # (3,3)
             dN_xyz = _DN[gp] @ np.linalg.inv(J)
@@ -237,7 +247,7 @@ def homogenize_aniso(points_m, cells, attr, C_by_attr):
     total_vol = vol.sum()
     T1 = np.zeros((6, 6))
     for e in range(n_elem):
-        T1 += vol[e] * C_by_attr[attr[e]]
+        T1 += vol[e] * elem_C[e]
     stiffness = (T1 + L.T @ W) / total_vol
     stiffness = 0.5 * (stiffness + stiffness.T)
 
@@ -305,12 +315,20 @@ def resin_failure_index(
     }
 
 
-def runnumpy(mesh, resin, core, face=None, *, return_details=False):
+def foam_porosity(core: dict, scoring: dict | None) -> float:
+    """Resin-filled fraction of an opened foam cell = 1 - rho_foam/rho_solid."""
+    solid = (scoring or {}).get("solid_density", 1400.0)
+    return float(np.clip(1.0 - core["rho"] / solid, 0.0, 1.0))
+
+
+def runnumpy(mesh, resin, core, face=None, *, scoring=None, return_details=False):
     """Drop-in for runmfem using the numpy anisotropic homogeniser.
 
-    Accepts isotropic or orthotropic material dicts. Mirrors the MFEM result
-    (properties / stiffness / compliance / displacements / points) and adds the
-    per-element strain field for the failure check.
+    Accepts isotropic or orthotropic material dicts. When the mesh carries a
+    kerf-damage ``halo_fraction`` (from ``scoring``), each halo cell gets a graded
+    stiffness ``phi*C_resin + (1-phi)*C_foam`` with ``phi = porosity * fraction``.
+    Mirrors the MFEM result and adds the per-element strain field for the failure
+    check.
     """
     grid = mesh.scale((1e-3, 1e-3, 1e-3), inplace=False)
     if hasattr(grid, "cast_to_unstructured_grid"):
@@ -328,14 +346,23 @@ def runnumpy(mesh, resin, core, face=None, *, return_details=False):
     if face is not None and face_cells.any():
         attr[face_cells] = 3
 
-    C_by_attr = {1: material_C(core), 2: material_C(resin)}
+    C_core, C_resin = material_C(core), material_C(resin)
+    elem_C = np.broadcast_to(C_core, (grid.n_cells, 6, 6)).copy()
+    elem_C[attr == 2] = C_resin
     if (attr == 3).any():
         face_mat = dict(face) if face else {}
         face_mat.setdefault("E", 12_000_000_000.0)
         face_mat.setdefault("nu", 0.3)
-        C_by_attr[3] = material_C(face_mat)
+        elem_C[attr == 3] = material_C(face_mat)
 
-    stiffness, info = homogenize_aniso(points, cells, attr, C_by_attr)
+    # Graded kerf-damage halo: opened cells filled with resin (porosity-scaled).
+    if "halo_fraction" in grid.cell_data:
+        phi = foam_porosity(core, scoring) * np.asarray(grid.cell_data["halo_fraction"])
+        m = phi > 0
+        p = phi[m][:, None, None]
+        elem_C[m] = p * C_resin + (1.0 - p) * C_core
+
+    stiffness, info = homogenize_aniso(points, cells, elem_C)
     properties, compliance = _properties_from_stiffness(stiffness)
 
     if not return_details:

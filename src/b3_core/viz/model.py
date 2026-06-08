@@ -48,6 +48,8 @@ class CoreModel:
     @property
     def mesh(self):
         if self._mesh is None:
+            from b3_core.core.cprop import halo_reach
+
             i = self.inp
             self._mesh = create_grooved_mesh(
                 thickness=i["thickness"], dx=i["dx"], dy=i["dy"],
@@ -55,6 +57,7 @@ class CoreModel:
                 tface=(i.get("face") or {}).get("thickness", 0.0),
                 kx=(i.get("curvature") or {}).get("kx", 0.0),
                 ky=(i.get("curvature") or {}).get("ky", 0.0),
+                s_halo=halo_reach(i),
             )
         return self._mesh
 
@@ -72,29 +75,37 @@ class CoreModel:
     def geom(self) -> dict:
         if self._geom is None:
             g = geom_analysis(self.mesh)
+            eff = g["resin_vf"]
+            if "halo_resin_equiv" in g:
+                from b3_core.io.aniso import foam_porosity
+
+                por = foam_porosity(self.inp["core"], self.inp.get("scoring"))
+                eff = g["resin_vf"] + por * g["halo_resin_equiv"]
+                g["effective_resin_vf"] = eff
             g["rho_infused"] = (
-                self.inp["core"]["rho"] * (1.0 - g["resin_vf"])
-                + self.inp["resin"]["rho"] * g["resin_vf"]
+                self.inp["core"]["rho"] * (1.0 - eff)
+                + self.inp["resin"]["rho"] * eff
             )
             self._geom = g
         return self._geom
 
     # -- homogenisation -----------------------------------------------------
-    def _orthotropic(self) -> bool:
-        return any(
-            (self.inp.get(p) or {}).get("E1") is not None for p in ("core", "resin")
-        )
+    def _needs_numpy(self) -> bool:
+        from b3_core.core.cprop import _needs_numpy
+
+        return self.inp.get("backend") == "numpy" or _needs_numpy(self.inp)
 
     @property
     def details(self):
         if self._details is None:
-            if self.inp.get("backend") == "numpy" or self._orthotropic():
+            if self._needs_numpy():
                 from b3_core.io import aniso
 
                 logger.info("running numpy anisotropic backend for %s", self.name)
                 self._details = aniso.runnumpy(
                     self.mesh, self.inp["resin"], self.inp["core"],
-                    self.inp.get("face"), return_details=True,
+                    self.inp.get("face"), scoring=self.inp.get("scoring"),
+                    return_details=True,
                 )
             else:
                 logger.info("running MFEM backend for %s", self.name)

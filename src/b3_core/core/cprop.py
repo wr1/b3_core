@@ -42,6 +42,8 @@ class Material(BaseModel):
     nu12: float | None = None
     nu13: float | None = None
     nu23: float | None = None
+    # mean foam cell diameter (mm); enables the kerf-damage halo with `scoring`
+    cell_size: float | None = Field(None, gt=0)
 
     @property
     def is_orthotropic(self) -> bool:
@@ -70,6 +72,9 @@ class CpropInput(BaseModel):
     madd: list[float] = [0]
     face: dict = {}
     curvature: dict = {}
+    # kerf-damage halo: {"damage_cells": float, "solid_density": kg/m3}. Active
+    # only with core.cell_size; halo reach = damage_cells * cell_size each side.
+    scoring: dict = {}
     element_type: str = "C3D8"
     backend: str = "ccx"
     validate_with_ccx: bool = False
@@ -153,11 +158,27 @@ def _run_numpy_backend(mesh, dct):
     from ..io.aniso import runnumpy
 
     logger.info("running numpy anisotropic homogenisation")
-    return runnumpy(mesh, dct["resin"], dct["core"], dct.get("face")).properties
+    return runnumpy(
+        mesh, dct["resin"], dct["core"], dct.get("face"),
+        scoring=dct.get("scoring"),
+    ).properties
 
 
 def _is_orthotropic(dct):
     return any((dct.get(p) or {}).get("E1") is not None for p in ("core", "resin"))
+
+
+def halo_reach(dct) -> float:
+    """Kerf-damage halo reach s_halo (mm) = damage_cells * core.cell_size, or 0."""
+    cell_size = (dct.get("core") or {}).get("cell_size")
+    scoring = dct.get("scoring") or {}
+    if cell_size and scoring:
+        return float(scoring.get("damage_cells", 1.0)) * float(cell_size)
+    return 0.0
+
+
+def _needs_numpy(dct) -> bool:
+    return _is_orthotropic(dct) or halo_reach(dct) > 0.0
 
 
 def cprop(json_data):
@@ -192,20 +213,26 @@ def cprop(json_data):
         tface=dct.get("face", {}).get("thickness", 0.0),
         kx=dct.get("curvature", {}).get("kx", 0.0),
         ky=dct.get("curvature", {}).get("ky", 0.0),
+        s_halo=halo_reach(dct),
     )
 
     logger.info("performing geometric analysis")
     geom_output = geom_analysis(mesh)
 
+    eff_vf = geom_output["resin_vf"]
+    if "halo_resin_equiv" in geom_output:
+        from ..io.aniso import foam_porosity
+
+        eff_vf += foam_porosity(dct["core"], dct.get("scoring")) * geom_output["halo_resin_equiv"]
+        geom_output["effective_resin_vf"] = eff_vf
     geom_output["rho_infused"] = (
-        dct["core"]["rho"] * (1.0 - geom_output["resin_vf"])
-        + dct["resin"]["rho"] * geom_output["resin_vf"]
+        dct["core"]["rho"] * (1.0 - eff_vf) + dct["resin"]["rho"] * eff_vf
     )
 
     backend = dct["backend"]
-    # Orthotropic constituents need the anisotropic numpy backend (ccx/mfem
-    # integrators are isotropic-only), so route there regardless of the request.
-    if _is_orthotropic(dct):
+    # Orthotropic constituents or a kerf-damage halo need the anisotropic numpy
+    # backend (ccx/mfem are isotropic, 2-phase), so route there regardless.
+    if _needs_numpy(dct):
         backend = "numpy"
 
     if backend == "numpy":

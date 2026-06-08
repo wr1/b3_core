@@ -31,7 +31,8 @@ def test_uniform_cube_recovers_input_stiffness():
     pts = np.asarray(g.points)
     cells = g.cells.reshape(-1, 9)[:, 1:]
     C0 = aniso.isotropic_C(4e9, 0.3)
-    K, _ = aniso.homogenize_aniso(pts, cells, np.ones(len(cells), int), {1: C0})
+    elem_C = np.broadcast_to(C0, (len(cells), 6, 6))
+    K, _ = aniso.homogenize_aniso(pts, cells, elem_C)
     assert np.allclose(K, C0, rtol=1e-9, atol=1.0)
 
 

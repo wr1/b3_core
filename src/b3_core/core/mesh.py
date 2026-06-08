@@ -102,6 +102,30 @@ def _mark_resin(resin, coord, c, thickness, centres, halfwidths, depths, slopes)
     return resin
 
 
+def _mark_halo(frac, coord, c, thickness, centres, halfwidths, depths, slopes, s_halo):
+    """Geometric kerf-damage halo: cells just outside each groove wall.
+
+    For a cell at in-plane gap ``s = |c - c0| - hw_z`` beyond the (z-dependent)
+    kerf wall, within the groove's z-depth and the band ``0 <= s < s_halo``, the
+    geometric halo fraction ramps linearly ``1 -> 0`` with distance from the wall
+    (material-agnostic; the backend scales it by foam porosity and blends resin
+    into foam). A cell touched by two grooves keeps the larger fraction.
+    """
+    for c0, hw, d, s in zip(centres, halfwidths, depths, slopes, strict=True):
+        if d > 0:
+            in_z = c[:, 2] < d
+            zeta = d - c[:, 2]
+        else:
+            in_z = c[:, 2] > thickness + d
+            zeta = c[:, 2] - (thickness + d)
+        hw_z = np.clip(hw + s * zeta, 0, None)
+        gap = np.abs(c[:, coord] - c0) - hw_z
+        g = np.where((gap >= 0) & (gap < s_halo) & in_z,
+                     np.clip(1.0 - gap / s_halo, 0.0, 1.0), 0.0)
+        frac = np.maximum(frac, g)
+    return frac
+
+
 def _collapse_lines(vals, tol=1e-6):
     """Sorted unique grid lines, merging any closer than ``tol``.
 
@@ -126,6 +150,7 @@ def create_grooved_mesh(
     tface=2.0,
     kx=0.0,
     ky=0.0,
+    s_halo=0.0,
 ):
     bx, tx, hx, sx = create_grooves(xcuts, dx, meshadd=madd, kappa=kx)
     by, ty, hy, sy = create_grooves(ycuts, dy, meshadd=madd, kappa=ky)
@@ -146,6 +171,12 @@ def create_grooved_mesh(
     fracs = np.linspace(0.0, 1.0, 5)[1:]  # taper-zone sub-lines, nominal wall excluded
     xoff = xhw[:, None] + np.outer(x_mouth - xhw, fracs)
     yoff = yhw[:, None] + np.outer(y_mouth - yhw, fracs)
+    if s_halo > 0:
+        # extra in-plane lines across the kerf-damage halo band so the graded
+        # opened_fraction is resolved by several cells (nominal wall = inner edge).
+        hf = np.linspace(0.0, 1.0, 4)[1:]
+        xoff = np.concatenate([xoff, xhw[:, None] + s_halo * hf[None, :]], axis=1)
+        yoff = np.concatenate([yoff, yhw[:, None] + s_halo * hf[None, :]], axis=1)
     xlines = np.clip(
         np.concatenate([bx, tx, (xc[:, None] - xoff).ravel(), (xc[:, None] + xoff).ravel()]),
         0, dx,
@@ -163,8 +194,17 @@ def create_grooved_mesh(
     resin = _mark_resin(resin, 0, c, thickness, xc, xhw, hx, sx)
     resin = _mark_resin(resin, 1, c, thickness, yc, yhw, hy, sy)
     face = c[:, 2] > thickness + tol
+    is_resin = resin.astype(bool) & (~face)
     grd.cell_data["face"] = face
-    grd.cell_data["resin"] = resin.astype(bool) & (~face)
+    grd.cell_data["resin"] = is_resin
+
+    halo_fraction = np.zeros(len(c))
+    if s_halo > 0:
+        halo_fraction = _mark_halo(halo_fraction, 0, c, thickness, xc, xhw, hx, sx, s_halo)
+        halo_fraction = _mark_halo(halo_fraction, 1, c, thickness, yc, yhw, hy, sy, s_halo)
+        halo_fraction[is_resin | face] = 0.0   # halo lives only in the foam
+    grd.cell_data["halo_fraction"] = halo_fraction
+    grd.cell_data["halo"] = halo_fraction > 0
     return grd
 
 
