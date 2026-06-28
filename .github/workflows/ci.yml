@@ -1,0 +1,63 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Headless OpenGL stack for PyVista/VTK. The package boots its own
+      # virtual framebuffer via pv.start_xvfb(); it only needs the xvfb
+      # binary and the mesa GL libraries to be present.
+      - name: Install headless GL + xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libgl1 \
+            libglx-mesa0 \
+            libosmesa6 \
+            libglu1-mesa \
+            libxrender1 \
+            libxext6 \
+            libsm6 \
+            libxt6 \
+            libxi6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create virtual environment
+        run: uv venv --python ${{ matrix.python-version }}
+
+      # The committed pyproject pins local path sources (b3_mat, treeparse)
+      # that don't exist on the runner, so install with `uv pip` (which
+      # ignores [tool.uv.sources]) and pull b3_mat from its public git repo.
+      - name: Install dependencies
+        run: |
+          uv pip install "b3_mat @ git+https://github.com/wr1/b3_mat.git"
+          uv pip install ".[dev]"
+
+      # CalculiX (ccx) and the typst binary are not installed, so the load-case
+      # validation and datasheet-render tests self-skip.
+      - name: Run tests
+        run: |
+          source .venv/bin/activate
+          pytest -v
