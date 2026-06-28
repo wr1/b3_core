@@ -54,7 +54,8 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install --no-sources \
-            "b3_mat @ git+https://github.com/wr1/b3_mat.git" \
+            "b3_mat @ git+https://github.com/wr1/b3_mat.git@dev1" \
+            "numba>=0.60" \
             ".[dev]"
 
       # CalculiX (ccx) and the typst binary are not installed, so the load-case
