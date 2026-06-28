@@ -48,12 +48,14 @@ jobs:
         run: uv venv --python ${{ matrix.python-version }}
 
       # The committed pyproject pins local path sources (b3_mat, treeparse)
-      # that don't exist on the runner, so install with `uv pip` (which
-      # ignores [tool.uv.sources]) and pull b3_mat from its public git repo.
+      # that don't exist on the runner, so install with --no-sources (treeparse
+      # then comes from PyPI) and pull b3_mat from its public git repo. frd2vtu
+      # stays a direct git URL because it's declared that way in the deps table.
       - name: Install dependencies
         run: |
-          uv pip install "b3_mat @ git+https://github.com/wr1/b3_mat.git"
-          uv pip install ".[dev]"
+          uv pip install --no-sources \
+            "b3_mat @ git+https://github.com/wr1/b3_mat.git" \
+            ".[dev]"
 
       # CalculiX (ccx) and the typst binary are not installed, so the load-case
       # validation and datasheet-render tests self-skip.
