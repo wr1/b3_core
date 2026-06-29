@@ -131,6 +131,12 @@ dmypy.json
 # Private notes repo (separate inner git repo)
 notes/
 
+# uv lockfile: not committed — it pins local absolute path sources
+# (tool.uv.sources) that only resolve on the dev machine, and its presence
+# triggers a failing Dependabot uv dependency-graph job. CI installs via
+# `uv pip --no-sources` and doesn't use it.
+uv.lock
+
 # Large render artifacts (commit the GIF showcase, keep MP4s local)
 docs/*.mp4
 examples/anim_out/
