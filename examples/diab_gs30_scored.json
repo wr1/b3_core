@@ -1,5 +1,5 @@
 {
-    "_comment": "DIAB GS30 grid-scored core WITH the stochastic resin halo (see notes/refs/laustsen2014_grid_scored_rve.md). Same nominal geometry as diab_gs30.json, but the saw cut opens foam cells along the groove walls and root; opened cells take up resin. 'cell_size' is the foam cell-size distribution: a scalar (uniform, P(resin)=1-d/cell_size) or {mean, std, dist:'lognormal'|'normal'}. The resin-presence probability P = survival function of that distribution vs distance to the nearest CUT surface (groove walls + root, NOT the un-sawn outer faces), evaluated at integration points; local stiffness is a rule of mixtures P*C_resin+(1-P)*C_foam. scoring.sampling = 'exact' (P at each Gauss point) or 'local_cloud' (sub-point cloud, inverse-distance-weighted to Gauss points). Requires the numpy backend (auto-routed).",
+    "_comment": "DIAB GS30 grid-scored core WITH per-surface stochastic resin halo (notes/novel.md, notes/refs/laustsen2014_grid_scored_rve.md). Saw-cut groove walls+root: opened cells, full halo from core.cell_size. Unsawn top/bottom faces: closed cells, thinner halo (face.scale x saw_cut reach, default 0.25). P(resin)=max over active surfaces; local stiffness is P*C_resin+(1-P)*C_foam at Gauss points. scoring.sampling: exact or local_cloud. Requires numpy backend.",
     "dx": 30,
     "dy": 30,
     "thickness": 20,
@@ -13,7 +13,14 @@
         "cell_size": 0.6
     },
     "resin": {"E": 3000000000, "nu": 0.3, "rho": 1100},
-    "scoring": {"damage_cells": 1.0, "sampling": {"strategy": "local_cloud", "resolution": 3}},
+    "scoring": {
+        "damage_cells": 1.0,
+        "surfaces": {
+            "saw_cut": {},
+            "face": { "scale": 0.25 }
+        },
+        "sampling": { "strategy": "local_cloud", "resolution": 3 }
+    },
     "madd": [-0.15, 0, 0.15],
     "backend": "numpy",
     "validate_with_ccx": false

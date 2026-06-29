@@ -24,6 +24,9 @@ The runner writes each case's artefacts under `out/<name>/` (gitignored) and
 prints the table below. It exits non-zero if any case diverges from CCX beyond
 `rtol = 0.05`.
 
+For a unified parametric study with thickness and curvature sweeps plus matplotlib
+response curves and gallery renders, see [`param_sweeps/`](../param_sweeps/).
+
 ## The patterns
 
 | File | grooves | what it shows |

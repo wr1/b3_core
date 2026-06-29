@@ -62,3 +62,35 @@ def test_scorefield_inactive_without_cell_size():
     f = ScoreField({**GS30, "core": {}})
     assert not f.active
     assert np.allclose(f.resin_probability(np.zeros((3, 3))), 0.0)
+
+
+def test_face_halo_thinner_than_saw_cut():
+    f = ScoreField(GS30)
+    near_face = np.array([[15.0, 15.0, 19.9]])   # 0.1 mm below top face (z=20)
+    near_saw = np.array([[0.6, 15.0, 5.0]])      # 0.1 mm outside x-groove wall
+    p_face = f.resin_probability(near_face)[0]
+    p_saw = f.resin_probability(near_saw)[0]
+    assert p_face > 0.1
+    assert p_saw > p_face
+    assert f.surfaces["face"]["reach"] == pytest.approx(0.15, abs=0.01)
+
+
+def test_face_halo_disabled():
+    inp = {
+        **GS30,
+        "scoring": {"surfaces": {"face": {"enabled": False}}},
+    }
+    f = ScoreField(inp)
+    near_face = np.array([[15.0, 15.0, 19.9]])
+    assert f.resin_probability(near_face)[0] == pytest.approx(0.0)
+
+
+def test_saw_cut_explicit_override():
+    inp = {
+        **GS30,
+        "scoring": {"surfaces": {"saw_cut": {"cell_size": 0.3}, "face": {"enabled": False}}},
+    }
+    f = ScoreField(inp)
+    assert f.surfaces["saw_cut"]["reach"] == pytest.approx(0.3)
+    near_saw = np.array([[0.8, 15.0, 5.0]])   # 0.3 mm outside wall -> P ~ 0
+    assert f.resin_probability(near_saw)[0] == pytest.approx(0.0, abs=0.05)

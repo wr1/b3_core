@@ -1,0 +1,60 @@
+# Parametric sweeps — thickness, curvature, groove patterns
+
+Unified homogenisation study across three RVE parameters, with publication
+response curves and 3D gallery renders.
+
+## Running
+
+Requires MFEM (`uv sync --extra mfem`). Pattern sweep also needs CalculiX on PATH.
+GIF export needs `uv sync --extra anim` (imageio + pillow).
+
+```bash
+uv run python examples/param_sweeps/sweep_thickness.py   # t = 20…50 mm
+uv run python examples/param_sweeps/sweep_curvature.py   # kx = ±0.008…0.008
+uv run python examples/param_sweeps/sweep_patterns.py    # plain / uniaxial / crossed / two_sided
+
+uv run python examples/param_sweeps/plot_responses.py    # matplotlib curves (reads out/)
+uv run python examples/param_sweeps/render.py            # PyVista strips + galleries
+uv run python examples/param_sweeps/make_gifs.py         # looping GIFs (needs [anim])
+
+uv run python examples/param_sweeps/run_all.py           # everything, cache-aware
+```
+
+Solver artefacts go under `out/` (gitignored). Committed figures live in `img/`.
+
+![Parametric sweep summary](img/sweep_summary.png)
+
+![Curvature sweep](img/curvature.gif)
+
+## Sweeps
+
+| Script | Varies | Base geometry |
+|--------|--------|---------------|
+| `sweep_thickness.py` | 20, 25, 30, 40, 50 mm | Uniaxial grooves; depth scales as 8·t/30 |
+| `sweep_curvature.py` | kx ∈ {−0.008, −0.004, 0, +0.004, +0.008} | Deep curved-panel grooves (3 mm ligament) |
+| `sweep_patterns.py` | four groove topologies | Fixed 30 mm flat panel |
+
+## Outputs
+
+**Response curves** (`plot_responses.py`):
+
+- `img/thickness_response.png` — moduli vs thickness
+- `img/curvature_response.png` — moduli vs kx
+- `img/patterns_comparison.png` — grouped bar chart per pattern
+- `img/sweep_summary.png` — vertical stack of the three above
+
+**Geometry** (`render.py`):
+
+- `img/thickness_strip.png`, `img/curvature_strip.png`, `img/patterns_gallery.png`
+- `img/galleries/gallery_*.png` — 6-panel `GroovedCoreView` boards
+
+**GIFs** (`make_gifs.py`):
+
+- `img/thickness.gif`, `img/curvature.gif`, `img/patterns.gif` — geometry sweep loops
+- `img/thickness_response.gif`, `img/curvature_response.gif` — animated response curves
+- `img/galleries.gif` — cycles through the publication gallery boards
+
+## Related examples
+
+- [`curved_panel/`](../curved_panel/) — focused curvature demo (table + strip render)
+- [`mfem_patterns/`](../mfem_patterns/) — groove-pattern gallery + CCX validation

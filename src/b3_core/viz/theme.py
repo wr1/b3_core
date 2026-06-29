@@ -47,6 +47,16 @@ class CoreTheme:
         norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
         return cmap, norm
 
+    def halo_cmap(self, *, n: int = 256):
+        """Continuous foam→resin colormap for the stochastic halo (P=0…1)."""
+        from matplotlib.colors import LinearSegmentedColormap, to_rgb
+
+        return LinearSegmentedColormap.from_list(
+            "halo",
+            [to_rgb(self.core_color), to_rgb(self.resin_color)],
+            N=n,
+        )
+
     def publication_rcparams(self) -> dict:
         """matplotlib rcParams for clean, publication-quality figures.
 

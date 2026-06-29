@@ -74,8 +74,8 @@ class CpropInput(BaseModel):
     madd: list[float] = [0]
     face: dict = {}
     curvature: dict = {}
-    # resin-halo tuning: {"damage_cells": float, "sampling": {...}}. Active only
-    # with core.cell_size; halo reach = damage_cells * (max cell size).
+    # Resin-halo tuning: {"damage_cells", "sampling", "surfaces": {saw_cut, face}}.
+    # saw_cut inherits core.cell_size; face defaults to scale*saw_cut (closed cells).
     scoring: dict = {}
     element_type: str = "C3D8"
     backend: str = "ccx"
@@ -171,17 +171,13 @@ def _is_orthotropic(dct):
 
 
 def halo_reach(dct) -> float:
-    """Resin-halo reach s_halo (mm) = damage_cells * (max cell size), or 0.
+    """Resin-halo mesh band (mm) = damage_cells * max active surface reach, or 0."""
+    from .scoring import ScoreField
 
-    The reach is the cell-size distribution's support max (where P(resin) -> 0).
-    """
-    cell_size = (dct.get("core") or {}).get("cell_size")
-    if cell_size is None:
+    field = ScoreField(dct)
+    if not field.active or field.reach <= 0.0:
         return 0.0
-    from .scoring import survival
-
-    _, reach = survival(cell_size)
-    return float((dct.get("scoring") or {}).get("damage_cells", 1.0)) * reach
+    return float((dct.get("scoring") or {}).get("damage_cells", 1.0)) * field.reach
 
 
 def _score_field(dct):

@@ -41,6 +41,9 @@ uv run python examples/curved_panel/curve_field.py  # κ(s) along a panel -> pro
 
 Solver artefacts go under `out/` (gitignored); the renders are committed in `img/`.
 
+For a unified study that adds thickness and groove-pattern sweeps plus matplotlib
+response curves, see [`param_sweeps/`](../param_sweeps/).
+
 ## Representative geometry
 
 The grooves run **nearly through the core**, leaving only a ~3 mm foam ligament

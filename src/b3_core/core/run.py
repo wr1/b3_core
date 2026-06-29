@@ -12,6 +12,15 @@ def cmd_json(path: str):
     cprop(path)
 
 
+def cmd_skill(stdout: bool):
+    from b3_core.skill import read_skill, skill_path
+
+    if stdout:
+        print(read_skill(), end="")
+    else:
+        print(skill_path())
+
+
 def cmd_datasheet(path: str, output: str, png: str):
     from b3_core.datasheet import generate
 
@@ -133,6 +142,15 @@ def main():
                 callback=cmd_json,
                 arguments=[
                     argument(name="path", arg_type=str, help="Path to the case JSON."),
+                ],
+            ),
+            command(
+                name="skill",
+                help="Print the packaged agent SKILL.md path (or dump with --stdout).",
+                callback=cmd_skill,
+                options=[
+                    option(flags=["--stdout"], arg_type=bool, default=False,
+                           help="Print the full SKILL.md to stdout."),
                 ],
             ),
             command(

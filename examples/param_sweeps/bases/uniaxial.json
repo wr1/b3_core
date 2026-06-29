@@ -1,0 +1,12 @@
+{
+    "_comment": "Canonical grooved RVE for the thickness sweep. Groove depth scales proportionally from the 30 mm reference (8 mm deep).",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, 8, 3]],
+    "ygr": [],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.3, 0, 0.3],
+    "backend": "mfem"
+}

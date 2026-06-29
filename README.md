@@ -20,6 +20,22 @@ Backends: **CalculiX** (default) and **MFEM** (installed as standard), plus
 optional **FEniCSx**; set `"validate_with_ccx": true` to cross-check a backend
 against ccx.
 
+## Agent skill
+
+`SKILL.md` ships with the package so LLM agents can drive homogenization and
+produce FEA-ready property tables. After install:
+
+```bash
+b3_core skill              # path to SKILL.md inside site-packages
+b3_core skill --stdout     # dump the full skill text
+```
+
+```python
+from b3_core.skill import read_skill, skill_path
+```
+
+When developing from source the same file lives at the repo root.
+
 ## Requirements
 
 - Python ≥ 3.11, `uv`
@@ -56,7 +72,13 @@ print(result.resin_volume_fraction, result.surface_area_factor)
 `homogenize` wraps the lower-level `cprop` pipeline; call `cprop(...)` directly
 for the full raw output dict.
 
-See `examples/curved_panel/` and `examples/mfem_patterns/` for galleries.
+See `examples/curved_panel/` and `examples/mfem_patterns/` for focused demos.
+For a unified parametric study (thickness, curvature, groove patterns) with
+response curves and gallery renders, see `examples/param_sweeps/`:
+
+```bash
+uv run python examples/param_sweeps/run_all.py
+```
 
 ## Visualization
 
