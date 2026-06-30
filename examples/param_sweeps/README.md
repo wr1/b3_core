@@ -6,19 +6,17 @@ response curves and 3D gallery renders.
 ## Running
 
 Requires MFEM (`uv sync --extra mfem`). Pattern sweep also needs CalculiX on PATH.
-GIF export needs `uv sync --extra anim` (imageio + pillow).
 
 ```bash
-uv run python examples/param_sweeps/sweep_thickness.py   # t = 20…50 mm
-uv run python examples/param_sweeps/sweep_curvature.py   # kx = ±0.008…0.008
-uv run python examples/param_sweeps/sweep_patterns.py    # plain / uniaxial / crossed / two_sided
-
-uv run python examples/param_sweeps/plot_responses.py    # matplotlib curves (reads out/)
-uv run python examples/param_sweeps/render.py            # PyVista strips + galleries
-uv run python examples/param_sweeps/make_gifs.py         # looping GIFs (needs [anim])
-
-uv run python examples/param_sweeps/run_all.py           # everything, cache-aware
+b3_core sweep homogenise --root examples/param_sweeps
+# or: make sweep
 ```
+
+Stages: `thickness`, `curvature`, `patterns`, `homogenise` (chain).
+
+Response curves, gallery renders, GIFs: `examples/offline/` (`sweep_full.py`, `sweep_gifs.py`).
+
+GIF export and full offline pipeline: [`examples/offline/`](../offline/README.md).
 
 Solver artefacts go under `out/` (gitignored). Committed figures live in `img/`.
 
@@ -48,7 +46,7 @@ Solver artefacts go under `out/` (gitignored). Committed figures live in `img/`.
 - `img/thickness_strip.png`, `img/curvature_strip.png`, `img/patterns_gallery.png`
 - `img/galleries/gallery_*.png` — 6-panel `GroovedCoreView` boards
 
-**GIFs** (`make_gifs.py`):
+**GIFs** (offline only — `examples/offline/sweep_gifs.py`):
 
 - `img/thickness.gif`, `img/curvature.gif`, `img/patterns.gif` — geometry sweep loops
 - `img/thickness_response.gif`, `img/curvature_response.gif` — animated response curves

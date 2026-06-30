@@ -193,14 +193,32 @@ def _needs_numpy(dct) -> bool:
     return _is_orthotropic(dct) or halo_reach(dct) > 0.0
 
 
-def cprop(json_data):
-    """Run FEA analysis on a JSON configuration."""
-    if isinstance(json_data, str):
-        dct = json.load(open(json_data, "r"))
-        dirname = os.path.dirname(json_data)
-    else:
-        dct = json_data
+def load_case(path: str) -> tuple[dict, str]:
+    """Load a CpropInput case from YAML or JSON. Returns ``(dict, dirname)``."""
+    import yaml
+
+    suffix = os.path.splitext(path)[1].lower()
+    with open(path, "r", encoding="utf-8") as fh:
+        if suffix in (".yaml", ".yml"):
+            dct = yaml.safe_load(fh) or {}
+        elif suffix == ".json":
+            dct = json.load(fh)
+        else:
+            raise ValueError(
+                f"unsupported case file type {suffix!r}; use .yaml, .yml, or .json"
+            )
+    return dct, os.path.dirname(path)
+
+
+def cprop(case_data):
+    """Run FEA analysis on a YAML/JSON case file or configuration dict."""
+    if isinstance(case_data, str):
+        dct, dirname = load_case(case_data)
+    elif isinstance(case_data, dict):
+        dct = case_data
         dirname = "."
+    else:
+        raise TypeError(f"cprop expected a path or dict, got {type(case_data).__name__}")
 
     # Validate input
     validated = CpropInput(**dct)

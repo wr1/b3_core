@@ -1,4 +1,4 @@
-"""Shared PyVista rendering helpers for param_sweeps strips and GIF frames."""
+"""PyVista rendering helpers and gallery export for parametric sweeps."""
 
 from __future__ import annotations
 
@@ -6,30 +6,32 @@ from pathlib import Path
 
 import numpy as np
 
-from _common import (
-    HERE,
+from b3_core.core.mesh import create_grooved_mesh
+from b3_core.sweep.context import (
     KX,
     PATTERNS,
     THICKNESSES,
+    SweepContext,
     case_for_curvature,
     case_for_thickness,
     collect_sweep,
     load_base,
     load_pattern,
 )
-from b3_core.core.mesh import create_grooved_mesh
-from b3_core.viz._deps import require_pyvista
+from b3_core.viz import GroovedCoreView
+from b3_core.viz._deps import ensure_headless, require_pyvista
 from b3_core.viz.theme import DEFAULT_THEME
 
 THEME = DEFAULT_THEME
-IMG = HERE / "img"
 
 
-def case_from_cache(prefix: str, fallback_fn) -> list[tuple[str, dict]]:
-    cached = collect_sweep(prefix)
+def case_from_cache(
+    ctx: SweepContext, prefix: str, fallback_fn
+) -> list[tuple[str, dict]]:
+    cached = collect_sweep(ctx, prefix)
     if cached:
         return [(tag, case) for tag, case, _ in cached]
-    return fallback_fn()
+    return fallback_fn(ctx)
 
 
 def mesh_from_case(case: dict):
@@ -47,7 +49,9 @@ def mesh_from_case(case: dict):
     )
 
 
-def add_phases(plotter, mesh, title: str, *, camera: str = "iso", parallel: bool = False) -> None:
+def add_phases(
+    plotter, mesh, title: str, *, camera: str = "iso", parallel: bool = False
+) -> None:
     foam = mesh.threshold(0.5, scalars="resin", invert=True)
     resin = mesh.threshold(0.5, scalars="resin")
     if foam.n_cells:
@@ -114,23 +118,23 @@ def render_strip(
     grid.close()
 
 
-def thickness_cases() -> list[tuple[str, dict]]:
-    base = load_base("uniaxial")
+def thickness_cases(ctx: SweepContext) -> list[tuple[str, dict]]:
+    base = load_base(ctx, "uniaxial")
     return [(f"t = {int(t)} mm", case_for_thickness(base, t)) for t in THICKNESSES]
 
 
-def curvature_cases() -> list[tuple[str, dict]]:
-    base = load_base("curved")
+def curvature_cases(ctx: SweepContext) -> list[tuple[str, dict]]:
+    base = load_base(ctx, "curved")
     return [(f"kx = {kx:+.3f}", case_for_curvature(base, kx)) for kx in KX]
 
 
-def pattern_cases() -> list[tuple[str, dict]]:
-    return [(name, load_pattern(name)) for name in PATTERNS]
+def pattern_cases(ctx: SweepContext) -> list[tuple[str, dict]]:
+    return [(name, load_pattern(ctx, name)) for name in PATTERNS]
 
 
-def gallery_cases() -> list[tuple[str, dict]]:
-    base_u = load_base("uniaxial")
-    base_c = load_base("curved")
+def gallery_cases(ctx: SweepContext) -> list[tuple[str, dict]]:
+    base_u = load_base(ctx, "uniaxial")
+    base_c = load_base(ctx, "curved")
     cases: list[tuple[str, dict]] = [
         ("gallery_uniaxial_t20", case_for_thickness(base_u, 20)),
         ("gallery_uniaxial_t50", case_for_thickness(base_u, 50)),
@@ -139,5 +143,49 @@ def gallery_cases() -> list[tuple[str, dict]]:
         ("gallery_curved_kx_closed", case_for_curvature(base_c, -0.008)),
     ]
     for name in PATTERNS:
-        cases.append((f"gallery_pattern_{name}", load_pattern(name)))
+        cases.append((f"gallery_pattern_{name}", load_pattern(ctx, name)))
     return cases
+
+
+def run(ctx: SweepContext) -> int:
+    ensure_headless()
+    ctx.img.mkdir(parents=True, exist_ok=True)
+    gallery_dir = ctx.img / "galleries"
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+
+    thickness = case_from_cache(ctx, "thickness_", thickness_cases)
+    curvature = case_from_cache(ctx, "kx_", curvature_cases)
+    patterns = case_from_cache(ctx, "pattern_", pattern_cases)
+
+    render_strip(
+        thickness,
+        ctx.img / "thickness_strip.png",
+        shape=(1, len(thickness)),
+        window_size=(300 * len(thickness), 520),
+        camera="xz",
+        parallel=True,
+    )
+    render_strip(
+        curvature,
+        ctx.img / "curvature_strip.png",
+        shape=(1, len(curvature)),
+        window_size=(300 * len(curvature), 520),
+        camera="xz",
+        parallel=True,
+    )
+    render_strip(
+        patterns,
+        ctx.img / "patterns_gallery.png",
+        shape=(2, 2),
+        window_size=(1100, 1000),
+        camera="iso",
+    )
+
+    for stem, case in gallery_cases(ctx):
+        out = gallery_dir / f"{stem}.png"
+        GroovedCoreView.from_dict(case).gallery(out)
+        print(f"wrote {out}")
+
+    for name in ("thickness_strip.png", "curvature_strip.png", "patterns_gallery.png"):
+        print(f"wrote {ctx.img / name}")
+    return 0

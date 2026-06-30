@@ -1,8 +1,11 @@
+import json
+
 import numpy as np
 import pytest
+import yaml
 from b3_core.core.mesh import create_grooves, create_grooved_mesh
 from b3_core.core.analysis import geom_analysis
-from b3_core.core.cprop import CpropInput
+from b3_core.core.cprop import CpropInput, load_case
 
 
 def test_create_grooves():
@@ -42,6 +45,32 @@ def test_geom_analysis():
     assert "resin_vf" in result
     assert 0 <= result["resin_vf"] <= 1
     assert result["area_increase"] >= 1
+
+
+def test_load_case_json_and_yaml(tmp_path):
+    data = {
+        "dx": 50.0,
+        "dy": 50.0,
+        "thickness": 30.0,
+        "xgr": [],
+        "ygr": [],
+        "core": {"E": 4e9, "nu": 0.3, "rho": 100.0},
+        "resin": {"E": 4e9, "nu": 0.3, "rho": 1100.0},
+    }
+    json_path = tmp_path / "case.json"
+    yaml_path = tmp_path / "case.yaml"
+    json_path.write_text(json.dumps(data))
+    yaml_path.write_text(yaml.dump(data))
+
+    assert load_case(str(json_path))[0] == data
+    assert load_case(str(yaml_path))[0] == data
+
+
+def test_load_case_rejects_unknown_suffix(tmp_path):
+    path = tmp_path / "case.toml"
+    path.write_text("dx = 50")
+    with pytest.raises(ValueError, match="unsupported case file type"):
+        load_case(str(path))
 
 
 def test_cprop_input_accepts_fenicsx_backend():

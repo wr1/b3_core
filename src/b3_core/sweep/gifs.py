@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-"""Build looping GIFs from param_sweep geometry and response curves.
-
-    uv run python examples/param_sweeps/make_gifs.py
-
-Needs the ``[anim]`` extra (``uv sync --extra anim``) for imageio + pillow.
-Uses cached ``out/`` results when available.
-"""
+"""Build looping GIFs from param_sweep geometry and response curves."""
 
 from __future__ import annotations
 
@@ -19,14 +12,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (
-    IMG,
+from b3_core.sweep.context import (
     MODULI,
+    SweepContext,
     collect_sweep,
     parse_kx_tag,
     parse_thickness_tag,
 )
-from _viz import (
+from b3_core.sweep.render_viz import (
     case_from_cache,
     curvature_cases,
     pattern_cases,
@@ -65,7 +58,7 @@ def _hold(frames: list[np.ndarray], n: int = HOLD_FRAMES) -> list[np.ndarray]:
 
 
 def write_gif(frames: list[np.ndarray], path: Path, *, fps: float = GIF_FPS) -> None:
-    imageio, Image = _require_imageio()
+    imageio, _Image = _require_imageio()
     path.parent.mkdir(parents=True, exist_ok=True)
     duration = 1.0 / fps
     with imageio.get_writer(str(path), mode="I", duration=duration, loop=0) as writer:
@@ -87,8 +80,8 @@ def geometry_gif(
     write_gif(_hold(_ping_pong(frames)), path)
 
 
-def _sorted_thickness_rows() -> list[tuple[float, dict]]:
-    rows = collect_sweep("thickness_")
+def _sorted_thickness_rows(ctx: SweepContext) -> list[tuple[float, dict]]:
+    rows = collect_sweep(ctx, "thickness_")
     pts = []
     for tag, _case, result in rows:
         t = parse_thickness_tag(tag)
@@ -97,8 +90,8 @@ def _sorted_thickness_rows() -> list[tuple[float, dict]]:
     return sorted(pts, key=lambda x: x[0])
 
 
-def _sorted_curvature_rows() -> list[tuple[float, dict]]:
-    rows = collect_sweep("kx_")
+def _sorted_curvature_rows(ctx: SweepContext) -> list[tuple[float, dict]]:
+    rows = collect_sweep(ctx, "kx_")
     pts = []
     for tag, _case, result in rows:
         kx = parse_kx_tag(tag)
@@ -154,9 +147,9 @@ def response_gif(
     write_gif(_hold(_ping_pong(frames), n=3), path, fps=1.5)
 
 
-def gallery_montage_gif(path: Path) -> None:
+def gallery_montage_gif(ctx: SweepContext, path: Path) -> None:
     _, Image = _require_imageio()
-    gallery_dir = IMG / "galleries"
+    gallery_dir = ctx.img / "galleries"
     stems = [
         "gallery_uniaxial_t20",
         "gallery_uniaxial_t50",
@@ -171,7 +164,10 @@ def gallery_montage_gif(path: Path) -> None:
     paths = [gallery_dir / f"{stem}.png" for stem in stems]
     missing = [p for p in paths if not p.is_file()]
     if missing:
-        print(f"skip {path.name}: run render.py first ({missing[0].name} missing)", file=sys.stderr)
+        print(
+            f"skip {path.name}: run render first ({missing[0].name} missing)",
+            file=sys.stderr,
+        )
         return
 
     target_w = 900
@@ -184,33 +180,33 @@ def gallery_montage_gif(path: Path) -> None:
     write_gif(_hold(_ping_pong(frames), n=4), path, fps=0.5)
 
 
-def main() -> int:
-    IMG.mkdir(parents=True, exist_ok=True)
+def run(ctx: SweepContext) -> int:
+    ctx.img.mkdir(parents=True, exist_ok=True)
 
-    thickness = case_from_cache("thickness_", thickness_cases)
-    curvature = case_from_cache("kx_", curvature_cases)
-    patterns = case_from_cache("pattern_", pattern_cases)
+    thickness = case_from_cache(ctx, "thickness_", thickness_cases)
+    curvature = case_from_cache(ctx, "kx_", curvature_cases)
+    patterns = case_from_cache(ctx, "pattern_", pattern_cases)
 
-    geometry_gif(thickness, IMG / "thickness.gif", camera="xz", parallel=True)
-    geometry_gif(curvature, IMG / "curvature.gif", camera="xz", parallel=True)
-    geometry_gif(patterns, IMG / "patterns.gif", camera="iso", parallel=False)
+    geometry_gif(thickness, ctx.img / "thickness.gif", camera="xz", parallel=True)
+    geometry_gif(curvature, ctx.img / "curvature.gif", camera="xz", parallel=True)
+    geometry_gif(patterns, ctx.img / "patterns.gif", camera="iso", parallel=False)
 
-    t_rows = _sorted_thickness_rows()
-    k_rows = _sorted_curvature_rows()
+    t_rows = _sorted_thickness_rows(ctx)
+    k_rows = _sorted_curvature_rows(ctx)
     response_gif(
         t_rows,
         x_label="thickness [mm]",
         title="Moduli vs core thickness",
-        path=IMG / "thickness_response.gif",
+        path=ctx.img / "thickness_response.gif",
     )
     response_gif(
         k_rows,
         x_label=r"curvature $k_x$ [1/mm]",
         title="Moduli vs mold curvature",
-        path=IMG / "curvature_response.gif",
+        path=ctx.img / "curvature_response.gif",
     )
 
-    gallery_montage_gif(IMG / "galleries.gif")
+    gallery_montage_gif(ctx, ctx.img / "galleries.gif")
 
     for name in (
         "thickness.gif",
@@ -220,11 +216,7 @@ def main() -> int:
         "curvature_response.gif",
         "galleries.gif",
     ):
-        p = IMG / name
+        p = ctx.img / name
         if p.is_file():
             print(f"wrote {p}")
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

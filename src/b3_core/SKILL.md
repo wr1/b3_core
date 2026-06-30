@@ -32,10 +32,10 @@ Or: `b3_core skill` (path) · `b3_core skill --stdout` (full text).
 ## Agent workflow
 
 ```
-1. Build or locate a CpropInput JSON (geometry + core/resin materials)
-2. Run homogenization (CLI or Python)
+1. Write a CpropInput case file (YAML or JSON — geometry + core/resin materials)
+2. b3_core run case.yaml  →  run<HASH>.json
 3. Extract properties → table / JSON / CalculiX card
-4. (Optional) Generate datasheet PDF or parametric sweep tables
+4. (Optional) b3_core sweep homogenise  or  b3_core viz datasheet …
 5. Hand off OrthotropicMaterial or constants to the downstream FEA model
 ```
 
@@ -43,16 +43,17 @@ Always run commands yourself. Do not ask the user to run them.
 
 ## 1. Define the case
 
-Write a JSON file describing the RVE and constituents. Minimal example
+Write a YAML or JSON file describing the RVE and constituents. Minimal example
 (ungrooved baseline):
 
-```json
-{
-  "dx": 50, "dy": 50, "thickness": 30,
-  "xgr": [], "ygr": [],
-  "core":  { "E": 4e9,  "nu": 0.3, "rho": 100 },
-  "resin": { "E": 3.5e9, "nu": 0.35, "rho": 1100 }
-}
+```yaml
+dx: 50
+dy: 50
+thickness: 30
+xgr: []
+ygr: []
+core:  { E: 4e9,  nu: 0.3, rho: 100 }
+resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
 ```
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
@@ -182,12 +183,10 @@ separate halo layer is needed in the global model.
 **CLI (writes `run<HASH>.json` next to the input):**
 
 ```bash
-b3_core json path/to/case.json
+b3_core run path/to/case.yaml
+b3_core path/to/case.json          # run is the default command
 # dev checkout:
-uv run b3_core json examples/with_grooves.json
-# inline flags:
-b3_core run --dx 50 --dy 50 -t 30 \
-  --xgr "10,5,2,1" --core-e 4e9 --resin-e 3.5e9 -o out/
+uv run b3_core run examples/with_grooves.json
 ```
 
 **Python (returns typed result for b3 pipeline):**
@@ -299,7 +298,7 @@ groove figures, engineering constants, and 6×6 `C_eff` heatmap. Uses MFEM
 backend for figures (no ccx solve for the report itself).
 
 ```bash
-b3_core datasheet case.json -o report.pdf --png report.png
+b3_core viz datasheet case.json -o report.pdf --png report.png
 ```
 
 ```python
@@ -312,13 +311,13 @@ Needs `typst` on PATH.
 
 ### Terminal comparison table (parametric sweeps)
 
-When developing from source, reuse `examples/param_sweeps/_common.py` for
-multi-case Rich tables, or run `uv run python examples/param_sweeps/run_all.py`.
+When developing from source, use `b3_core sweep homogenise` or `make sweep`.
+Response curves / gallery / GIFs: `examples/offline/`.
 
 ### Viz board (figures only, no PDF)
 
 ```bash
-b3_core view case.json --what gallery -o board.png
+b3_core viz view case.json --what gallery -o board.png
 ```
 
 ## 5. Downstream FEA integration
@@ -337,8 +336,9 @@ orthotropic solid.
 ## Quick reference
 
 ```bash
-b3_core json case.json
-b3_core datasheet case.json -o core.pdf --png core.png
+b3_core run case.yaml
+b3_core sweep homogenise
+b3_core viz datasheet case.json -o core.pdf --png core.png
 b3_core skill --stdout    # load this document
 ```
 

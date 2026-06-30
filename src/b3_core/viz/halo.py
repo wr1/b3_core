@@ -560,3 +560,72 @@ def render_halo_3d_png(
     plotter.screenshot(str(out))
     plotter.close()
     return out
+
+
+def render_halo_figures(
+    scored_inp: dict,
+    out_dir: str | Path,
+    *,
+    sharp_inp: dict | None = None,
+    dpi: int = 200,
+) -> list[Path]:
+    """Write the full resin-halo figure bundle to *out_dir*."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    core = scored_inp.get("core") or {}
+    resin = scored_inp.get("resin") or {}
+    e3_foam = float(core.get("E3") or core.get("E") or 70e6)
+    e_resin = float(resin.get("E", 3e9))
+
+    written: list[Path] = []
+
+    fig, _ = plot_halo_degradation(
+        [0.3, 0.6, {"mean": 0.25, "std": 0.08, "dist": "lognormal"}],
+        labels=[
+            "uniform cell_size = 0.3 mm",
+            "uniform cell_size = 0.6 mm (DIAB H60 scale)",
+            "lognormal mean=0.25 mm, σ=0.08 mm",
+        ],
+        e_foam=e3_foam,
+        e_resin=e_resin,
+        highlight_index=1,
+        modulus_label="E₃",
+        title="Grid-scored foam: resin halo degradation from cut surface",
+    )
+    p = out_dir / "halo_degradation.png"
+    fig.savefig(p, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    written.append(p)
+
+    for name, plot_fn in (
+        ("halo_strip_diab_gs30.png", lambda: plot_halo_cross_section_strip(scored_inp)),
+        ("halo_side_cut.png", lambda: plot_halo_side_cut(scored_inp)),
+    ):
+        fig_i, _ = plot_fn()
+        path = out_dir / name
+        fig_i.savefig(path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig_i)
+        written.append(path)
+
+    fig_board = plot_halo_intuitive_board(scored_inp)
+    p_board = out_dir / "halo_intuitive_board.png"
+    fig_board.savefig(p_board, dpi=dpi, bbox_inches="tight")
+    plt.close(fig_board)
+    written.append(p_board)
+
+    written.append(render_halo_3d_png(scored_inp, out_dir / "halo_3d.png"))
+
+    if sharp_inp is not None:
+        fig_cmp, _ = plot_halo_sharp_vs_scored(sharp_inp, scored_inp)
+        p_cmp = out_dir / "halo_sharp_vs_scored.png"
+        fig_cmp.savefig(p_cmp, dpi=dpi, bbox_inches="tight")
+        plt.close(fig_cmp)
+        written.append(p_cmp)
+
+    return written

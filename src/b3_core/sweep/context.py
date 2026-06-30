@@ -1,4 +1,4 @@
-"""Shared helpers for param_sweeps homogenisation and visualization."""
+"""Parametric sweep paths and homogenisation helpers."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import copy
 import glob
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,10 +14,6 @@ from rich.console import Console
 from rich.table import Table
 
 from b3_core.core.cprop import cprop
-
-HERE = Path(__file__).parent
-OUT = HERE / "out"
-IMG = HERE / "img"
 
 MODULI = ["Exx", "Eyy", "Ezz", "Gxy"]
 PATTERNS = ["plain", "uniaxial", "crossed", "two_sided"]
@@ -26,12 +23,37 @@ REF_THICKNESS = 30.0
 LIGAMENT = 3.0
 
 
-def load_base(name: str) -> dict:
-    return json.loads((HERE / "bases" / f"{name}.json").read_text())
+def default_root() -> Path:
+    return Path(__file__).resolve().parents[3] / "examples" / "param_sweeps"
 
 
-def load_pattern(name: str) -> dict:
-    return json.loads((HERE.parent / "mfem_patterns" / f"{name}.json").read_text())
+@dataclass(frozen=True)
+class SweepContext:
+    root: Path
+
+    @property
+    def out(self) -> Path:
+        return self.root / "out"
+
+    @property
+    def img(self) -> Path:
+        return self.root / "img"
+
+    @property
+    def bases(self) -> Path:
+        return self.root / "bases"
+
+    @property
+    def mfem_patterns(self) -> Path:
+        return self.root.parent / "mfem_patterns"
+
+
+def load_base(ctx: SweepContext, name: str) -> dict:
+    return json.loads((ctx.bases / f"{name}.json").read_text())
+
+
+def load_pattern(ctx: SweepContext, name: str) -> dict:
+    return json.loads((ctx.mfem_patterns / f"{name}.json").read_text())
 
 
 def tag_float(value: float, *, prefix: str = "") -> str:
@@ -52,7 +74,6 @@ def tag_pattern(name: str) -> str:
 
 
 def run_case(base: dict, overrides: dict, out_dir: Path) -> dict:
-    """Deep-copy *base*, apply *overrides*, homogenise with cache reuse."""
     out_dir.mkdir(parents=True, exist_ok=True)
     case = copy.deepcopy(base)
     for key, val in overrides.items():
@@ -72,7 +93,6 @@ def run_case(base: dict, overrides: dict, out_dir: Path) -> dict:
 
 
 def scale_groove_depth(depth: float, thickness: float, *, ref: float = REF_THICKNESS) -> float:
-    """Scale a reference groove depth to a new core thickness."""
     sign = -1.0 if depth < 0 else 1.0
     mag = abs(depth) * thickness / ref
     cap = max(thickness - LIGAMENT, 0.5)
@@ -102,12 +122,11 @@ def case_for_curvature(base: dict, kx: float) -> dict:
     return case
 
 
-def collect_sweep(prefix: str) -> list[tuple[str, dict, dict]]:
-    """Return ``(tag, case_dict, result_dict)`` for every ``out/<prefix>*`` dir."""
+def collect_sweep(ctx: SweepContext, prefix: str) -> list[tuple[str, dict, dict]]:
     rows: list[tuple[str, dict, dict, str]] = []
-    if not OUT.exists():
+    if not ctx.out.exists():
         return []
-    for d in sorted(OUT.iterdir()):
+    for d in sorted(ctx.out.iterdir()):
         if not d.is_dir() or not d.name.startswith(prefix):
             continue
         case_path = d / "case.json"
@@ -133,7 +152,6 @@ def print_moduli_table(
     rows: list[tuple[str, dict]],
     extra_cols: list[tuple[str, Any]] | None = None,
 ) -> None:
-    """Print a Rich table from ``(label, result_dict)`` rows."""
     table = Table(title=title)
     table.add_column("case", justify="left", style="bold")
     if extra_cols:

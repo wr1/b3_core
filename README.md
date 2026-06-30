@@ -41,7 +41,7 @@ When developing from source the same file lives at the repo root.
 - Python ≥ 3.11, `uv`
 - CalculiX (`ccx`) on PATH (default backend)
 - `frd2vtu`, `treeparse`, `mfem`, `b3_mat` (resolved via `pyproject.toml`)
-- `typst` on PATH (only for `b3_core datasheet`)
+- `typst` on PATH (only for `b3_core viz datasheet`)
 
 ```bash
 uv sync   # core + ccx + mfem backends
@@ -49,14 +49,19 @@ uv sync   # core + ccx + mfem backends
 
 ## CLI
 
+Homogenisation runs from a YAML or JSON case file:
+
 ```bash
-uv run b3_core json examples/simple.json          # run a JSON case
-uv run b3_core run --dx 50 --dy 50 -t 30 \
-    --xgr "5,10,15,3" --core-e 4e9 --resin-e 3.5e9 -o out/   # direct flags
+uv run b3_core run examples/simple.yaml
+uv run b3_core examples/simple.json              # same (run is the default)
+uv run b3_core sweep homogenise                  # parametric study
 ```
 
 Each run writes `run<HASH>.json` with the engineering constants, geometry
 metrics, and (optionally) a backend-vs-ccx comparison.
+
+Optional figures and reports live under `b3_core viz` (not required for FEA
+handoff). See `b3_core --help` and `b3_core viz --help`.
 
 ## Python API
 
@@ -77,10 +82,13 @@ For a unified parametric study (thickness, curvature, groove patterns) with
 response curves and gallery renders, see `examples/param_sweeps/`:
 
 ```bash
-uv run python examples/param_sweeps/run_all.py
+b3_core sweep homogenise --root examples/param_sweeps
+# or: make sweep
 ```
 
-## Visualization
+Response curves, gallery renders, and GIFs: `examples/offline/` (not mainline).
+
+## Visualization (`b3_core viz`)
 
 `b3_core.viz` is a unified, high-level layer that makes a grooved-core design
 understandable at a glance — geometry, phases, the FE mesh, orthogonal slices,
@@ -100,8 +108,8 @@ view.serve("core.html")                   # interactive HTML viewer ([interactiv
 ```
 
 ```bash
-uv run b3_core view examples/mfem_patterns/two_sided.json --what gallery -o board.png
-uv run b3_core view examples/mfem_patterns/two_sided.json --what all -o out/
+uv run b3_core viz view examples/mfem_patterns/two_sided.json --what gallery -o board.png
+uv run b3_core viz halo examples/diab_gs30_scored.json -o examples/img
 ```
 
 The composite board — 3D geometry, an internal-architecture cutaway, the
@@ -118,14 +126,14 @@ effective anisotropy:
 
 ## Datasheet
 
-`b3_core datasheet` renders a one-page report of a case — RVE/geometry, materials
+`b3_core viz datasheet` renders a one-page report of a case — RVE/geometry, materials
 and analysis settings, the internal groove structure with the mesh (plan + side
 cross-sections), a 3D isometric of the resin-filled grooves, and the homogenised
 engineering constants + 6×6 effective stiffness (via the MFEM backend). Needs the
 [`typst`](https://typst.app) binary on PATH.
 
 ```bash
-uv run b3_core datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
+uv run b3_core viz datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
 ```
 
 ```python
@@ -137,29 +145,27 @@ generate("examples/mfem_patterns/two_sided.json", "card.pdf", out_png="card.png"
 
 ## Periodic deformation modes
 
-Separate from the datasheet, `b3_core deformed` warps the RVE by the true
+Separate from the datasheet, `b3_core viz deformed` warps the RVE by the true
 periodic displacement `u = E·x + w` for each of the six unit-strain load cases
 (xx, yy, zz, yz, xz, xy) and renders a 2×3 montage — resin grooves coloured by
 displacement magnitude, core translucent. Because the fluctuation `w` is
 periodic, opposite faces deform compatibly (the visual check on the periodic BC).
 
 ```bash
-uv run b3_core deformed examples/mfem_patterns/two_sided.json -o modes.png --warp 0.3
+uv run b3_core viz deformed examples/mfem_patterns/two_sided.json -o modes.png --warp 0.3
 ```
 
 ![Periodic deformation modes](docs/deformed_example.png)
 
-## Animation
+## Offline scripts
 
-`b3_core animate` renders a short, silent-friendly "how it works" explainer
-(MP4 + looping GIF) for social media — grooved geometry → resin infusion → FE
-mesh → orthogonal slices → the **curvature sim** (grooves taper, the core drapes,
-and the homogenised `E(κ)` curve grows) → the periodic strain response of the six
-unit load cases. Built on `b3_core.viz`; needs the `[anim]` extra
-(`uv sync --extra anim`).
+Optional workflows (GIF export, explainer MP4, scratch viz, interactive HTML) live
+under [`examples/offline/`](examples/offline/README.md) — not part of `make` or
+the main `b3_core` subcommands. Example explainer animation:
 
 ```bash
-uv run b3_core animate examples/mfem_patterns/two_sided.json -o explainer.mp4
+uv sync --extra anim
+uv run python examples/offline/explainer.py examples/mfem_patterns/two_sided.json
 ```
 
 ```python

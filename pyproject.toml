@@ -13,6 +13,7 @@ dependencies = [
     "pyvista>=0.44,<0.45",
     "frd2vtu @ git+https://github.com/wr1/frd2vtu.git",
     "pydantic>=2.0",
+    "pyyaml",
     "treeparse",
     "mfem",
     "b3_mat",

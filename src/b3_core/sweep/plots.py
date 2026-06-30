@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""Plot homogenised-property response curves from cached sweep results.
-
-Reads ``out/`` (no re-solve) and writes publication matplotlib figures to ``img/``.
-
-    uv run python examples/param_sweeps/plot_responses.py
-"""
+"""Plot homogenised-property response curves from cached sweep results."""
 
 from __future__ import annotations
 
@@ -17,11 +11,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from _common import (
-    HERE,
-    IMG,
+from b3_core.sweep.context import (
     MODULI,
     PATTERNS,
+    SweepContext,
     collect_sweep,
     parse_kx_tag,
     parse_pattern_tag,
@@ -32,19 +25,24 @@ from b3_core.viz.theme import DEFAULT_THEME
 THEME = DEFAULT_THEME
 
 
-def _setup_rc():
+def _setup_rc() -> None:
     plt.rcParams.update(THEME.publication_rcparams())
 
 
-def _ensure_data(rows: list, name: str) -> None:
+def _ensure_data(rows: list, name: str) -> int:
     if not rows:
-        print(f"no cached {name} results in out/ — run sweep_{name}.py first", file=sys.stderr)
-        sys.exit(1)
+        print(
+            f"no cached {name} results in out/ — run thickness/curvature/patterns sweep first",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
-def plot_thickness_response(path: Path) -> None:
-    rows = collect_sweep("thickness_")
-    _ensure_data(rows, "thickness")
+def plot_thickness_response(ctx: SweepContext, path: Path) -> int:
+    rows = collect_sweep(ctx, "thickness_")
+    if (code := _ensure_data(rows, "thickness")):
+        return code
 
     pts = []
     for tag, _case, result in rows:
@@ -74,11 +72,13 @@ def plot_thickness_response(path: Path) -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+    return 0
 
 
-def plot_curvature_response(path: Path) -> None:
-    rows = collect_sweep("kx_")
-    _ensure_data(rows, "curvature")
+def plot_curvature_response(ctx: SweepContext, path: Path) -> int:
+    rows = collect_sweep(ctx, "kx_")
+    if (code := _ensure_data(rows, "curvature")):
+        return code
 
     pts = []
     for tag, _case, result in rows:
@@ -108,11 +108,13 @@ def plot_curvature_response(path: Path) -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+    return 0
 
 
-def plot_patterns_comparison(path: Path) -> None:
-    rows = collect_sweep("pattern_")
-    _ensure_data(rows, "patterns")
+def plot_patterns_comparison(ctx: SweepContext, path: Path) -> int:
+    rows = collect_sweep(ctx, "pattern_")
+    if (code := _ensure_data(rows, "patterns")):
+        return code
 
     pts = []
     for tag, _case, result in rows:
@@ -151,18 +153,19 @@ def plot_patterns_comparison(path: Path) -> None:
 
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+    return 0
 
 
-def plot_sweep_summary(path: Path) -> None:
+def plot_sweep_summary(ctx: SweepContext, path: Path) -> int:
     panels = [
-        ("thickness", IMG / "thickness_response.png"),
-        ("curvature", IMG / "curvature_response.png"),
-        ("patterns", IMG / "patterns_comparison.png"),
+        ("thickness", ctx.img / "thickness_response.png"),
+        ("curvature", ctx.img / "curvature_response.png"),
+        ("patterns", ctx.img / "patterns_comparison.png"),
     ]
     for _name, p in panels:
         if not p.exists():
-            print(f"missing {p} — run plot_responses first", file=sys.stderr)
-            sys.exit(1)
+            print(f"missing {p} — run plots first", file=sys.stderr)
+            return 1
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 14))
     fig.suptitle("Parametric sweep summary — grooved core homogenisation", fontsize=13)
@@ -173,16 +176,17 @@ def plot_sweep_summary(path: Path) -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(fig)
+    return 0
 
 
-def main() -> int:
+def run(ctx: SweepContext) -> int:
     _setup_rc()
-    IMG.mkdir(parents=True, exist_ok=True)
+    ctx.img.mkdir(parents=True, exist_ok=True)
 
-    plot_thickness_response(IMG / "thickness_response.png")
-    plot_curvature_response(IMG / "curvature_response.png")
-    plot_patterns_comparison(IMG / "patterns_comparison.png")
-    plot_sweep_summary(IMG / "sweep_summary.png")
+    code = plot_thickness_response(ctx, ctx.img / "thickness_response.png")
+    code = plot_curvature_response(ctx, ctx.img / "curvature_response.png") or code
+    code = plot_patterns_comparison(ctx, ctx.img / "patterns_comparison.png") or code
+    code = plot_sweep_summary(ctx, ctx.img / "sweep_summary.png") or code
 
     for name in (
         "thickness_response.png",
@@ -190,9 +194,5 @@ def main() -> int:
         "patterns_comparison.png",
         "sweep_summary.png",
     ):
-        print(f"wrote {IMG / name}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        print(f"wrote {ctx.img / name}")
+    return code
