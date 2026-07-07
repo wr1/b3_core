@@ -12,7 +12,7 @@ if os.path.isdir(_workspace):
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from dataset_builder_standalone import (
+from builder import (
     FoamDatasetBuilder,
     build_foam_dataset,
     engineering_to_stiffness,
@@ -30,7 +30,7 @@ print("TEST: Dataset builder on synthetic fixtures")
 print("=" * 60)
 
 builder = FoamDatasetBuilder(
-    scan_dirs=[_workspace],
+    scan_dirs=[_workspace, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")],
     validate_bounds=True,
 )
 
@@ -68,7 +68,7 @@ if builder.sample_count > 0:
               f"backend={p['backend']}, thickness={p['thickness']}mm")
 
     # Verify targets are positive definite stiffness matrices
-    from dataset_builder_standalone import targets_to_stiffness
+    from builder import targets_to_stiffness
     for i, rec in enumerate(builder.records):
         C = targets_to_stiffness(rec.targets)
         eigvals = np.linalg.eigvalsh(C)
