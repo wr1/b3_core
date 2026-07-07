@@ -5,7 +5,12 @@ import os
 import sys
 import numpy as np
 
-workspace = "/home/wr/.hermes/kanban/boards/blade3/workspaces/t_2c562aac"
+# Allow running from workspace dir or from repo tests dir
+_workspace = os.environ.get("DATASET_WORKSPACE", "/home/wr/.hermes/kanban/boards/blade3/workspaces/t_2c562aac")
+if os.path.isdir(_workspace):
+    sys.path.insert(0, _workspace)
+else:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dataset_builder_standalone import (
     FoamDatasetBuilder,
@@ -25,7 +30,7 @@ print("TEST: Dataset builder on synthetic fixtures")
 print("=" * 60)
 
 builder = FoamDatasetBuilder(
-    scan_dirs=[workspace],
+    scan_dirs=[_workspace],
     validate_bounds=True,
 )
 
