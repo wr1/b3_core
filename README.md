@@ -22,19 +22,17 @@ backend against CalculiX.
 
 ## Agent skill
 
-`SKILL.md` ships with the package so LLM agents can drive homogenization and
-produce FEA-ready property tables. After install:
+Repo-root [`SKILL.md`](SKILL.md) is the source of truth for LLM agents. The same
+file is packaged under `b3_core` for installed use:
 
 ```bash
-b3_core skill              # path to SKILL.md inside site-packages
+b3_core skill              # path to packaged SKILL.md
 b3_core skill --stdout     # dump the full skill text
 ```
 
 ```python
 from b3_core.skill import read_skill, skill_path
 ```
-
-When developing from source the same file lives at the repo root.
 
 ## Requirements
 

@@ -1,1 +1,0 @@
-../../../src/b3_core/SKILL.md

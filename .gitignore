@@ -144,3 +144,6 @@ examples/viz_out/
 
 # DocKB internal knowledge + comments (separate git repo)
 kb/
+
+# Grok agent local state (skills live at ./SKILL.md)
+.grok/
