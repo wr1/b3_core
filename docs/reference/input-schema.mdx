@@ -1,0 +1,76 @@
+---
+title: Input schema
+description: Full CpropInput field list (pydantic).
+---
+
+All geometry fields are **mm**. Material moduli are **Pa**, densities **kg/m³**.
+
+## Geometry
+
+| Field | Type | Role |
+|-------|------|------|
+| `dx`, `dy`, `thickness` | float | RVE size [mm] |
+| `xgr`, `ygr` | list of `[offset, spacing, depth, width]` | Groove families (empty = plain) |
+| `face` | `{"thickness": mm}` | Optional stabilising face layer (default off) |
+| `curvature` | `{"kx": 1/mm, "ky": 1/mm}` | Optional groove taper for curved panels |
+| `madd` | list[float] | Extra mesh-density knob (default `[0]`) |
+
+## Materials
+
+`core` and `resin` accept either isotropic or orthotropic dicts:
+
+**Isotropic**
+
+```json
+{ "E": 4e9, "nu": 0.3, "rho": 100 }
+```
+
+**Orthotropic** (axes 1=x, 2=y, 3=z)
+
+```json
+{
+  "E1": 32e6, "E2": 32e6, "E3": 70e6,
+  "G12": 19e6, "G13": 19e6, "G23": 19e6,
+  "nu12": 0.3, "nu13": 0.3, "nu23": 0.3,
+  "rho": 60
+}
+```
+
+`core` may add **`cell_size`** — scalar or `{mean, std, dist}` — to enable the
+stochastic resin halo. See [Resin halo](/docs/concepts/resin-halo).
+
+## Scoring (halo)
+
+| Field | Role |
+|-------|------|
+| `scoring.damage_cells` | Reach multiplier for the mesh halo band |
+| `scoring.surfaces.saw_cut` / `face` | Per-surface overrides (`cell_size`, `scale`, `enabled`) |
+| `scoring.sampling` | `strategy`: `exact` \| `local_cloud`; `resolution`; `idw_power` |
+
+Requires `core.cell_size`. Auto-routes backend to `numpy`.
+
+## Solver
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `element_type` | `"C3D8"` \| `"C3D20"` | Default C3D8 (ccx decks) |
+| `backend` | `"mfem"` \| `"ccx"` \| `"fenicsx"` \| `"numpy"` | Default `mfem` |
+| `validate_with_ccx` | bool | Cross-check against CalculiX |
+
+**Auto-routing:** orthotropic constituents or `core.cell_size` force `numpy`
+(ccx/mfem integrators are isotropic two-phase).
+
+## Minimal complete example
+
+```yaml
+dx: 50
+dy: 50
+thickness: 30
+xgr: [[10, 5, 2, 1]]
+ygr: []
+core:  { E: 4e9, nu: 0.3, rho: 100 }
+resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
+backend: mfem
+```
+
+Python entry: `from b3_core import CpropInput, Material`.

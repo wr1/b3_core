@@ -245,7 +245,7 @@ The MD5 hash is computed from the string representation of the validated `CpropI
   "core": {"E": float, "nu": float, "rho": float},
   "resin": {"E": float, "nu": float, "rho": float},
   "curvature": {"kx": float, "ky": float},
-  "backend": "ccx|fenicsx|mfem|numpy",
+  "backend": "mfem|ccx|fenicsx|numpy",
   "hash": "md5string",
   // ... other CpropInput fields
 }

@@ -1,0 +1,58 @@
+---
+title: CLI
+description: b3_core run, sweep, viz, and skill commands.
+---
+
+```bash
+b3_core --help
+b3_core viz --help
+```
+
+## `run`
+
+Homogenise a single case file (YAML or JSON). Default command when a path is given.
+
+```bash
+b3_core run examples/simple.yaml
+b3_core examples/simple.json
+```
+
+Writes `run<HASH>.json` with engineering constants and metrics.
+
+## `sweep`
+
+Parametric studies under a study root (default `examples/param_sweeps/`):
+
+```bash
+b3_core sweep homogenise                 # thickness → curvature → patterns
+b3_core sweep thickness --root …
+b3_core sweep curvature --root …
+b3_core sweep patterns --root …
+```
+
+Also available as `make sweep` from the repo root.
+
+## `viz`
+
+Figures and reports (optional for FEA handoff):
+
+| Command | Purpose |
+|---------|---------|
+| `viz view PATH --what gallery -o board.png` | Geometry, slices, modulus, polar, heatmap, gallery, all |
+| `viz datasheet PATH -o card.pdf --png card.png` | One-page Typst report |
+| `viz deformed PATH -o deformed.png --warp 0.3` | Six periodic deformation modes |
+| `viz halo PATH -o dir/ [--sharp sharp.json]` | Resin-halo figure bundle |
+
+`view --serve core.html` needs the `[interactive]` extra (trame).
+
+## `skill`
+
+```bash
+b3_core skill              # print path to packaged SKILL.md
+b3_core skill --stdout     # dump full agent skill text
+```
+
+## Global flags
+
+Treeparse-style: `--json` / `-j`, `--help` / `-h`, `--version` / `-V`, plus
+`--hv` and `--stub` for help/layout inspection.

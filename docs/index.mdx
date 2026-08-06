@@ -1,0 +1,108 @@
+---
+title: Overview
+description: Homogenized elastic properties for sandwich-panel cores with sawcuts and machined grooves.
+---
+
+**Periodic-BC homogenization of grooved sandwich cores** — PVC foam or balsa with
+sawcuts and machined grooves that fill with resin during vacuum infusion. The package
+predicts the effective orthotropic material and returns it as a
+`b3_mat.OrthotropicMaterial` for the wider b3 section / beam pipeline.
+
+<img
+  src="/figures/viz_gallery.png"
+  alt="Composite visualization board: 3D geometry, cutaway, modulus surface, orthogonal cuts, stiffness heatmap, polar E(θ)."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+## What it computes
+
+From a case file (geometry + core/resin materials) the RVE pipeline yields:
+
+| Output | Unit | Role |
+|--------|------|------|
+| Ex, Ey, Ez | Pa | Young's moduli (x machine, y transverse, z thickness) |
+| Gxy, Gxz, Gyz | Pa | Shear moduli |
+| νxy, νxz, νyz | — | Poisson ratios |
+| ρ infused | kg/m³ | Density including resin in grooves (and optional halo) |
+| 6×6 C_eff | Pa | Full effective stiffness (Voigt) |
+| resin Vf, area factor | — | Geometry metrics for infusion estimates |
+
+## Method in one diagram
+
+```mermaid
+flowchart TB
+  subgraph input[Input]
+    direction LR
+    case[CpropInput YAML/JSON] ~~~ mats[core + resin]
+  end
+  subgraph rve[RVE]
+    direction LR
+    mesh[structured mesh] ~~~ tags[core / resin / face / halo]
+  end
+  subgraph solve[Six unit strains]
+    direction LR
+    bc[periodic BC] ~~~ be[ccx / mfem / fenicsx / numpy]
+  end
+  subgraph out[Handoff]
+    direction LR
+    eng[engineering constants] ~~~ mat[OrthotropicMaterial]
+  end
+  input --> rve --> solve --> out
+```
+
+1. Build a structured 3D RVE over `[0, dx] × [0, dy] × [0, thickness]` (mm).
+2. Tag cells as core, resin (groove volume), optional face layer, optional resin halo.
+3. Solve six unit macroscopic strains under periodic BC.
+4. Average reactions and face jumps → orthotropic constants and infused density.
+
+**Units:** geometry in mm; materials and outputs in SI (Pa, kg/m³). The mesh is scaled
+by 1e-3 for solvers that need SI lengths.
+
+## Where to read what
+
+**Guides** — run something today.
+
+- [Getting started](/docs/guides/getting-started) — install, first case, first run.
+- [Homogenize for FEA](/docs/guides/homogenize) — material cards and tables for structural models.
+- [Visualization & reports](/docs/guides/visualization) — gallery, datasheet, deformation modes, halo figures.
+
+**Concepts** — the physics the pipeline encodes.
+
+- [Periodic homogenization](/docs/concepts/method) — RVE, load cases, engineering constants.
+- [Resin halo](/docs/concepts/resin-halo) — graded stiffness from opened foam cells (Laustsen-style).
+- [Kerf open & close](/docs/concepts/curvature) — mould curvature opens/pinches grooves; local homogenization.
+
+**Reference** — the contract.
+
+- [Input schema](/docs/reference/input-schema) — every `CpropInput` field.
+- [Outputs](/docs/reference/outputs) — `CoreResult`, run JSON, stiffness tensor.
+- [Backends](/docs/reference/backends) — mfem (default), ccx, fenicsx, numpy and auto-routing.
+- [CLI](/docs/reference/cli) — `run`, `sweep`, `viz`, `skill`.
+
+## Agent skill
+
+The package ships an agent skill (`SKILL.md`) so LLMs can drive homogenization end-to-end:
+
+```bash
+b3_core skill              # path inside site-packages
+b3_core skill --stdout     # dump full skill text
+```
+
+```python
+from b3_core.skill import read_skill, skill_path
+```
+
+## Quick start
+
+```bash
+uv sync
+uv run b3_core run examples/simple.yaml
+uv run b3_core viz datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
+```
+
+```python
+from b3_core import homogenize
+
+result = homogenize("examples/simple.json")
+print(result.material)  # b3_mat.OrthotropicMaterial
+```

@@ -141,3 +141,6 @@ uv.lock
 docs/*.mp4
 examples/anim_out/
 examples/viz_out/
+
+# DocKB internal knowledge + comments (separate git repo)
+kb/

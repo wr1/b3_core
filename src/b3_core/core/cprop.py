@@ -78,7 +78,7 @@ class CpropInput(BaseModel):
     # saw_cut inherits core.cell_size; face defaults to scale*saw_cut (closed cells).
     scoring: dict = {}
     element_type: str = "C3D8"
-    backend: str = "ccx"
+    backend: str = "mfem"
     validate_with_ccx: bool = False
 
     @field_validator("element_type")
@@ -91,9 +91,9 @@ class CpropInput(BaseModel):
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v):
-        if v not in ("ccx", "fenicsx", "mfem", "numpy"):
+        if v not in ("mfem", "ccx", "fenicsx", "numpy"):
             raise ValueError(
-                f"backend must be 'ccx', 'fenicsx', 'mfem' or 'numpy', got {v!r}"
+                f"backend must be 'mfem', 'ccx', 'fenicsx' or 'numpy', got {v!r}"
             )
         return v
 

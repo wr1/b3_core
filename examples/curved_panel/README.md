@@ -12,10 +12,11 @@ along a curved panel.
 A curvature `kx` / `ky` (1/mm; `kx` acts on the x-groove family, `ky` on the
 y-family) tapers each groove. The walls rotate about the groove **root corner**:
 blocks rotate `κ·p` per pitch `p`, so the mouth opens by `Δ = κ·p·depth` and the
-half-width tapers linearly from nominal at the root to nominal+Δ at the mouth,
-clamped to zero when a groove pinches shut. A single curvature opens grooves
-mouthing on the convex face and closes those on the concave face. `κ = 0`
-reproduces the flat (rectangular-groove) mesh exactly.
+half-width tapers linearly from nominal at the root to nominal+Δ at the mouth
+(small ε when pinching). The structured mesh is built rectangular, then
+**morphed** so wall faces track `hw(z)` (not voxel-painted). A single curvature
+opens grooves mouthing on the convex face and closes those on the concave face.
+`κ = 0` reproduces the flat mesh exactly.
 
 ```json
 { "xgr": [[10, 10, -27, 3]], "curvature": {"kx": 0.004, "ky": 0.0}, "backend": "mfem" }
@@ -23,19 +24,28 @@ reproduces the flat (rectangular-groove) mesh exactly.
 
 or from the CLI: `uv run b3core run --xgr="10,10,-27,3" --kx=0.004 --backend mfem`
 
+![open: curved vs flattened](img/groove_curved_vs_flat.png)
+
+*Open (`kx > 0`): left = FEA mesh rolled onto the mould arc (same taper as flat);
+right = flattened FEA RVE (trapezoidal foam + open taper).*
+
+![closed: curved vs flattened](img/groove_curved_vs_flat_closed.png)
+
+*Closed (`kx < 0`): left = same FEA mesh on the arc with pinched kerfs;
+right = flattened FEA RVE (closed taper).*
+
 ![open vs flat vs pinched grooves](img/groove_strip.png)
 
-*Base RVE viewed along y (orthographic): deep x-grooves run nearly through the
-30 mm core; they flare toward the top surface when opened (`kx>0`) and pinch when
-closed (`kx<0`).*
+*Flattened RVE strip: closed / flat / opened (`kx` from −0.012 to +0.012).*
 
 ## Running
 
-Requires the optional MFEM stack (`uv sync --extra mfem`):
+Requires the optional MFEM stack (`uv sync --extra mfem`) for sweep/curve_field;
+`render.py` only needs the core + viz stack:
 
 ```bash
+uv run python examples/curved_panel/render.py       # curved↔flat board + open/flat/closed
 uv run python examples/curved_panel/sweep.py        # κ → graded properties table
-uv run python examples/curved_panel/render.py       # the image above (-> img/)
 uv run python examples/curved_panel/curve_field.py  # κ(s) along a panel -> property field
 ```
 

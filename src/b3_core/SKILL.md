@@ -68,8 +68,8 @@ Negative depth = groove opens toward the mould face (curved panels).
 | `scoring` | Halo tuning: `damage_cells`, `sampling` strategy |
 | `curvature` | `{"kx", "ky"}` groove taper for curved panels [1/mm] |
 | `face` | `{"thickness": mm}` optional stabilising layer |
-| `backend` | `"ccx"` (default), `"mfem"`, `"fenicsx"`, `"numpy"` |
-| `validate_with_ccx` | `true` to cross-check non-ccx backend |
+| `backend` | `"mfem"` (default), `"ccx"`, `"fenicsx"`, `"numpy"` |
+| `validate_with_ccx` | `true` to cross-check against CalculiX |
 
 Example cases ship under `examples/` when developing from source
 (`simple.json`, `with_grooves.json`, `mfem_patterns/*.json`,
@@ -200,8 +200,9 @@ mat = result.material                     # b3_mat.OrthotropicMaterial
 raw = cprop("case.json")                  # full dict + writes run*.json
 ```
 
-Requires `ccx` on PATH for the default backend. If `FileExistsError`, delete
-the cached `run*.json` or use a fresh output directory.
+Default backend is **mfem** (`uv sync --extra mfem`). Use `backend: ccx` when
+you need CalculiX (`ccx` + `frd2vtu` on PATH). If `FileExistsError`, delete the
+cached `run*.json` or use a fresh output directory.
 
 ## 3. Properties for FEA
 

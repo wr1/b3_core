@@ -16,9 +16,9 @@ run in parallel and the averaged reactions give the effective engineering
 constants (Ex/Ey/Ez, Gxy/Gxz/Gyz, Poisson ratios) and infused density. Grooves
 can be tapered by mould curvature (`kx`, `ky`) for curved panels.
 
-Backends: **CalculiX** (default) and **MFEM** (installed as standard), plus
-optional **FEniCSx**; set `"validate_with_ccx": true` to cross-check a backend
-against ccx.
+Backends: **MFEM** (default; installed as standard), **CalculiX**, plus optional
+**FEniCSx** and **numpy**; set `"validate_with_ccx": true` to cross-check a
+backend against CalculiX.
 
 ## Agent skill
 
@@ -39,12 +39,13 @@ When developing from source the same file lives at the repo root.
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- CalculiX (`ccx`) on PATH (default backend)
-- `frd2vtu`, `treeparse`, `mfem`, `b3_mat` (resolved via `pyproject.toml`)
+- PyMFEM (`mfem` extra; default backend)
+- CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
+- `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
 - `typst` on PATH (only for `b3_core viz datasheet`)
 
 ```bash
-uv sync   # core + ccx + mfem backends
+uv sync --extra mfem   # default backend + optional extras
 ```
 
 ## CLI

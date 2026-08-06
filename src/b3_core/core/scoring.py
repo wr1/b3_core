@@ -157,16 +157,34 @@ class ScoreField:
         return face["enabled"]
 
     def distance_to_saw_cut(self, points: np.ndarray) -> np.ndarray:
-        """Distance (mm) from each point to the nearest groove wall/root."""
+        """Distance (mm) from each point to the nearest groove wall/root.
+
+        Wall half-width uses the same root-hinged ``hw(z)`` law as the mesh
+        morph (incl. pinch clamp), so the halo grades off the *open/closed*
+        kerf surface. Evaluate at **physical** post-morph coordinates — after
+        the interval-affine morph, walls sit at ``c0 ± hw(z)``.
+        """
+        from b3_core.core.mesh import _MIN_HW
+
         pts = np.asarray(points, dtype=float)
         z = pts[:, 2]
         d_min = np.full(len(pts), np.inf)
+        th = self.thickness
         for axis, c0, hw0, slope, depth in self.grooves:
             if depth > 0:
-                z0, z1, zeta = 0.0, depth, depth - z
+                z0, z1 = 0.0, depth
+                inside = (z >= z0) & (z <= z1)
+                zeta = depth - z
             else:
-                z0, z1, zeta = self.thickness + depth, self.thickness, z - (self.thickness + depth)
-            hw = np.clip(hw0 + slope * zeta, 0.0, None)
+                z0, z1 = th + depth, th
+                inside = (z >= z0) & (z <= z1)
+                zeta = z - (th + depth)
+            # Same law as mesh._hw_at (root-hinged taper + pinch floor).
+            hw = np.where(
+                inside,
+                np.maximum(_MIN_HW, hw0 + slope * zeta),
+                hw0,
+            )
             du = np.maximum(0.0, np.abs(pts[:, axis] - c0) - hw)
             dz = np.maximum(0.0, np.maximum(z0 - z, z - z1))
             d_min = np.minimum(d_min, np.hypot(du, dz))

@@ -1,0 +1,145 @@
+---
+title: Visualization & reports
+description: Gallery boards, datasheets, deformation montages, and resin-halo figures.
+---
+
+Figures and reports are optional — they are not required for FEA handoff. The
+`b3_core.viz` layer shares one model cache (`CoreModel`), one theme (`CoreTheme`),
+and a fluent scene builder (`CoreScene`).
+
+<img
+  src="/figures/modulus_surface.png"
+  alt="Directional Young's modulus surface E(n) for a grooved core."
+  className="my-6 w-full max-w-xl mx-auto rounded-lg border border-fd-border"
+/>
+
+## One-call view
+
+```python
+from b3_core.viz import GroovedCoreView
+
+view = GroovedCoreView.from_json("examples/mfem_patterns/two_sided.json")
+view.gallery("board.png")                 # composite publication board
+view.modulus_surface_png("modulus.png")   # directional E(n)
+view.show()                               # native interactive window
+view.serve("core.html")                   # HTML viewer ([interactive] extra)
+```
+
+```bash
+uv run b3_core viz view examples/mfem_patterns/two_sided.json --what gallery -o board.png
+uv run b3_core viz view case.json --what all -o out_dir/
+```
+
+`--what` accepts: `geometry`, `slices`, `deformation`, `modulus`, `polar`,
+`heatmap`, `gallery`, `all`.
+
+## Datasheet (PDF + PNG)
+
+One-page report: RVE/geometry, materials, analysis settings, groove figures with
+mesh, 3D isometric of resin, engineering constants, and 6×6 `C_eff`. Uses the
+MFEM backend for figures (no CalculiX solve for the report itself). Needs `typst`
+on PATH.
+
+```bash
+uv run b3_core viz datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
+```
+
+```python
+from b3_core.datasheet import generate
+spec = generate("case.json", "card.pdf", out_png="card.png")
+# spec.engineering_constants, spec.c_eff_gpa
+```
+
+<img
+  src="/figures/datasheet_example.png"
+  alt="Example one-page core datasheet."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+## Periodic deformation modes
+
+Warps the RVE by the true periodic displacement `u = E·x + w` for each of the six
+unit-strain load cases and renders a 2×3 montage:
+
+```bash
+uv run b3_core viz deformed case.json -o deformed.png --warp 0.3
+```
+
+<img
+  src="/figures/deformed_example.png"
+  alt="2×3 montage of periodic deformation under six unit strains."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+## Resin-halo figures
+
+For scored-foam cases with `core.cell_size`, the halo CLI writes a PNG bundle
+(degradation curves, side cut, wall-normal strip, intuitive board, optional
+3D field, and sharp-vs-scored comparison):
+
+```bash
+uv run b3_core viz halo examples/diab_gs30_scored.json \
+  -o examples/img \
+  --sharp examples/diab_gs30.json
+```
+
+<img
+  src="/figures/halo_sharp_vs_scored.png"
+  alt="Sharp 1 mm kerf versus the same RVE with stochastic resin halo."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+<img
+  src="/figures/halo_intuitive_board.png"
+  alt="Halo board: side cut, P(resin) decay, and cell-size survival with E_eff ratio."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+Physics and input fields: [Resin halo](/docs/concepts/resin-halo).
+
+## Kerf on a curve vs flattened RVE
+
+- **Curved:** same FEA mesh rolled onto a mould arc (identical kerf taper / tips).
+- **Flattened FEA:** interval-morph RVE — trapezoidal foam + tapered kerfs.
+
+```bash
+uv run python examples/curved_panel/render.py
+# open:   examples/curved_panel/img/groove_curved_vs_flat.png
+# closed: examples/curved_panel/img/groove_curved_vs_flat_closed.png
+```
+
+Open (`kx > 0`):
+
+<img
+  src="/figures/groove_curved_vs_flat.png"
+  alt="Open curvature: FEA mesh rolled onto arc vs flattened trapezoidal FEA RVE."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+Closed (`kx < 0`):
+
+<img
+  src="/figures/groove_curved_vs_flat_closed.png"
+  alt="Closed curvature: FEA mesh rolled onto arc with pinched kerfs vs flattened FEA RVE."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+Details: [Kerf open & close](/docs/concepts/curvature).
+
+## Architecture of the viz stack
+
+```
+src/b3_core/viz/
+├── theme.py      CoreTheme — colours, cmaps, opacities
+├── model.py      CoreModel — cached mesh / geom / MFEM fields
+├── geometry.py   phase split, slab pick, plane sampling
+├── tensor.py     directional E/G/ν from C_eff; modulus surface
+├── tensorplot.py signed 6×6 heatmap, polar E(θ)
+├── slices.py     plan / top / side cuts + mesh
+├── scene.py      CoreScene fluent pyvista builder
+├── view.py       GroovedCoreView facade + CLI
+├── halo.py       halo figure bundle
+└── animate.py    social-media explainer (MP4/GIF, [anim] extra)
+```
+
+Datasheet and deformed CLIs build on this layer; they do not reimplement meshing.

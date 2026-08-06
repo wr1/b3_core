@@ -1,0 +1,88 @@
+---
+title: Periodic homogenization
+description: RVE construction, six unit-strain load cases, and engineering constants.
+---
+
+## Setup
+
+For a periodic RVE under macroscopic strain `ε̄`, the displacement decomposes as
+
+```
+u(x) = ε̄ · x + ũ(x)
+```
+
+with `ũ` periodic. The mesh is a structured grid over
+`[0, dx] × [0, dy] × [0, thickness]` (optionally plus a thin top face layer for
+mesh stability). Cells are tagged:
+
+| Tag | Meaning |
+|-----|---------|
+| `core` | Foam / balsa bulk |
+| `resin` | Inside a groove volume (neat kerf) |
+| `face` | Optional stabilising face layer |
+| halo band | Graded resin probability when `cell_size` is set |
+
+Grooves can be **tapered by mould curvature** (`kx`, `ky`) so kerf width varies
+through thickness — see [Curvature & grooves](/docs/concepts/curvature).
+
+## Six load cases
+
+Each of six unit macroscopic strains is solved under periodic BC:
+
+| Load case | Primary outputs |
+|-----------|-----------------|
+| xx | Exx, νxy (−εy/εx), νxz (−εz/εx) |
+| yy | Eyy, νyx, νyz |
+| zz | Ezz, νzx, νzy |
+| xy | Gxy |
+| xz | Gxz |
+| yz | Gyz |
+
+In CalculiX, periodic coupling uses `*equation` cards that inject macro-strain via
+three dummy "strain nodes" tied to ± face node pairs. Solves run in parallel
+(process pool). From each VTU (or in-process field):
+
+```
+σ̄_ii = Σ F_i on face_i / A_i
+ε̄_ii = Δu_i across RVE / L_i
+```
+
+giving one column of the effective stiffness response, then engineering constants.
+
+## Engineering constants map
+
+These map directly to `b3_mat.OrthotropicMaterial`:
+
+```
+Exx→Ex, Eyy→Ey, Ezz→Ez, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz
+```
+
+Redundant reciprocals (νyx, νzx, νzy) stay in `engineering_constants` but are not
+fields on the material object.
+
+## Geometric metrics
+
+From `analysis.geom_analysis`:
+
+- **`resin_vf`** — resin volume / total RVE volume. Drives
+  `ρ_infused = ρ_core · (1 − vf) + ρ_resin · vf` (halo resin is added when active).
+- **`area_increase`** — core surface area including groove walls, divided by the
+  ungrooved top+bottom area `2·dx·dy`. Useful for infusion / resin-uptake estimates.
+
+## Unit conventions
+
+| Quantity | Unit |
+|----------|------|
+| Domain dx, dy, t; groove offsets/depths/widths | mm |
+| Material E, G | Pa |
+| Material ρ | kg/m³ |
+| Strain applied on strain nodes | 1e-3 (after SI scaling) |
+
+The mesh is built in mm and scaled by 1e-3 in the CCX writer so CalculiX sees SI
+everywhere.
+
+## What the global model sees
+
+The homogenized properties **replace the core layer** in a sandwich or blade FEA
+model. Groove geometry is not re-meshed globally; only the smeared orthotropic
+solid (plus infused density) is exported.

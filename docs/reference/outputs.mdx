@@ -1,0 +1,55 @@
+---
+title: Outputs
+description: CoreResult, run JSON keys, and the 6×6 stiffness tensor.
+---
+
+## CoreResult
+
+Returned by `homogenize()`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `material` | `b3_mat.OrthotropicMaterial` | Ex, Ey, Ez, Gij, νij, rho |
+| `resin_volume_fraction` | float | Neat (and when applicable halo-aware) resin Vf |
+| `surface_area_factor` | float | Groove wall area factor vs ungrooved |
+| `engineering_constants` | dict | Raw per-loadcase keys including reciprocals |
+
+```python
+from b3_core import homogenize
+
+r = homogenize("case.json")
+r.material.Ex          # Pa
+r.engineering_constants["Exx"]
+r.resin_volume_fraction
+r.surface_area_factor
+```
+
+## run JSON (`cprop`)
+
+`cprop` writes `run<HASH>.json` containing at least:
+
+| Keys | Content |
+|------|---------|
+| `Exx`…`Ezz`, `Gxy`…`Gyz`, `nuxy`…`nuyz` | Engineering constants [Pa / —] |
+| `rho_infused` | Infused density [kg/m³] |
+| `resin_vf`, `area_increase` | Geometry metrics |
+| `halo_vf`, `effective_resin_vf` | Present when resin halo is active |
+| backend comparison block | When `validate_with_ccx` is true |
+
+## 6×6 effective stiffness
+
+```python
+from b3_core.viz import CoreModel
+
+C = CoreModel.from_json("case.json").stiffness  # Pa
+# Voigt order: xx, yy, zz, yz, xz, xy
+```
+
+Datasheet generation exposes the same tensor as GPa via `spec.c_eff_gpa`.
+
+## Units reminder
+
+| In | Out |
+|----|-----|
+| geometry mm | moduli Pa (present as GPa in human tables) |
+| materials Pa, kg/m³ | density kg/m³ |

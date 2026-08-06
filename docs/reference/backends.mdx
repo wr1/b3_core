@@ -1,0 +1,64 @@
+---
+title: Backends
+description: CalculiX, MFEM, FEniCSx, and numpy — when each runs and how validation works.
+---
+
+## Choice table
+
+| Backend | Strengths | Limits |
+|---------|-----------|--------|
+| **`mfem`** (default) | Fast in-process; datasheet / deformed / viz | Isotropic two-phase |
+| **`ccx`** | CalculiX `.inp` + VTU post; validation twin | Isotropic two-phase; needs `ccx` + `frd2vtu` |
+| **`fenicsx`** | Optional high-order FEM research path | Extra install; isotropic two-phase |
+| **`numpy`** | Orthotropic constituents; per-GP resin halo | Analytical / semi-analytical RVE path |
+
+```yaml
+backend: mfem            # default; omit to use MFEM
+validate_with_ccx: true  # optional cross-check vs CalculiX
+```
+
+## Auto-routing
+
+The pipeline forces **`numpy`** when:
+
+1. `core` or `resin` is **orthotropic**, or
+2. `core.cell_size` is set (resin halo needs graded Gauss-point stiffness).
+
+ccx and mfem integrators are two-phase isotropic: they assign each cell fully to
+core or resin. Halo and orthotropy need a richer constitutive map → numpy.
+
+## CalculiX path
+
+1. Build VTS mesh with phase tags.
+2. Write six `.inp` decks (C3D8 or C3D20) with periodic `*equation` BC and strain nodes.
+3. Run `ccx` in a process pool.
+4. Convert FRD → VTU (`frd2vtu`), average face jumps and reactions.
+
+Requires `ccx` and `frd2vtu` on PATH.
+
+## MFEM path
+
+Solves the same periodic unit-strain problems in-process. Preferred for:
+
+- `b3_core viz datasheet`
+- `b3_core viz deformed`
+- interactive `CoreModel` stiffness / displacement fields
+
+No external solver binary for the report figures.
+
+## Validation against ccx
+
+```yaml
+backend: mfem
+validate_with_ccx: true
+```
+
+Runs the chosen backend and a CalculiX twin, then records relative differences
+in the run JSON. Use when changing mesh density (`madd`) or element type.
+
+## Element types (ccx)
+
+| `element_type` | Notes |
+|----------------|-------|
+| `C3D8` | Default linear hex |
+| `C3D20` | Quadratic hex — slower, smoother fields |

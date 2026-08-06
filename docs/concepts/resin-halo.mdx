@@ -1,0 +1,160 @@
+---
+title: Resin halo
+description: Graded stiffness from opened foam cells along saw-cuts — not a sharp kerf only.
+---
+
+Grid-scoring (knife or saw cuts) does more than leave a neat resin-filled kerf: the
+cut **opens foam cells** along groove walls and root. Those opened cells take up
+resin during infusion, so the real cross-section is graded:
+
+```
+neat resin (kerf)  →  resin-rich zone (opened cells)  →  intact foam
+```
+
+Laustsen et al. (2014) CT scans show this interface is **wider than the nominal
+slit** and depends on foam density — smaller cells (e.g. H130) give a thinner
+resin-rich band than larger cells (e.g. H60). `b3_core` models this explicitly
+instead of absorbing it into a calibrated failure strain alone.
+
+## Sharp kerf vs graded halo
+
+Side cut of the DIAB GS30 RVE: left is a neat 1 mm kerf only; right adds the
+stochastic halo from opened foam cells (`cell_size = 0.6` mm reach).
+
+<img
+  src="/figures/halo_sharp_vs_scored.png"
+  alt="Side-by-side: sharp kerf only versus scored core with resin halo band along groove walls."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+Regenerate the figure bundle (and optional sharp twin):
+
+```bash
+uv run b3_core viz halo examples/diab_gs30_scored.json \
+  -o examples/img \
+  --sharp examples/diab_gs30.json
+```
+
+## How stiffness is graded
+
+For each point in the foam (outside the neat kerf), compute the distance `d` [mm]
+to the nearest **cut surface** — groove side walls and groove root only. The
+unsawn outer top/bottom faces do **not** emit a full saw-cut halo (there is no
+opened-cell cut there).
+
+Two surface types carry independent halos; the field takes the **maximum**:
+
+| Surface | Where | Cell state | Default reach |
+|---------|-------|------------|---------------|
+| `saw_cut` | Groove walls + root | Opened by saw/knife | from `core.cell_size` |
+| `face` | Unsawn `z=0` / `z=thickness` | Closed cells | `0.25 ×` saw-cut reach |
+
+```
+P(resin) = max( S_saw(d_to_groove), S_face(d_to_outer_face) )
+```
+
+Each `S(d)` is the survival function of that surface's cell-size distribution:
+`S(0)=1` at the cut face, `S→0` at reach.
+
+<img
+  src="/figures/halo_degradation.png"
+  alt="P(resin) survival curves for three cell-size models and E3 stiffness grading with distance from the cut."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+Local stiffness at each Gauss point in foam cells is a **rule of mixtures**:
+
+```
+C_local = P · C_resin + (1 − P) · C_foam
+```
+
+Bigger cells ⇒ longer reach ⇒ wider resin-rich band ⇒ **higher homogenized moduli**
+(tests confirm `Ezz` increases monotonically with `cell_size`).
+
+## Geometry on the RVE
+
+Side cut through the scored RVE (y = 15 mm) and a wall-normal strip of P(resin):
+
+<img
+  src="/figures/halo_side_cut.png"
+  alt="Side cut of DIAB GS30 scored RVE showing neat kerf, saw-cut halo, face halo, and intact foam."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+<img
+  src="/figures/halo_strip_diab_gs30.png"
+  alt="P(resin) decaying linearly with distance from the groove wall out to 0.6 mm reach."
+  className="my-6 w-full max-w-2xl mx-auto rounded-lg border border-fd-border"
+/>
+
+Combined board (side cut + decay + survival):
+
+<img
+  src="/figures/halo_intuitive_board.png"
+  alt="Composite board: side cut, halo decay strip, and cell-size survival with E_eff ratio."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+## `core.cell_size` formats [mm]
+
+| Form | Meaning | Survival `S(d)` |
+|------|---------|-----------------|
+| omitted / `null` | No halo — sharp kerf only | — |
+| scalar `0.6` | Uniform cells in `[0, cs]` | `S(d) = 1 − d/cs` (linear) |
+| `{mean, std, dist}` | Distributed cell size | `lognormal` (default) or `normal`, renormalised so `S(0)=1` |
+
+## Example — DIAB-style grid-scored PVC
+
+```json
+{
+  "core": {
+    "E1": 32e6, "E2": 32e6, "E3": 70e6,
+    "G12": 19e6, "G13": 19e6, "G23": 19e6,
+    "nu12": 0.3, "nu13": 0.3, "nu23": 0.3,
+    "rho": 60,
+    "cell_size": 0.6
+  },
+  "scoring": {
+    "damage_cells": 1.0,
+    "surfaces": {
+      "saw_cut": {},
+      "face": { "scale": 0.25 }
+    },
+    "sampling": { "strategy": "local_cloud", "resolution": 3 }
+  }
+}
+```
+
+Disable the thinner face halo: `"face": { "enabled": false }`.
+
+Reference case: `examples/diab_gs30_scored.json`. Sharp twin (no halo):
+`examples/diab_gs30.json`.
+
+## `scoring` block
+
+| Key | Role |
+|-----|------|
+| `damage_cells` | Multiplier on max active surface reach → mesh halo band `s_halo` [mm] (default `1.0`) |
+| `surfaces.saw_cut.cell_size` | Override saw-cut halo (default: inherit `core.cell_size`) |
+| `surfaces.face.scale` | Face halo reach as fraction of saw-cut (default `0.25`) |
+| `surfaces.face.cell_size` | Explicit face halo; overrides `scale` |
+| `surfaces.face.enabled` | `false` → no halo on unsawn top/bottom |
+| `sampling.strategy` | `"exact"` per Gauss point; `"local_cloud"` sub-point cloud + IDW |
+| `sampling.resolution` | Sub-points per direction for `local_cloud` (default `3`) |
+| `sampling.idw_power` | IDW exponent (default `2`) |
+
+## Backend and outputs
+
+Halo needs per-Gauss-point stiffness, so cases with `core.cell_size` set
+**auto-route to the `numpy` backend** (ccx/mfem are two-phase isotropic integrators).
+Results include:
+
+- `resin_vf` — neat kerf resin volume fraction
+- `halo_vf` — extra resin from opened cells in the foam band
+- `effective_resin_vf` = `resin_vf + halo_vf`
+- `rho_infused` — density including halo resin
+
+For FEA handoff, the homogenized engineering constants already embed the graded
+stiffness — no separate halo layer is needed in the global model.
+
+See also [Visualization & reports](/docs/guides/visualization#resin-halo-figures).

@@ -1,0 +1,85 @@
+---
+title: Getting started
+description: Install b3_core, write a case file, and run a first homogenization.
+---
+
+## Requirements
+
+- Python ≥ 3.11, `uv`
+- PyMFEM for the default backend (`uv sync --extra mfem`)
+- CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
+- `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
+- `typst` on PATH only if you generate datasheets
+
+```bash
+uv sync --extra mfem
+```
+
+## Minimal case file
+
+Geometry is mm; materials are SI. An ungrooved baseline:
+
+```yaml
+dx: 50
+dy: 50
+thickness: 30
+xgr: []
+ygr: []
+core:  { E: 4e9,  nu: 0.3, rho: 100 }
+resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
+```
+
+Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
+Negative depth opens toward the mould face (useful with curvature).
+
+Shipped examples:
+
+| File | What it shows |
+|------|----------------|
+| `examples/simple.json` | Plain core baseline |
+| `examples/with_grooves.json` | Mixed x/y groove families |
+| `examples/mfem_patterns/*.json` | Pattern gallery (plain, uniaxial, crossed, two-sided) |
+| `examples/diab_gs30_scored.json` | Grid-scored foam with resin halo |
+| `examples/curved_panel/` | Groove taper under mould curvature |
+
+## Run
+
+```bash
+uv run b3_core run examples/simple.yaml
+uv run b3_core examples/simple.json    # run is the default command
+```
+
+Each run writes `run<HASH>.json` next to the input (or in the study root for sweeps)
+with engineering constants, geometry metrics, and optional backend-vs-ccx comparison.
+
+If you hit `FileExistsError`, delete the cached `run*.json` or use a fresh output directory.
+
+## Python API
+
+```python
+from b3_core import homogenize, cprop
+
+result = homogenize("examples/simple.json")  # CoreResult
+mat = result.material                        # b3_mat.OrthotropicMaterial
+print(result.resin_volume_fraction, result.surface_area_factor)
+
+raw = cprop("examples/simple.json")          # full dict + writes run*.json
+```
+
+`homogenize` is the FEA handoff path. Call `cprop` when you need the full pipeline dict.
+
+## Coordinate system
+
+| Axis | Meaning |
+|------|---------|
+| x | Machine direction (typically along-span tooling) |
+| y | Transverse |
+| z | Through-thickness |
+
+Groove families `xgr` run parallel to **x** (vary in y); `ygr` run parallel to **y** (vary in x).
+
+## Next
+
+- [Homogenize for FEA](/docs/guides/homogenize) — tables, CalculiX cards, matdb JSON.
+- [Input schema](/docs/reference/input-schema) — full field list.
+- [Resin halo](/docs/concepts/resin-halo) — when `core.cell_size` is set.
