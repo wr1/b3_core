@@ -1,20 +1,21 @@
 ---
 title: Backends
-description: CalculiX, MFEM, FEniCSx, and numpy — when each runs and how validation works.
+description: MFEM (default), CalculiX, FEniCSx, and numpy — when each runs and how validation works.
 ---
 
 ## Choice table
 
 | Backend | Strengths | Limits |
 |---------|-----------|--------|
-| **`mfem`** (default) | Fast in-process; datasheet / deformed / viz | Isotropic two-phase |
+| **`mfem`** (**default**) | Fast in-process; datasheet / deformed / viz | Isotropic two-phase; needs PyMFEM |
 | **`ccx`** | CalculiX `.inp` + VTU post; validation twin | Isotropic two-phase; needs `ccx` + `frd2vtu` |
 | **`fenicsx`** | Optional high-order FEM research path | Extra install; isotropic two-phase |
 | **`numpy`** | Orthotropic constituents; per-GP resin halo | Analytical / semi-analytical RVE path |
 
 ```yaml
-backend: mfem            # default; omit to use MFEM
-validate_with_ccx: true  # optional cross-check vs CalculiX
+# omit backend → mfem
+backend: mfem
+validate_with_ccx: true   # optional cross-check vs CalculiX
 ```
 
 ## Auto-routing
@@ -23,9 +24,22 @@ The pipeline forces **`numpy`** when:
 
 1. `core` or `resin` is **orthotropic**, or
 2. `core.cell_size` is set (resin halo needs graded Gauss-point stiffness).
+   Halo + curvature still use this path — open/close morphs the mesh, then
+   ScoreField grades off `hw(z)` ([composition](/docs/concepts/halo-curvature)).
 
-ccx and mfem integrators are two-phase isotropic: they assign each cell fully to
+mfem and ccx integrators are two-phase isotropic: they assign each cell fully to
 core or resin. Halo and orthotropy need a richer constitutive map → numpy.
+
+## MFEM path (default)
+
+Solves the six periodic unit-strain problems **in-process** (PyMFEM). Used when
+`backend` is omitted or set to `mfem`. Also preferred for:
+
+- `b3_core viz datasheet`
+- `b3_core viz deformed`
+- interactive `CoreModel` stiffness / displacement fields
+
+No external solver binary. Install: `uv sync --extra mfem` (or project default deps).
 
 ## CalculiX path
 
@@ -34,17 +48,7 @@ core or resin. Halo and orthotropy need a richer constitutive map → numpy.
 3. Run `ccx` in a process pool.
 4. Convert FRD → VTU (`frd2vtu`), average face jumps and reactions.
 
-Requires `ccx` and `frd2vtu` on PATH.
-
-## MFEM path
-
-Solves the same periodic unit-strain problems in-process. Preferred for:
-
-- `b3_core viz datasheet`
-- `b3_core viz deformed`
-- interactive `CoreModel` stiffness / displacement fields
-
-No external solver binary for the report figures.
+Requires `ccx` and `frd2vtu` on PATH. Set `backend: ccx` explicitly.
 
 ## Validation against ccx
 

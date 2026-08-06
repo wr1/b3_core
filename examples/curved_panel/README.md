@@ -26,13 +26,12 @@ or from the CLI: `uv run b3core run --xgr="10,10,-27,3" --kx=0.004 --backend mfe
 
 ![open: curved vs flattened](img/groove_curved_vs_flat.png)
 
-*Open (`kx > 0`): left = FEA mesh rolled onto the mould arc (same taper as flat);
-right = flattened FEA RVE (trapezoidal foam + open taper).*
+*Open (`kx > 0`): left = rectangular foam on the mould (hinge opens kerfs);
+right = FEA `hw(z)` morph with `slope = −sign(d)·κ·p/2`.*
 
 ![closed: curved vs flattened](img/groove_curved_vs_flat_closed.png)
 
-*Closed (`kx < 0`): left = same FEA mesh on the arc with pinched kerfs;
-right = flattened FEA RVE (closed taper).*
+*Closed (`kx < 0`): left = same mould kinematics (hinge pinches); right = FEA morph.*
 
 ![open vs flat vs pinched grooves](img/groove_strip.png)
 

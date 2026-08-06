@@ -37,7 +37,7 @@ uv run b3_core viz view case.json --what all -o out_dir/
 
 One-page report: RVE/geometry, materials, analysis settings, groove figures with
 mesh, 3D isometric of resin, engineering constants, and 6×6 `C_eff`. Uses the
-MFEM backend for figures (no CalculiX solve for the report itself). Needs `typst`
+Uses the default **MFEM** backend for figures (no CalculiX solve for the report). Needs `typst`
 on PATH.
 
 ```bash
@@ -95,12 +95,47 @@ uv run b3_core viz halo examples/diab_gs30_scored.json \
   className="my-6 w-full rounded-lg border border-fd-border"
 />
 
-Physics and input fields: [Resin halo](/docs/concepts/resin-halo).
+Physics and input fields: [Resin halo](/docs/concepts/resin-halo). With mould
+curvature, the band rides the tapered wall:
+[Halo + curvature](/docs/concepts/halo-curvature).
+
+```bash
+uv run b3_core viz halo-curvature -o examples/img
+# same open/closed κ as curved_panel render (+0.012 / −0.012)
+# → halo_curvature_compose.png
+# → halo_curvature_wall_strip.png
+# → halo_curvature_stiffness.png      (Eyy, Vf vs κ × cell_size)
+# → halo_curvature_moduli_vs_kx.png
+```
+
+<img
+  src="/figures/halo_curvature_compose.png"
+  alt="Halo on curved_panel closed, flat, and open FEA morphs; band follows hw(z) walls."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+**Parametric stiffness** — full homogenization grid over curvature and halo
+width (`cell_size = 0` is sharp kerf):
+
+<img
+  src="/figures/halo_curvature_stiffness.png"
+  alt="Parametric Eyy and resin volume fraction vs mould curvature and halo cell_size."
+  className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+<img
+  src="/figures/halo_curvature_moduli_vs_kx.png"
+  alt="Exx, Eyy, Gxy, Gxz vs curvature with and without halo."
+  className="my-6 w-full max-w-3xl mx-auto rounded-lg border border-fd-border"
+/>
+
+Physics and API:
+[Halo + curvature — stiffness vs κ and halo width](/docs/concepts/halo-curvature#stiffness-vs-curvature-and-halo-width).
 
 ## Kerf on a curve vs flattened RVE
 
-- **Curved:** same FEA mesh rolled onto a mould arc (identical kerf taper / tips).
-- **Flattened FEA:** interval-morph RVE — trapezoidal foam + tapered kerfs.
+- **On the mould:** rectangular foam lands; kerfs = hinged gaps (motivates κ).
+- **Flattened FEA:** `slope = −sign(d)·κ·p/2` → `hw(z)` morph (what is solved).
 
 ```bash
 uv run python examples/curved_panel/render.py
@@ -124,7 +159,8 @@ Closed (`kx < 0`):
   className="my-6 w-full rounded-lg border border-fd-border"
 />
 
-Details: [Kerf open & close](/docs/concepts/curvature).
+Details: [Kerf open & close](/docs/concepts/curvature). Halo on tapered kerfs:
+[Halo + curvature](/docs/concepts/halo-curvature).
 
 ## Architecture of the viz stack
 

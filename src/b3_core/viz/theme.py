@@ -48,14 +48,29 @@ class CoreTheme:
         return cmap, norm
 
     def halo_cmap(self, *, n: int = 256):
-        """Continuous foam→resin colormap for the stochastic halo (P=0…1)."""
-        from matplotlib.colors import LinearSegmentedColormap, to_rgb
+        """Clear red–white–blue scale for halo ``P(resin)`` in [0, 1].
+
+        Pale blue = intact foam (``P → 0``), white mid-band, red = resin-rich
+        (``P → 1``). Pale foam keeps the thin halo rim readable; deep navy
+        would swallow the white→red band at RVE scale.
+        """
+        from matplotlib.colors import LinearSegmentedColormap
 
         return LinearSegmentedColormap.from_list(
-            "halo",
-            [to_rgb(self.core_color), to_rgb(self.resin_color)],
+            "halo_rwb",
+            [
+                (0.00, "#dbe9f6"),  # foam far from cut
+                (0.15, "#92c5de"),
+                (0.40, "#f7f7f7"),  # mid
+                (0.70, "#f4a582"),
+                (1.00, "#b2182b"),  # resin-rich / neat
+            ],
             N=n,
         )
+
+    def halo_resin_color(self) -> str:
+        """Solid neat-kerf colour matching the high end of :meth:`halo_cmap`."""
+        return "#b2182b"
 
     def publication_rcparams(self) -> dict:
         """matplotlib rcParams for clean, publication-quality figures.

@@ -188,6 +188,22 @@ def cmd_viz_halo(path: str, output: str, sharp: str):
     print("Wrote " + ", ".join(str(p) for p in paths))
 
 
+def cmd_viz_halo_curvature(output: str, case: str, kx_open: float, kx_closed: float):
+    """Side-by-side closed|flat|open halo cuts + wall-normal strip."""
+    import json as _json
+
+    from b3_core.viz.halo import render_halo_curvature_figures
+
+    base = _json.loads(Path(case).read_text()) if case else None
+    out = Path(output) if output else (
+        Path(case).parent / "img" if case else Path("examples/img")
+    )
+    paths = render_halo_curvature_figures(
+        out, base_inp=base, kx_open=kx_open, kx_closed=kx_closed
+    )
+    print("Wrote " + ", ".join(str(p) for p in paths))
+
+
 def cmd_viz_datasheet(path: str, output: str, png: str):
     from b3_core.datasheet import generate
 
@@ -237,6 +253,21 @@ def _viz_subgroup() -> group:
                            help="Output directory (default: <case-dir>/img/)."),
                     option(flags=["--sharp"], arg_type=str, default="",
                            help="Sharp-kerf case JSON for before/after comparison."),
+                ],
+            ),
+            command(
+                name="halo-curvature",
+                help="Halo + curvature composition figures (closed|flat|open).",
+                callback=cmd_viz_halo_curvature,
+                options=[
+                    option(flags=["--output", "-o"], arg_type=str, default="",
+                           help="Output directory (default: examples/img or <case>/img)."),
+                    option(flags=["--case"], arg_type=str, default="",
+                           help="Optional scored case JSON (default: built-in uniaxial demo)."),
+                    option(flags=["--kx-open"], arg_type=float, default=0.012,
+                           help="kx for open panel (curved_panel: + opens top-mouth)."),
+                    option(flags=["--kx-closed"], arg_type=float, default=-0.012,
+                           help="kx for closed panel (curved_panel: − pinches top-mouth)."),
                 ],
             ),
             command(

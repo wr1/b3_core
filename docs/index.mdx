@@ -41,7 +41,7 @@ flowchart TB
   end
   subgraph solve[Six unit strains]
     direction LR
-    bc[periodic BC] ~~~ be[ccx / mfem / fenicsx / numpy]
+    bc[periodic BC] ~~~ be[mfem / ccx / fenicsx / numpy]
   end
   subgraph out[Handoff]
     direction LR
@@ -52,8 +52,9 @@ flowchart TB
 
 1. Build a structured 3D RVE over `[0, dx] × [0, dy] × [0, thickness]` (mm).
 2. Tag cells as core, resin (groove volume), optional face layer, optional resin halo.
-3. Solve six unit macroscopic strains under periodic BC.
-4. Average reactions and face jumps → orthotropic constants and infused density.
+3. If `kx`/`ky` set, **morph walls** so kerfs track `hw(z)` (open/close).
+4. Solve six unit macroscopic strains under periodic BC (**mfem** by default).
+5. Average reactions and face jumps → orthotropic constants and infused density.
 
 **Units:** geometry in mm; materials and outputs in SI (Pa, kg/m³). The mesh is scaled
 by 1e-3 for solvers that need SI lengths.
@@ -71,6 +72,7 @@ by 1e-3 for solvers that need SI lengths.
 - [Periodic homogenization](/docs/concepts/method) — RVE, load cases, engineering constants.
 - [Resin halo](/docs/concepts/resin-halo) — graded stiffness from opened foam cells (Laustsen-style).
 - [Kerf open & close](/docs/concepts/curvature) — mould curvature opens/pinches grooves; local homogenization.
+- [Halo + curvature](/docs/concepts/halo-curvature) — one `hw(z)` law; halo grades off the tapered wall; **Eyy vs κ × cell_size**.
 
 **Reference** — the contract.
 
@@ -81,7 +83,7 @@ by 1e-3 for solvers that need SI lengths.
 
 ## Agent skill
 
-The package ships an agent skill (`SKILL.md`) so LLMs can drive homogenization end-to-end:
+Repo-root `SKILL.md` (also packaged as `b3_core/SKILL.md`) lets LLMs drive homogenization end-to-end:
 
 ```bash
 b3_core skill              # path inside site-packages

@@ -27,10 +27,13 @@ xgr: []
 ygr: []
 core:  { E: 4e9,  nu: 0.3, rho: 100 }
 resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
+# backend: mfem   # default — omit, or set ccx / fenicsx / numpy
 ```
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
 Negative depth opens toward the mould face (useful with curvature).
+Default solver is **MFEM** (`uv sync --extra mfem`); set `backend: ccx` only if
+you want CalculiX.
 
 Shipped examples:
 
@@ -83,3 +86,4 @@ Groove families `xgr` run parallel to **x** (vary in y); `ygr` run parallel to *
 - [Homogenize for FEA](/docs/guides/homogenize) — tables, CalculiX cards, matdb JSON.
 - [Input schema](/docs/reference/input-schema) — full field list.
 - [Resin halo](/docs/concepts/resin-halo) — when `core.cell_size` is set.
+- [Halo + curvature](/docs/concepts/halo-curvature) — halo on open/closed kerfs; stiffness vs κ and halo width.

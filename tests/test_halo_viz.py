@@ -52,3 +52,33 @@ def test_plot_halo_intuitive_board_runs():
     assert len(fig.axes) >= 3
     import matplotlib.pyplot as plt
     plt.close(fig)
+
+
+def test_parametric_stiffness_ranks_open_and_halo():
+    """Eyy rises with open κ and with cell_size; eff Vf > neat Vf when halo on."""
+    from b3_core.viz.halo import (
+        homogenize_halo_curvature,
+        plot_stiffness_vs_curvature_halo,
+        sweep_halo_curvature_grid,
+    )
+
+    sharp_closed = homogenize_halo_curvature(-0.008, None)
+    sharp_open = homogenize_halo_curvature(+0.008, None)
+    halo_open = homogenize_halo_curvature(+0.008, 0.6)
+    halo_wide = homogenize_halo_curvature(+0.008, 1.2)
+
+    assert sharp_open["Eyy"] > sharp_closed["Eyy"]
+    assert sharp_open["resin_vf"] > sharp_closed["resin_vf"]
+    assert halo_open["Eyy"] > sharp_open["Eyy"]
+    assert halo_wide["Eyy"] > halo_open["Eyy"]
+    assert halo_open["effective_resin_vf"] > halo_open["resin_vf"]
+
+    rows = sweep_halo_curvature_grid(
+        kx_values=[-0.008, 0.0, 0.008],
+        cell_sizes=[0.0, 0.6],
+    )
+    fig = plot_stiffness_vs_curvature_halo(rows)
+    assert len(fig.axes) >= 4
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)

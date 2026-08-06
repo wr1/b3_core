@@ -22,8 +22,12 @@ mesh stability). Cells are tagged:
 | `face` | Optional stabilising face layer |
 | halo band | Graded resin probability when `cell_size` is set |
 
-Grooves can be **tapered by mould curvature** (`kx`, `ky`) so kerf width varies
-through thickness — see [Curvature & grooves](/docs/concepts/curvature).
+Grooves can be **opened or closed by mould curvature** (`kx`, `ky`): rectangular
+tags stay fixed, then an **interval-affine wall morph** moves faces so half-width
+tracks `hw(z)`. Foam bays become trapezoidal on the flat RVE. See
+[Kerf open & close](/docs/concepts/curvature). When a resin halo is also active,
+`ScoreField` distances use that same `hw(z)` so the graded band follows the
+tapered wall — [Halo + curvature](/docs/concepts/halo-curvature).
 
 ## Six load cases
 

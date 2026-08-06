@@ -10,25 +10,37 @@ stiffness depend on **where the panel sits on the tool**. `b3_core` keeps the RV
 mould curvature — the global bend itself is left to the downstream shell / beam
 model.
 
-## Curved on the mould → flattened for FEA
+## How kerf taper is computed
 
-Same kerf taper, two presentations of `κ`:
+The figures explain the **computation**, not a uniform roll of the FEA mesh.
 
 | Panel | Geometry | Role |
 |-------|----------|------|
-| **1 · Curved** | Flattened FEA mesh **rolled onto a cylinder** (`θ = κ·x`, `r = R + z`) | Viz of the mould configuration — tip bluntness matches FEA |
-| **2 · Flattened RVE** | Interval-affine morph: trapezoidal foam, walls track `hw(z)` | What `cprop` / `homogenize` actually solves |
+| **1 · On the mould** | Rigid **rectangular** foam lands hinged about their centres; kerfs = **gaps between facing land edges** | Physical picture: curvature opens/closes those gaps |
+| **2 · Flattened for FEA** | Interval-affine morph: walls track `hw(z)` (trapezoidal foam) | How that opening is encoded for homogenization |
 
-Homogenization never meshes the macro bend. It uses the flat morphed RVE; the
-downstream shell model puts curvature back via geometry. The curved panel is
-that same mesh rolled onto an arc so open/closed tips look identical on both
-sides (no extra pinching from rigid-block hinging).
+**Step 1 — hinge.** With pitch `p` and curvature `κ`, neighbouring land centres
+differ by angle `κ·p`. Facing land edges open (or close) by that hinge.
+
+**Step 2 — slope law.** The FEA taper that matches that opening (small-angle) is
+
+```
+slope  = −sign(depth) · κ · pitch / 2
+hw(z)  = max(ε, hw₀ + slope · ζ)
+```
+
+with `ζ` distance from the root toward the mouth. Callouts on the figures show
+`hinge ∠ ≈ κ·p` (mould) and `FEA walls ∠` from `hw(z)` (flat).
+
+**Step 3 — morph.** `create_grooved_mesh` builds a flat RVE and morphs wall nodes
+to `c0 ± hw(z)`. Homogenization never meshes the macro bend — only this local
+`hw(z)`.
 
 **Open** (`kx > 0` — kerfs flare at the free face):
 
 <img
   src="/figures/groove_curved_vs_flat.png"
-  alt="Open curvature: left, FEA mesh rolled onto mould arc; right, flattened FEA RVE with trapezoidal foam and open kerf taper."
+  alt="Open: left, rectangular foam on mould with hinged kerf gaps; right, FEA hw(z) morph."
   className="my-6 w-full rounded-lg border border-fd-border"
 />
 
@@ -36,7 +48,7 @@ sides (no extra pinching from rigid-block hinging).
 
 <img
   src="/figures/groove_curved_vs_flat_closed.png"
-  alt="Closed curvature: left, FEA mesh rolled onto mould arc with pinched kerfs; right, flattened FEA RVE with closed kerf taper."
+  alt="Closed: left, rectangular foam with pinched hinged gaps; right, FEA hw(z) morph."
   className="my-6 w-full rounded-lg border border-fd-border"
 />
 
@@ -104,7 +116,7 @@ reduces it until a small ε clamp (solver-stable pinch).
 **Mesh (flattened FEA RVE):** built as a rectangular structured grid, then
 **interval-affine morph** so wall faces track `hw(z)`. Foam bays between open
 kerfs become **trapezoidal** on this flat RVE (intended). The curved-panel
-render rolls that same mesh onto a cylinder for side-by-side viz.
+render rolls **that exact mesh** onto a cylinder (no second geometry builder).
 
 | Sign of depth | Mouth | Root | Typical use |
 |---------------|-------|------|-------------|
@@ -160,6 +172,10 @@ See [Periodic homogenization](/docs/concepts/method) for load cases and
 [Homogenize for FEA](/docs/guides/homogenize) for material-card handoff.
 
 ## What changes with κ
+
+When a resin halo is also active (`core.cell_size`), channel stiffness and resin
+volume still rank with open/close — see the parametric **Eyy** and Vf boards on
+[Halo + curvature](/docs/concepts/halo-curvature#stiffness-vs-curvature-and-halo-width).
 
 From the curved-panel sweep (MFEM, deep uniaxial grooves, moduli in **GPa**):
 
@@ -254,14 +270,16 @@ deep) work with the same taper rule. Patterns: `examples/mfem_patterns/`.
   minimum half-width so cells keep positive volume.
 - [Resin halo](/docs/concepts/resin-halo) (`cell_size`) still applies outside the
   **tapered** neat kerf when set — open/close changes the surface the halo
-  attaches to.
+  attaches to. Full composition contract:
+  [Halo + curvature](/docs/concepts/halo-curvature).
 
-Figures are **2D side views**. Curved panel is the FEA mesh rolled onto an arc;
-flattened panel is the same morph (`examples/curved_panel/render.py`).
+Figures are **2D PyVista side views** of the FEA mesh (flat + rolled).
+See `examples/curved_panel/render.py`.
 
 ## Related
 
 - [Periodic homogenization](/docs/concepts/method) — six load cases → constants
 - [Resin halo](/docs/concepts/resin-halo) — opened foam cells outside the neat kerf
+- [Halo + curvature](/docs/concepts/halo-curvature) — shared `hw(z)` for halo + taper
 - [Input schema](/docs/reference/input-schema) — `curvature`, `xgr` / `ygr`
 - Worked tree: `examples/curved_panel/`

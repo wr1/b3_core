@@ -122,7 +122,11 @@ def _bend_points(points: np.ndarray, kappa: float, axis: int = 0, z_ref=None) ->
 
 
 def _curved_grid(inp: dict, kappa: float):
-    """Grooved mesh at curvature ``kappa`` (real groove taper) then bent (drape)."""
+    """FEA mesh at curvature ``kappa`` (interval-affine wall morph) then rolled.
+
+    Same kinematics as the curved-panel viz: walls track ``hw(z)`` on the flat
+    RVE, then material ``x`` is mapped onto a cylinder for the drape shot.
+    """
     mesh = create_grooved_mesh(
         thickness=inp["thickness"], dx=inp["dx"], dy=inp["dy"],
         xcuts=inp["xgr"], ycuts=inp["ygr"], madd=tuple(inp["madd"]),
@@ -348,8 +352,11 @@ def _scene_curvature(ctx, t):
     ctx.inset = _inset_plot(ctx.stations, ease(t), ctx.theme, px=int(ctx.size[0] * 0.30))
     R = 1.0 / k if k > 1e-9 else float("inf")
     r_txt = "flat" if R == float("inf") else f"R = {R:.0f} mm"
-    ctx.big = ["curvature sim", f"kx = {k * 1e3:.1f}e-3 /mm    {r_txt}",
-               "grooves taper · core drapes"]
+    ctx.big = [
+        "curvature sim",
+        f"kx = {k * 1e3:.1f}e-3 /mm    {r_txt}",
+        "wall morph hw(z) · roll onto arc",
+    ]
     return _shot(ctx)
 
 
@@ -392,7 +399,7 @@ _SCENES = [
     ("vacuum resin infusion", 2.0, _scene_resin),
     ("periodic FE mesh (C3D8)", 1.5, _scene_mesh),
     ("orthogonal slices reveal the nesting", 2.5, _scene_slices),
-    ("curvature sim — drape + effective properties", 4.0, _scene_curvature),
+    ("curvature — wall morph + drape + E(κ)", 4.0, _scene_curvature),
     ("periodic strain response · six unit load cases", 3.0, _scene_strains),
 ]
 

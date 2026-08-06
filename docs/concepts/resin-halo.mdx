@@ -157,4 +157,10 @@ Results include:
 For FEA handoff, the homogenized engineering constants already embed the graded
 stiffness — no separate halo layer is needed in the global model.
 
+When mould curvature is also set, the halo grades off the **tapered** wall
+(`hw(z)`), not the flat rectangular tag — see
+[Halo + curvature](/docs/concepts/halo-curvature). Stiffness response vs both
+`kx` and `cell_size`:
+[parametric boards](/docs/concepts/halo-curvature#stiffness-vs-curvature-and-halo-width).
+
 See also [Visualization & reports](/docs/guides/visualization#resin-halo-figures).

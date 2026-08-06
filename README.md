@@ -12,13 +12,15 @@ so it drops into the wider b3 section / beam pipeline.
 
 Structured 3D RVE mesh (PyVista) with cell-level tagging of core vs.
 resin-filled groove. Six periodic-BC load cases (εxx, εyy, εzz, εxy, εxz, εyz)
-run in parallel and the averaged reactions give the effective engineering
-constants (Ex/Ey/Ez, Gxy/Gxz/Gyz, Poisson ratios) and infused density. Grooves
-can be tapered by mould curvature (`kx`, `ky`) for curved panels.
+give effective engineering constants (Ex/Ey/Ez, Gxy/Gxz/Gyz, Poisson ratios)
+and infused density. Mould curvature (`kx`, `ky`) opens or pinches kerfs via an
+**interval-affine wall morph** (`hw(z)`); foam bays become trapezoidal on the
+flat FEA RVE (not voxel painting).
 
-Backends: **MFEM** (default; installed as standard), **CalculiX**, plus optional
-**FEniCSx** and **numpy**; set `"validate_with_ccx": true` to cross-check a
-backend against CalculiX.
+**Default backend is MFEM** (omit `backend` or set `"backend": "mfem"`). Also:
+**CalculiX** (`ccx`), **FEniCSx**, **numpy**. Orthotropic constituents or
+`core.cell_size` (resin halo) auto-route to **numpy**. Optional
+`"validate_with_ccx": true` cross-checks any backend against CalculiX.
 
 ## Agent skill
 
