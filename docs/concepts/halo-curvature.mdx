@@ -125,6 +125,64 @@ API: `b3_core.viz.halo.sweep_halo_curvature_grid`,
 `plot_stiffness_vs_curvature_halo`, `homogenize_halo_curvature`.
 Tests: `tests/test_halo_viz.py::test_parametric_stiffness_ranks_open_and_halo`.
 
+## Physics surrogate — mass lookup vs curvature
+
+For panel stations (or any batch of local curvatures) a full homogenization per
+point is unnecessary once a small grid has been run. Following the same pattern
+as `b3_invsec.physics_surrogate`:
+
+```
+T(κ, cell_size)  =  physics_base(κ, cell_size) · exp( φ · c )
+```
+
+- **physics_base** — closed-form neat/halo volumes from the `hw(z)` taper law,
+  Voigt/Reuss mixture for channel vs cross-channel moduli, two-phase density →
+  areal mass
+- **φ · c** — low-order log correction fit to the homogenization grid (ridge
+  least squares)
+
+### Fit once
+
+```bash
+uv run b3_core surrogate fit -o examples/img/core_physics_surrogate.json \
+  --cache examples/img/halo_curvature_param_grid.json
+```
+
+```python
+from b3_core import fit_from_homogenization
+
+surr = fit_from_homogenization(cache_path="examples/img/halo_curvature_param_grid.json")
+surr.to_json("core_physics_surrogate.json")
+```
+
+### Batch lookup (vector of curvatures)
+
+```python
+import numpy as np
+from b3_core import CorePhysicsSurrogate
+
+surr = CorePhysicsSurrogate.from_json("core_physics_surrogate.json")
+kx = np.linspace(-0.008, 0.008, 50)          # e.g. κ(s) along a panel
+props = surr.lookup(kx, cell_size=0.6)       # DataFrame: E*, G*, rho, mass_per_m2, Vf
+```
+
+```bash
+# use --kx=… so a leading minus is not parsed as a flag
+uv run b3_core surrogate lookup core_physics_surrogate.json \
+  --kx=-0.008,0,0.004,0.008 --cell-size 0.6 -o stations.csv
+```
+
+| Column | Unit | Role |
+|--------|------|------|
+| `Exx`…`Gyz` | Pa | Engineering moduli |
+| `resin_vf`, `halo_vf`, `effective_resin_vf` | — | Volume fractions |
+| `rho_infused` | kg/m³ | Infused density |
+| `mass_per_m2` | kg/m² | Areal mass (`ρ · thickness`) |
+
+API: `b3_core.physics_surrogate` — `fit_physics_surrogate`,
+`fit_from_homogenization`, `CorePhysicsSurrogate.lookup`.
+Tests: `tests/test_physics_surrogate.py`.
+
 ## Shared law
 
 Both mechanisms use the same root-hinged half-width:
@@ -288,3 +346,4 @@ halo shell or curvature kerf solid is required in the global model.
 - [Visualization & reports](/docs/guides/visualization) — figure CLI and gallery
 - [Input schema](/docs/reference/input-schema) — `curvature`, `core.cell_size`, `scoring`
 - [Backends](/docs/reference/backends) — halo → `numpy` auto-route
+- [CLI](/docs/reference/cli) — `surrogate fit` / `surrogate lookup`

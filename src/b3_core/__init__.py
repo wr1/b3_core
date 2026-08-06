@@ -7,6 +7,11 @@ Backends: MFEM (default), CalculiX, optional FEniCSx, and numpy.
 """
 
 from b3_core.core.cprop import CpropInput, Material, cprop, homogenize
+from b3_core.physics_surrogate import (
+    CorePhysicsSurrogate,
+    fit_from_homogenization,
+    fit_physics_surrogate,
+)
 from b3_core.result import CoreResult
 
 __version__ = "0.1.0"
@@ -17,4 +22,7 @@ __all__ = [
     "Material",
     "cprop",
     "homogenize",
+    "CorePhysicsSurrogate",
+    "fit_physics_surrogate",
+    "fit_from_homogenization",
 ]

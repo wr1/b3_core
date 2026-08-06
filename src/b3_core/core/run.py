@@ -298,6 +298,91 @@ def _viz_subgroup() -> group:
     )
 
 
+def cmd_surrogate_fit(output: str, cache: str):
+    """Fit physics surrogate on a κ × cell_size homogenization grid."""
+    from b3_core.physics_surrogate import fit_from_homogenization
+
+    out = Path(output) if output else Path("examples/img/core_physics_surrogate.json")
+    cache_path = Path(cache) if cache else out.with_name("halo_curvature_param_grid.json")
+    surr = fit_from_homogenization(cache_path=cache_path)
+    surr.to_json(out)
+    print(f"Wrote {out}  targets={surr.targets}")
+
+
+def cmd_surrogate_lookup(path: str, kx: str, cell_size: float, output: str):
+    """Mass lookup of properties for a comma-separated curvature vector."""
+    from b3_core.physics_surrogate import CorePhysicsSurrogate
+
+    surr = CorePhysicsSurrogate.from_json(path)
+    kx_vec = [float(x) for x in kx.replace(" ", "").split(",") if x]
+    df = surr.lookup(kx_vec, cell_size=cell_size)
+    if output:
+        Path(output).write_text(df.to_csv(index=False))
+        print(f"Wrote {output}  ({len(df)} stations)")
+    else:
+        print(df.to_string(index=False, float_format=lambda v: f"{v:.6g}"))
+
+
+def _surrogate_subgroup() -> group:
+    return group(
+        name="surrogate",
+        help="Physics-based stiffness/mass surrogate vs curvature.",
+        commands=[
+            command(
+                name="fit",
+                help="Fit surrogate on homogenization grid (κ × cell_size).",
+                callback=cmd_surrogate_fit,
+                options=[
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="JSON path (default: examples/img/core_physics_surrogate.json).",
+                    ),
+                    option(
+                        flags=["--cache"],
+                        arg_type=str,
+                        default="",
+                        help="Homogenization grid JSON cache path.",
+                    ),
+                ],
+            ),
+            command(
+                name="lookup",
+                help="Batch properties for a curvature vector (mass lookup).",
+                callback=cmd_surrogate_lookup,
+                arguments=[
+                    argument(
+                        name="path",
+                        arg_type=str,
+                        help="Fitted surrogate JSON from `surrogate fit`.",
+                    ),
+                ],
+                options=[
+                    option(
+                        flags=["--kx"],
+                        arg_type=str,
+                        default="0",
+                        help="Comma-separated curvatures [1/mm], e.g. -0.008,0,0.008.",
+                    ),
+                    option(
+                        flags=["--cell-size"],
+                        arg_type=float,
+                        default=0.0,
+                        help="Halo width [mm] (0 = sharp kerf).",
+                    ),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Optional CSV path (default: print table).",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
 def main():
     app = cli(
         name="b3_core",
@@ -320,7 +405,7 @@ def main():
                 ],
             ),
         ],
-        subgroups=[_sweep_subgroup(), _viz_subgroup()],
+        subgroups=[_sweep_subgroup(), _viz_subgroup(), _surrogate_subgroup()],
     )
     app.run()
 
