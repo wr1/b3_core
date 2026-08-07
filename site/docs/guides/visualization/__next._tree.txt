@@ -12,4 +12,4 @@
 :HL["/figures/halo_curvature_moduli_vs_kx.png","image"]
 :HL["/figures/groove_curved_vs_flat.png","image"]
 :HL["/figures/groove_curved_vs_flat_closed.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"guides/visualization","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"DhtFwo5jDa2hseGmYGrEm"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"guides/visualization","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"h05tPUMcHkIxIVT0rRtbO"}

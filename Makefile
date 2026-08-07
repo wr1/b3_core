@@ -88,7 +88,7 @@ docs-serve: ## same as docs — dockb from project root
 	done; \
 	echo "DocKB: http://localhost:$$port/docs"; \
 	echo "  Dev KB (if kb/ present): http://localhost:$$port/dev"; \
-	echo "  Guides: getting-started, homogenize, visualization"; \
+	echo "  Guides: getting-started, agent-use, homogenize, visualization"; \
 	echo "  Concepts: method, resin-halo, curvature"; \
 	echo "  Reference: input-schema, outputs, backends, cli"; \
 	$(DOCKB) $$port
