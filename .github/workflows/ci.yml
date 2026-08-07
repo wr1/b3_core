@@ -64,13 +64,13 @@ jobs:
         run: uv venv --python ${{ matrix.python-version }}
 
       # Local path sources (b3_mat, treeparse) do not exist on the runner.
-      # Install with --no-sources (treeparse from PyPI) and pull b3_mat from
-      # GitHub. frd2vtu stays a direct git URL from the deps table.
+      # --no-sources: treeparse from PyPI; b3_mat from GitHub (slim deps:
+      # OrthotropicMaterial only — no lamprop/composipy). frd2vtu stays a
+      # direct git URL from the project deps table.
       - name: Install dependencies
         run: |
           uv pip install --no-sources \
             "b3_mat @ git+https://github.com/wr1/b3_mat.git" \
-            "numba>=0.60" \
             ".[dev]"
 
       # CalculiX / typst not installed — related tests self-skip.
