@@ -15,6 +15,26 @@ effective stiffness and density of the core; this package predicts the
 resulting orthotropic material and returns it as a `b3_mat.OrthotropicMaterial`
 so it drops into the wider b3 section / beam pipeline.
 
+## Aims
+
+1. **Curvature-dependent infused cores.** Saw-cut and kerfed cores laid into a
+   curved mould open or pinch before infusion, so the cured resin lattice — and
+   thus effective stiffness and mass — depends on **local mould curvature**.
+2. **Model those properties.** Periodic-BC RVE homogenization with kerf taper
+   from κ (`hw(z)`), optional resin halo, FEA-ready orthotropic cards.
+3. **Lightweight surrogates for structural FEA.** Map a **vector of
+   curvatures** (and halo width) to stiffness/mass for
+   **curvature-dependent property assignment** in composite shell/solid models
+   without re-homogenizing every station.
+
+```
+scored core + local κ  →  homogenize  →  (E, G, ν, ρ)
+                              ↓
+                     physics / grid surrogate
+                              ↓
+              κ(s)  →  mass lookup  →  FEA property field
+```
+
 ## Approach
 
 Structured 3D RVE mesh (PyVista) with cell-level tagging of core vs.

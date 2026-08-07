@@ -2,13 +2,14 @@
 name: b3-core
 description: >
   Get homogenized elastic properties and FEA-ready reports for grooved sandwich-
-  panel cores. Use when an agent needs effective Ex/Ey/Ez, shear moduli, Poisson
-  ratios, infused density, 6x6 stiffness, or material cards/tables for structural
-  FEA (CalculiX, b3_mat, b3 pipeline). Covers grid-scored foam resin halo graded
-  by cell size. Triggers on "homogenize core", "grooved core properties",
-  "infused core stiffness", "resin halo", "grid-scored foam", "cell size halo",
-  "core material for FEA", "b3_core", "cprop". Load via b3_core.skill_path() or
-  `b3_core skill --stdout`.
+  panel cores, including curvature-dependent kerf open/close and lightweight
+  surrogates for mass property lookup. Use when an agent needs effective
+  Ex/Ey/Ez, shear moduli, Poisson ratios, infused density, 6x6 stiffness,
+  material cards for structural FEA with curvature-dependent core assignment,
+  resin halo, or b3_core physics surrogate. Triggers on "homogenize core",
+  "grooved core properties", "infused core stiffness", "resin halo",
+  "curvature-dependent core", "core surrogate", "b3_core", "cprop". Load via
+  b3_core.skill_path() or `b3_core skill --stdout`.
 ---
 
 # b3_core — homogenized properties for FEA
@@ -17,6 +18,25 @@ Predict effective orthotropic stiffness and infused density of PVC/balsa cores
 with sawcuts and machined grooves (resin-filled during infusion). Output is
 ready for structural FEA: engineering constants in SI (Pa, kg/m³), a
 `b3_mat.OrthotropicMaterial`, and optional PDF/PNG datasheet with tables.
+
+## Aims
+
+1. **Curvature-dependent infused cores.** Saw-cut / kerfed cores on a curved
+   mould open or pinch before infusion → the cured resin lattice (and thus
+   effective **E**, **G**, **ρ**) depends on local mould curvature κ.
+2. **Model those properties** via periodic-BC RVE homogenization (`hw(z)` kerf
+   taper, optional resin halo from foam cell size).
+3. **Lightweight surrogates** so a **vector of curvatures** maps to
+   stiffness/mass for **curvature-dependent property assignment** in composite
+   FEA (shell/solid), without a full RVE solve per station.
+
+```
+scored core + κ  →  homogenize RVE  →  (E, G, ν, ρ)
+                         ↓
+                physics / grid surrogate
+                         ↓
+         κ(s) vector  →  mass lookup  →  FEA property field
+```
 
 **Coordinate system:** x = machine direction, y = transverse, z = through-thickness.
 
