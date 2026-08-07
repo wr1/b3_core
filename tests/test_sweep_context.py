@@ -1,7 +1,6 @@
 """Unit tests for sweep helpers (no homogenisation solve)."""
 
 import json
-from pathlib import Path
 
 import pytest
 
