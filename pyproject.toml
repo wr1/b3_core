@@ -40,7 +40,12 @@ dependencies = [
 [project.optional-dependencies]
 interactive = ["trame", "trame-vtk", "trame-vuetify"]
 anim = ["imageio", "imageio-ffmpeg", "pillow"]
-dev = ["pytest>=8", "ruff>=0.8", "pre-commit>=4.0"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.8",
+    "pre-commit>=4.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/wr1/b3_core"
@@ -78,6 +83,36 @@ treeparse = { path = "/home/wr1/projects/treeparse" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "--cov=b3_core",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=72",
+]
+
+[tool.coverage.run]
+branch = false
+source = ["b3_core"]
+# Optional / offline paths: not exercised on default CI (no FEniCSx/ccx/anim
+# extras; sweep GIFs and legacy post CLIs are manual demos).
+omit = [
+    "*/b3_core/io/fenicsx.py",
+    "*/b3_core/io/runccx.py",
+    "*/b3_core/io/vts2ccx_planar.py",
+    "*/b3_core/viz/animate.py",
+    "*/b3_core/sweep/gifs.py",
+    "*/b3_core/sweep/plots.py",
+    "*/b3_core/sweep/render_viz.py",
+    "*/b3_core/post/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 88

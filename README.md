@@ -5,6 +5,7 @@
 [![CI](https://github.com/wr1/b3_core/actions/workflows/ci.yml/badge.svg)](https://github.com/wr1/b3_core/actions/workflows/ci.yml)
 [![Release](https://github.com/wr1/b3_core/actions/workflows/release.yml/badge.svg)](https://github.com/wr1/b3_core/actions/workflows/release.yml)
 [![Pages](https://github.com/wr1/b3_core/actions/workflows/pages.yml/badge.svg)](https://wr1.github.io/b3_core/)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/wr1/b3_core/master/badges/coverage.json)](https://github.com/wr1/b3_core/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/v/release/wr1/b3_core)](https://github.com/wr1/b3_core/releases)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -84,14 +85,23 @@ make install           # uv sync --extra dev && pre-commit install
 make lint              # ruff check src tests
 make format            # ruff format + ruff check --fix
 make pre-commit        # full hook suite (ruff format/lint + basic files)
-make test              # pytest
+make test              # pytest (+ coverage; fail under 72%)
+make cov               # same + refresh badges/coverage.json
+```
+
+Coverage is measured with `pytest-cov` on the mainline package (optional FEniCSx /
+ccx / anim / offline-sweep modules are omitted — see `pyproject.toml`). CI
+enforces `--cov-fail-under=72`. Refresh the README badge after a local run:
+
+```bash
+make cov
 ```
 
 GitHub Actions (`.github/workflows/`):
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **CI** | push / PR to `master` | pre-commit (ruff) + pytest on 3.11 & 3.12 |
+| **CI** | push / PR to `master` | pre-commit (ruff) + pytest + coverage on 3.11 & 3.12 |
 | **Release** | tag `v*` | build sdist/wheel, GitHub Release with notes |
 | **Pages** | push of `site/` | deploy prebuilt docs to GitHub Pages |
 

@@ -17,7 +17,7 @@ SITE_DIR ?= site
 CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
-.PHONY: help install test lint format pre-commit run sweep \
+.PHONY: help install test cov lint format pre-commit run sweep \
 	selfdoc docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
@@ -36,7 +36,7 @@ help: ## List targets (default goal)
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 	@printf '%b\n' \
 		'' \
-		'Dev: make install | make lint | make format | make pre-commit | make test' \
+		'Dev: make install | make lint | make format | make pre-commit | make test | make cov' \
 		'DocKB: make selfdoc | make docs | make docs-build | make docs-preview' \
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
@@ -45,8 +45,12 @@ install: ## uv sync (+ dev extras)
 	$(UV) sync --extra dev
 	$(RUN) pre-commit install
 
-test: ## pytest
+test: ## pytest (+ coverage; fail under pyproject threshold)
 	$(RUN) pytest
+
+cov: ## pytest with coverage JSON + refresh badges/coverage.json
+	$(RUN) pytest --cov-report=json:coverage.json
+	$(RUN) python scripts/update_coverage_badge.py
 
 lint: ## ruff check (src + tests)
 	$(RUN) ruff check src tests

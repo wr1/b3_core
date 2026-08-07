@@ -78,7 +78,8 @@ jobs:
             ".[dev]"
 
       # CalculiX / typst not installed — related tests self-skip.
+      # Coverage: pytest-cov via pyproject addopts (--cov-fail-under=72).
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest -q --tb=short
+          pytest -q --tb=short --cov-report=term-missing:skip-covered
