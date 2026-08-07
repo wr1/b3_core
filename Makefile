@@ -1,17 +1,24 @@
 # Self-documenting: `make` (or `make help`) lists targets.
 # Viz and offline extras: `b3_core viz …` and examples/offline/.
-# DocKB: `make selfdoc` (tree) · `make docs` (serve) · PORT=3011 DOCKB=dockb
+# DocKB: `make selfdoc` (tree) · `make docs` (serve) · `make docs-build` (static)
+#        PORT=3011 DOCKB=dockb  DOCS_BASE=/b3_core  PREVIEW_PORT=4173
 
 UV ?= uv
 RUN ?= $(UV) run
 B3 ?= $(RUN) b3_core
 DOCKB ?= dockb
+DOCKB_EXPORT ?= dockb-export
 PORT ?= 3000
+PREVIEW_PORT ?= 4173
+# GitHub Pages project site: https://wr1.github.io/b3_core/
+DOCS_BASE ?= /b3_core
+SITE_DIR ?= site
 
 CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
-.PHONY: help install test lint format pre-commit run sweep selfdoc docs docs-serve docs-open docs-static
+.PHONY: help install test lint format pre-commit run sweep \
+	selfdoc docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
 
@@ -21,7 +28,8 @@ help: ## List targets (default goal)
 		'' \
 		'Variables:' \
 		'  UV=$(UV)  RUN=$(RUN)  DOCKB=$(DOCKB)  PORT=$(PORT)' \
-		'  CASE=$(CASE)  SWEEP_ROOT=$(SWEEP_ROOT)' \
+		'  DOCKB_EXPORT=$(DOCKB_EXPORT)  DOCS_BASE=$(DOCS_BASE)  SITE_DIR=$(SITE_DIR)' \
+		'  PREVIEW_PORT=$(PREVIEW_PORT)  CASE=$(CASE)  SWEEP_ROOT=$(SWEEP_ROOT)' \
 		'' \
 		'Targets:'
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -29,7 +37,7 @@ help: ## List targets (default goal)
 	@printf '%b\n' \
 		'' \
 		'Dev: make install | make lint | make format | make pre-commit | make test' \
-		'DocKB: make selfdoc | make docs | make docs-open' \
+		'DocKB: make selfdoc | make docs | make docs-build | make docs-preview' \
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
 
@@ -102,6 +110,36 @@ docs-static: ## list docs/ MDX tree (no server)
 		find kb/dev -type f \( -name '*.md' -o -name 'README.md' \) 2>/dev/null | sort | sed 's|^|  |'; \
 		echo ""; \
 	fi
-	@echo "Serve rendered site:  make docs          # needs dockb"
-	@echo "Open in browser:      make docs-open     # after make docs (PORT=$(PORT))"
+	@echo "Live server:          make docs              # needs dockb"
+	@echo "Static export:        make docs-build        # → $(SITE_DIR)/ for Pages"
+	@echo "Preview export:       make docs-preview      # http://localhost:$(PREVIEW_PORT)$(DOCS_BASE)/"
+	@echo "Published:            https://wr1.github.io/b3_core/"
 	@echo "Raw entry:            docs/index.mdx  docs/guides/  docs/concepts/  docs/reference/"
+
+docs-build: ## static HTML export → site/ (basePath=$(DOCS_BASE); needs dockb-export)
+	@command -v $(DOCKB_EXPORT) >/dev/null 2>&1 || { \
+		echo "dockb-export not found on PATH."; \
+		echo "  ln -s \$$HOME/apps/dockb-runtime/bin/dockb-export ~/.local/bin/dockb-export"; \
+		echo "  (or set DOCKB_EXPORT=/path/to/dockb-export)"; \
+		exit 1; \
+	}
+	@test -d docs || { echo "missing docs/ — run from repo root"; exit 1; }
+	$(DOCKB_EXPORT) $(SITE_DIR) $(DOCS_BASE)
+	@touch $(SITE_DIR)/.nojekyll
+	@test -f $(SITE_DIR)/index.html && test -d $(SITE_DIR)/docs && test -d $(SITE_DIR)/figures || { \
+		echo "docs-build: incomplete export under $(SITE_DIR)/"; exit 1; \
+	}
+	@echo "docs-build: ready — make docs-preview, or commit $(SITE_DIR)/ for GitHub Pages"
+	@echo "  live URL: https://wr1.github.io/b3_core/"
+
+docs-preview: ## serve prebuilt site/ with basePath (default port $(PREVIEW_PORT))
+	@test -f $(SITE_DIR)/index.html || { \
+		echo "missing $(SITE_DIR)/index.html — run: make docs-build"; exit 1; \
+	}
+	@root=$$(mktemp -d /tmp/b3_core-pages.XXXXXX); \
+	ln -sfn "$$(cd $(SITE_DIR) && pwd)" "$$root/b3_core"; \
+	url="http://localhost:$(PREVIEW_PORT)$(DOCS_BASE)/docs/"; \
+	echo "docs-preview: $$url"; \
+	echo "  (static root $$root — Ctrl-C to stop)"; \
+	if command -v xdg-open >/dev/null 2>&1; then (sleep 0.4; xdg-open "$$url") >/dev/null 2>&1 & fi; \
+	python3 -m http.server $(PREVIEW_PORT) --directory "$$root"

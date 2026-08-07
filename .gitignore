@@ -117,8 +117,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
+# Prebuilt DocKB static export lives in site/ and is committed for GitHub Pages
+# (https://wr1.github.io/b3_core/). Rebuild with: make docs-build
 
 # mypy
 .mypy_cache/

@@ -4,10 +4,12 @@
 
 [![CI](https://github.com/wr1/b3_core/actions/workflows/ci.yml/badge.svg)](https://github.com/wr1/b3_core/actions/workflows/ci.yml)
 [![Release](https://github.com/wr1/b3_core/actions/workflows/release.yml/badge.svg)](https://github.com/wr1/b3_core/actions/workflows/release.yml)
+[![Pages](https://github.com/wr1/b3_core/actions/workflows/pages.yml/badge.svg)](https://wr1.github.io/b3_core/)
 [![GitHub release](https://img.shields.io/github/v/release/wr1/b3_core)](https://github.com/wr1/b3_core/releases)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://wr1.github.io/b3_core/)
 
 Homogenized elastic properties for sandwich-panel cores with sawcuts and
 machined grooves. The cuts fill with resin during infusion, altering the
@@ -91,6 +93,26 @@ GitHub Actions (`.github/workflows/`):
 |----------|---------|--------------|
 | **CI** | push / PR to `master` | pre-commit (ruff) + pytest on 3.11 & 3.12 |
 | **Release** | tag `v*` | build sdist/wheel, GitHub Release with notes |
+| **Pages** | push of `site/` | deploy prebuilt docs to GitHub Pages |
+
+## Documentation
+
+Rendered docs (static DocKB export): **[https://wr1.github.io/b3_core/](https://wr1.github.io/b3_core/)**
+
+| Source | Role |
+|--------|------|
+| `docs/*.mdx` | Public guides, concepts, reference (edit these) |
+| `public/figures/` | Figures copied into the static site |
+| `site/` | Prebuilt HTML for GitHub Pages (`basePath=/b3_core`) |
+| `make docs` | Live DocKB server (shared `dockb` runtime) |
+| `make docs-build` | Static export → `site/` via `dockb-export` |
+| `make docs-preview` | Local preview of the Pages build |
+
+```bash
+make docs-build      # needs dockb-export on PATH (shared dockb-runtime)
+make docs-preview    # http://localhost:4173/b3_core/docs/
+# commit site/ and push → Pages workflow deploys
+```
 
 ## Release
 
