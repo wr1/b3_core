@@ -67,7 +67,9 @@ def _font(size: int, *, bold: bool = False):
     from PIL import ImageFont
 
     path = font_manager.findfont(
-        font_manager.FontProperties(family="DejaVu Sans", weight="bold" if bold else "normal")
+        font_manager.FontProperties(
+            family="DejaVu Sans", weight="bold" if bold else "normal"
+        )
     )
     return ImageFont.truetype(path, size)
 
@@ -100,7 +102,9 @@ def ease(t: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
-def _bend_points(points: np.ndarray, kappa: float, axis: int = 0, z_ref=None) -> np.ndarray:
+def _bend_points(
+    points: np.ndarray, kappa: float, axis: int = 0, z_ref=None
+) -> np.ndarray:
     """Wrap a flat slab onto a cylinder of radius 1/kappa (visual drape).
 
     Bending hinges about the mid-``axis`` line at height ``z_ref``; thickness is
@@ -128,9 +132,15 @@ def _curved_grid(inp: dict, kappa: float):
     RVE, then material ``x`` is mapped onto a cylinder for the drape shot.
     """
     mesh = create_grooved_mesh(
-        thickness=inp["thickness"], dx=inp["dx"], dy=inp["dy"],
-        xcuts=inp["xgr"], ycuts=inp["ygr"], madd=tuple(inp["madd"]),
-        tface=(inp.get("face") or {}).get("thickness", 0.0), kx=kappa, ky=0.0,
+        thickness=inp["thickness"],
+        dx=inp["dx"],
+        dy=inp["dy"],
+        xcuts=inp["xgr"],
+        ycuts=inp["ygr"],
+        madd=tuple(inp["madd"]),
+        tface=(inp.get("face") or {}).get("thickness", 0.0),
+        kx=kappa,
+        ky=0.0,
     )
     grid = mesh.cast_to_unstructured_grid()
     grid.cell_data["__phase"] = geometry.cell_material(mesh)
@@ -148,7 +158,9 @@ def _curvature_stations(inp: dict, kappa_max: float, n: int = 6):
         ec = model.engineering_constants
         ey.append(ec["E_y"])
         ez.append(ec["E_z"])
-        logger.info("curvature station kx=%.4g: E_y=%.3g E_z=%.3g", k, ec["E_y"], ec["E_z"])
+        logger.info(
+            "curvature station kx=%.4g: E_y=%.3g E_z=%.3g", k, ec["E_y"], ec["E_z"]
+        )
     return kappas, np.array(ey), np.array(ez)
 
 
@@ -166,9 +178,27 @@ def _inset_plot(stations, upto: float, theme: CoreTheme, px: int):
     ax = fig.add_subplot(111)
     fig.patch.set_alpha(0.0)
     ax.set_facecolor((0, 0, 0, 0.0))
-    ax.plot(kap[:n] * 1e3, ey[:n] / 1e9, "-o", color=theme.resin_color, ms=3, lw=1.6, label=r"$E_y$")
-    ax.plot(kap[:n] * 1e3, ez[:n] / 1e9, "-o", color=theme.face_color, ms=3, lw=1.6, label=r"$E_z$")
-    ax.set_xlabel(r"curvature $\kappa\,\cdot 10^{3}$  [1/mm]", color="white", fontsize=8)
+    ax.plot(
+        kap[:n] * 1e3,
+        ey[:n] / 1e9,
+        "-o",
+        color=theme.resin_color,
+        ms=3,
+        lw=1.6,
+        label=r"$E_y$",
+    )
+    ax.plot(
+        kap[:n] * 1e3,
+        ez[:n] / 1e9,
+        "-o",
+        color=theme.face_color,
+        ms=3,
+        lw=1.6,
+        label=r"$E_z$",
+    )
+    ax.set_xlabel(
+        r"curvature $\kappa\,\cdot 10^{3}$  [1/mm]", color="white", fontsize=8
+    )
     ax.set_ylabel(r"$E$  [GPa]", color="white", fontsize=8)
     ax.set_xlim(0, kap[-1] * 1e3 * 1.02)
     lo = min(ey.min(), ez.min()) / 1e9
@@ -203,7 +233,9 @@ def _compose(raw, *, title, caption, progress, theme, inset=None, big=None, logo
 
     draw.text((W * 0.03, H * 0.035), title, font=f_title, fill=(255, 255, 255, 205))
     cap_w = draw.textlength(caption, font=f_cap)
-    draw.text(((W - cap_w) / 2, H * 0.895), caption, font=f_cap, fill=(255, 255, 255, 240))
+    draw.text(
+        ((W - cap_w) / 2, H * 0.895), caption, font=f_cap, fill=(255, 255, 255, 240)
+    )
 
     draw.rectangle([0, H - max(5, H // 180), W, H], fill=(255, 255, 255, 30))
     draw.rectangle([0, H - max(5, H // 180), int(W * progress), H], fill=accent)
@@ -233,10 +265,10 @@ class _Ctx:
     stations: tuple
     size: tuple
     kappa_max: float
-    gt: float = 0.0          # global progress 0..1 (set by the timeline)
+    gt: float = 0.0  # global progress 0..1 (set by the timeline)
     inset: object = None
     big: list = field(default_factory=list)
-    strain_plotter: object = None   # lazily-built 2x3 montage for the strain finale
+    strain_plotter: object = None  # lazily-built 2x3 montage for the strain finale
 
 
 def _new_frame(ctx: _Ctx):
@@ -282,8 +314,13 @@ def _scene_geometry(ctx, t):
         p.add_mesh(cshow, color=ctx.theme.core_color, opacity=0.16, smooth_shading=True)
     gshow = _rise(grooves)
     if gshow.n_cells:
-        p.add_mesh(gshow, color="#6b7488", show_edges=True,
-                   edge_color=ctx.theme.resin_color, line_width=0.6)
+        p.add_mesh(
+            gshow,
+            color="#6b7488",
+            show_edges=True,
+            edge_color=ctx.theme.resin_color,
+            line_width=0.6,
+        )
     _camera(ctx, zoom=1.05)
     return _shot(ctx)
 
@@ -296,10 +333,19 @@ def _scene_resin(ctx, t):
     if resin.n_cells:
         zmin, zmax = resin.bounds[4], resin.bounds[5]
         level = zmin + ease(t) * (zmax - zmin) * 1.06
-        shown = resin.clip(normal=(0, 0, 1), origin=(0, 0, level), invert=True) if t < 0.99 else resin
+        shown = (
+            resin.clip(normal=(0, 0, 1), origin=(0, 0, level), invert=True)
+            if t < 0.99
+            else resin
+        )
         if shown.n_cells:
-            p.add_mesh(shown, color=ctx.theme.resin_color, show_edges=True,
-                       edge_color=ctx.theme.edge_color, line_width=0.4)
+            p.add_mesh(
+                shown,
+                color=ctx.theme.resin_color,
+                show_edges=True,
+                edge_color=ctx.theme.edge_color,
+                line_width=0.4,
+            )
     _camera(ctx, zoom=1.05)
     return _shot(ctx)
 
@@ -310,8 +356,13 @@ def _scene_mesh(ctx, t):
     p.add_mesh(ph["core"], color=ctx.theme.core_color, opacity=ctx.theme.core_opacity)
     if ph["resin"].n_cells:
         p.add_mesh(ph["resin"], color=ctx.theme.resin_color)
-    p.add_mesh(ctx.model.mesh, style="wireframe", color=ctx.theme.resin_color,
-               line_width=1.0, opacity=0.12 + 0.55 * ease(t))
+    p.add_mesh(
+        ctx.model.mesh,
+        style="wireframe",
+        color=ctx.theme.resin_color,
+        line_width=1.0,
+        opacity=0.12 + 0.55 * ease(t),
+    )
     _camera(ctx, zoom=1.05)
     return _shot(ctx)
 
@@ -330,9 +381,16 @@ def _scene_slices(ctx, t):
             origin = list(center)
             sl = view.slice(normal=axis, origin=origin)
             if sl.n_cells:
-                p.add_mesh(sl, scalars="__phase", cmap=ctx.theme.phase_colors(),
-                           clim=[0, 2], show_scalar_bar=False, show_edges=True,
-                           edge_color=ctx.theme.edge_color, line_width=0.25)
+                p.add_mesh(
+                    sl,
+                    scalars="__phase",
+                    cmap=ctx.theme.phase_colors(),
+                    clim=[0, 2],
+                    show_scalar_bar=False,
+                    show_edges=True,
+                    edge_color=ctx.theme.edge_color,
+                    line_width=0.25,
+                )
     _camera(ctx, zoom=1.05)
     return _shot(ctx)
 
@@ -346,10 +404,17 @@ def _scene_curvature(ctx, t):
     if core.n_cells:
         p.add_mesh(core, color=ctx.theme.core_color, opacity=ctx.theme.core_opacity)
     if resin.n_cells:
-        p.add_mesh(resin, color=ctx.theme.resin_color, show_edges=True,
-                   edge_color=ctx.theme.edge_color, line_width=0.4)
+        p.add_mesh(
+            resin,
+            color=ctx.theme.resin_color,
+            show_edges=True,
+            edge_color=ctx.theme.edge_color,
+            line_width=0.4,
+        )
     _camera(ctx, zoom=1.0, az0=20.0, az_span=110.0)
-    ctx.inset = _inset_plot(ctx.stations, ease(t), ctx.theme, px=int(ctx.size[0] * 0.30))
+    ctx.inset = _inset_plot(
+        ctx.stations, ease(t), ctx.theme, px=int(ctx.size[0] * 0.30)
+    )
     R = 1.0 / k if k > 1e-9 else float("inf")
     r_txt = "flat" if R == float("inf") else f"R = {R:.0f} mm"
     ctx.big = [
@@ -385,8 +450,13 @@ def _scene_strains(ctx, t):
         if core.n_cells:
             p.add_mesh(core, color=ctx.theme.core_color, opacity=0.10)
         if resin.n_cells:
-            p.add_mesh(resin, scalars="umag_mm", cmap=ctx.theme.cmap_displacement,
-                       opacity=0.72, show_scalar_bar=False)
+            p.add_mesh(
+                resin,
+                scalars="umag_mm",
+                cmap=ctx.theme.cmap_displacement,
+                opacity=0.72,
+                show_scalar_bar=False,
+            )
         p.add_text(f"strain {lc}", font_size=fsz, color="white")
         p.camera_position = "iso"
     ctx.big = []
@@ -448,7 +518,11 @@ def render_explainer(
         str(out), fps=fps, codec="libx264", quality=8, macro_block_size=None
     )
     gif_path = out.with_suffix(".gif")
-    gif_writer = imageio.get_writer(str(gif_path), mode="I", duration=1.0 / min(fps, 12)) if gif else None
+    gif_writer = (
+        imageio.get_writer(str(gif_path), mode="I", duration=1.0 / min(fps, 12))
+        if gif
+        else None
+    )
     gif_step = max(1, round(fps / 12))
     gif_w = max(120, size[0] // 2)
     gif_h = max(120, size[1] // 2)
@@ -461,8 +535,14 @@ def render_explainer(
                 ctx.gt = idx / max(1, total - 1)
                 raw = fn(ctx, t)
                 frame = _compose(
-                    raw, title=_TITLE, caption=caption, progress=(idx + 1) / total,
-                    theme=theme, inset=ctx.inset, big=ctx.big, logo=logo_img,
+                    raw,
+                    title=_TITLE,
+                    caption=caption,
+                    progress=(idx + 1) / total,
+                    theme=theme,
+                    inset=ctx.inset,
+                    big=ctx.big,
+                    logo=logo_img,
                 )
                 mp4_writer.append_data(frame)
                 if gif_writer is not None and idx % gif_step == 0:

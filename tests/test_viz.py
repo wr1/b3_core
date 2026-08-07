@@ -87,8 +87,12 @@ def test_orthogonal_cuts_figure():
 def test_scene_geometry_screenshot(tmp_path):
     m = CoreModel.from_json(MESH_CASE)
     out = (
-        CoreScene(m).add_phases(edges=True).add_mesh_edges().add_axes()
-        .isometric().screenshot(tmp_path / "geom.png")
+        CoreScene(m)
+        .add_phases(edges=True)
+        .add_mesh_edges()
+        .add_axes()
+        .isometric()
+        .screenshot(tmp_path / "geom.png")
     )
     assert out.stat().st_size > 5000
 
@@ -100,7 +104,9 @@ def test_model_stiffness_and_modulus_scene(tmp_path):
     C = m.stiffness
     assert C.shape == (6, 6)
     assert np.allclose(C, C.T, atol=1e-3)
-    out = CoreScene(m).add_modulus_surface().isometric().screenshot(tmp_path / "mod.png")
+    out = (
+        CoreScene(m).add_modulus_surface().isometric().screenshot(tmp_path / "mod.png")
+    )
     assert out.stat().st_size > 5000
 
 

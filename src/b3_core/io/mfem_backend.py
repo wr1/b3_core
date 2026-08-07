@@ -7,8 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .fenicsx import _properties_from_stiffness, LOAD_CASES
-
+from .fenicsx import LOAD_CASES, _properties_from_stiffness
 
 # The pyvista StructuredGrid hexahedra are wound so that the raw VTK
 # connectivity yields a negative Jacobian in MFEM; swapping the bottom and top
@@ -180,9 +179,7 @@ def runmfem(mesh, resin, core, face=None, *, return_details=False):
     if return_details:
         vmap = base.CreatePeriodicVertexMapping(translations)
         v2v = np.array([vmap[i] for i in range(len(points))], dtype=np.int64)
-        pverts = np.array(
-            [periodic.GetVertexArray(i) for i in range(periodic.GetNV())]
-        )
+        pverts = np.array([periodic.GetVertexArray(i) for i in range(periodic.GetNV())])
         pindex = {
             (round(float(p[0]), 9), round(float(p[1]), 9), round(float(p[2]), 9)): j
             for j, p in enumerate(pverts)
@@ -269,7 +266,7 @@ def runmfem(mesh, resin, core, face=None, *, return_details=False):
     stiffness = np.zeros((6, 6), dtype=np.float64)
     for k, case_k in enumerate(LOAD_CASES):
         strain_k = _macro_strain(case_k)
-        for l, case_l in enumerate(LOAD_CASES):
+        for j, case_l in enumerate(LOAD_CASES):
             strain_l = _macro_strain(case_l)
             energy = sum(
                 volume_by_attr[p]
@@ -279,8 +276,8 @@ def runmfem(mesh, resin, core, face=None, *, return_details=False):
                 )
                 for p in present
             )
-            stiffness[k, l] = (
-                energy + load_vectors[k].dot(correctors[l])
+            stiffness[k, j] = (
+                energy + load_vectors[k].dot(correctors[j])
             ) / total_volume
 
     stiffness = 0.5 * (stiffness + stiffness.T)

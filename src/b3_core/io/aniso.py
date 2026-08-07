@@ -23,13 +23,22 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .fenicsx import _properties_from_stiffness, LOAD_CASES
+from .fenicsx import LOAD_CASES, _properties_from_stiffness
 
 # VTK hexahedron corner parametric coordinates in [-1, 1] (matches grid.cells order).
-_HEX_NODES = np.array([
-    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-], dtype=np.float64)
+_HEX_NODES = np.array(
+    [
+        [-1, -1, -1],
+        [1, -1, -1],
+        [1, 1, -1],
+        [-1, 1, -1],
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, 1],
+        [-1, 1, 1],
+    ],
+    dtype=np.float64,
+)
 _GP = np.array([-1.0, 1.0]) / np.sqrt(3.0)  # 2-point Gauss
 # Unit macroscopic strain (engineering Voigt) for each load case.
 _UNIT = np.eye(6)
@@ -80,9 +89,15 @@ def material_C(mat: dict) -> np.ndarray:
     """6x6 stiffness from a material dict (isotropic E/nu or orthotropic E1.. )."""
     if mat.get("E1") is not None:
         return orthotropic_C(
-            mat["E1"], mat["E2"], mat["E3"],
-            mat["G12"], mat["G13"], mat["G23"],
-            mat["nu12"], mat["nu13"], mat["nu23"],
+            mat["E1"],
+            mat["E2"],
+            mat["E3"],
+            mat["G12"],
+            mat["G13"],
+            mat["G23"],
+            mat["nu12"],
+            mat["nu13"],
+            mat["nu23"],
         )
     return isotropic_C(mat["E"], mat["nu"])
 
@@ -120,17 +135,19 @@ def _shape_values():
     for zk in _GP:
         for ej in _GP:
             for xi in _GP:
-                N = np.array([
-                    0.125 * (1 + xa * xi) * (1 + ya * ej) * (1 + za * zk)
-                    for xa, ya, za in _HEX_NODES
-                ])
+                N = np.array(
+                    [
+                        0.125 * (1 + xa * xi) * (1 + ya * ej) * (1 + za * zk)
+                        for xa, ya, za in _HEX_NODES
+                    ]
+                )
                 out.append(N)
     return np.array(out)
 
 
-_DN = _shape_grads()       # (8, 8, 3)
+_DN = _shape_grads()  # (8, 8, 3)
 _DN_C = _shape_grads_center()
-_N = _shape_values()       # (8 gp, 8 node)
+_N = _shape_values()  # (8 gp, 8 node)
 
 # (bx + 2by + 4bz) corner sign-pattern -> local slot matching _HEX_NODES order.
 _CANON_LUT = np.array([0, 1, 3, 2, 4, 5, 7, 6])
@@ -147,9 +164,11 @@ def _canonicalize(points, cells):
     for e, conn in enumerate(cells):
         c = points[conn]
         mid = c.mean(axis=0)
-        key = ((c[:, 0] > mid[0]).astype(int)
-               + 2 * (c[:, 1] > mid[1]).astype(int)
-               + 4 * (c[:, 2] > mid[2]).astype(int))
+        key = (
+            (c[:, 0] > mid[0]).astype(int)
+            + 2 * (c[:, 1] > mid[1]).astype(int)
+            + 4 * (c[:, 2] > mid[2]).astype(int)
+        )
         out[e, _CANON_LUT[key]] = conn
     return out
 
@@ -163,11 +182,11 @@ def _bmat(dN_xyz):
         B[0, c] = bx
         B[1, c + 1] = by
         B[2, c + 2] = bz
-        B[3, c + 1] = bz   # gamma_yz
+        B[3, c + 1] = bz  # gamma_yz
         B[3, c + 2] = by
-        B[4, c] = bz       # gamma_xz
+        B[4, c] = bz  # gamma_xz
         B[4, c + 2] = bx
-        B[5, c] = by       # gamma_xy
+        B[5, c] = by  # gamma_xy
         B[5, c + 1] = bx
     return B
 
@@ -212,18 +231,18 @@ def homogenize_aniso(points_m, cells, gp_C):
 
     # Per-element B, detJ*w at each Gauss point, plus centre B and volume.
     Ke = np.zeros((n_elem, 24, 24))
-    fe = np.zeros((n_elem, 24, 6))          # macro-strain load: integral B^T C eps0
-    Bc = np.zeros((n_elem, 6, 24))          # B at element centre
+    fe = np.zeros((n_elem, 24, 6))  # macro-strain load: integral B^T C eps0
+    Bc = np.zeros((n_elem, 6, 24))  # B at element centre
     vol = np.zeros(n_elem)
-    T1 = np.zeros((6, 6))                   # integral of C (energy-reduction term)
+    T1 = np.zeros((6, 6))  # integral of C (energy-reduction term)
     edofs = np.zeros((n_elem, 24), dtype=np.int64)
     for e, conn in enumerate(cells):
-        X = points_m[conn]                  # (8,3)
+        X = points_m[conn]  # (8,3)
         for gp in range(8):
-            J = _DN[gp].T @ X               # (3,3)
+            J = _DN[gp].T @ X  # (3,3)
             dN_xyz = _DN[gp] @ np.linalg.inv(J)
             B = _bmat(dN_xyz)
-            w = abs(np.linalg.det(J))       # |detJ| * Gauss weight(=1)
+            w = abs(np.linalg.det(J))  # |detJ| * Gauss weight(=1)
             C = gp_C[e, gp]
             Ke[e] += (B.T @ C @ B) * w
             fe[e] += (B.T @ C) * w
@@ -232,19 +251,17 @@ def homogenize_aniso(points_m, cells, gp_C):
         Jc = _DN_C.T @ X
         Bc[e] = _bmat(_DN_C @ np.linalg.inv(Jc))
         mdofs = master_of[conn]
-        edofs[e] = (3 * np.repeat(mdofs, 3) + np.tile([0, 1, 2], 8))
+        edofs[e] = 3 * np.repeat(mdofs, 3) + np.tile([0, 1, 2], 8)
 
     # Assemble global K (periodic nodes accumulate via shared master dofs).
     rows = np.repeat(edofs, 24, axis=1).reshape(n_elem, 24, 24)
     cols = np.tile(edofs, (1, 24)).reshape(n_elem, 24, 24)
-    K = csr_matrix(
-        (Ke.ravel(), (rows.ravel(), cols.ravel())), shape=(ndof, ndof)
-    )
+    K = csr_matrix((Ke.ravel(), (rows.ravel(), cols.ravel())), shape=(ndof, ndof))
 
     # Macro-strain load vectors L_k = sum_e fe @ eps0_k, assembled to master dofs.
     L = np.zeros((ndof, 6))
     for e in range(n_elem):
-        np.add.at(L, edofs[e], fe[e])       # fe[e] is (24,6)
+        np.add.at(L, edofs[e], fe[e])  # fe[e] is (24,6)
 
     # Pin master 0's 3 dofs to kill rigid translation; solve K w = -L on free dofs.
     free = np.ones(ndof, dtype=bool)
@@ -259,8 +276,8 @@ def homogenize_aniso(points_m, cells, gp_C):
     # Total element strain at centre for each unit case: eps0_k + Bc @ w_k.
     elem_strain = np.zeros((n_elem, 6, 6))  # (elem, case, voigt)
     for e in range(n_elem):
-        we = W[edofs[e]]                    # (24, 6)
-        elem_strain[e] = _UNIT.T + (Bc[e] @ we).T   # row k = eps0_k + Bc w_k
+        we = W[edofs[e]]  # (24, 6)
+        elem_strain[e] = _UNIT.T + (Bc[e] @ we).T  # row k = eps0_k + Bc w_k
 
     # Exact energy reduction (matches the MFEM backend): the integral of the
     # constituent stiffness (T1, accumulated over Gauss points above) plus the
@@ -270,7 +287,9 @@ def homogenize_aniso(points_m, cells, gp_C):
     stiffness = 0.5 * (stiffness + stiffness.T)
 
     info = {
-        "master_of": master_of, "W": W, "vol": vol,
+        "master_of": master_of,
+        "W": W,
+        "vol": vol,
         "elem_strain": elem_strain,
     }
     return stiffness, info
@@ -281,7 +300,11 @@ def homogenize_aniso(points_m, cells, gp_C):
 # --------------------------------------------------------------------------- #
 # Allowable in-situ resin failure strain from uniaxial grid-scored tension tests
 # (Laustsen et al. 2014, Table 3); the resin grid fails brittle far below bulk.
-ALLOWABLE_RESIN_STRAIN = {"H60_resinA": 8443e-6, "H130_resinA": 13120e-6, "resinB": 5194e-6}
+ALLOWABLE_RESIN_STRAIN = {
+    "H60_resinA": 8443e-6,
+    "H130_resinA": 13120e-6,
+    "resinB": 5194e-6,
+}
 
 
 def _max_principal_strain(eps_voigt: np.ndarray) -> np.ndarray:
@@ -289,7 +312,7 @@ def _max_principal_strain(eps_voigt: np.ndarray) -> np.ndarray:
     e = np.asarray(eps_voigt, dtype=float).reshape(-1, 6)
     T = np.zeros((len(e), 3, 3))
     T[:, 0, 0], T[:, 1, 1], T[:, 2, 2] = e[:, 0], e[:, 1], e[:, 2]
-    T[:, 1, 2] = T[:, 2, 1] = 0.5 * e[:, 3]   # gamma/2
+    T[:, 1, 2] = T[:, 2, 1] = 0.5 * e[:, 3]  # gamma/2
     T[:, 0, 2] = T[:, 2, 0] = 0.5 * e[:, 4]
     T[:, 0, 1] = T[:, 1, 0] = 0.5 * e[:, 5]
     return np.linalg.eigvalsh(T)[:, -1]
@@ -334,34 +357,47 @@ def resin_failure_index(
 
 
 def _unit_grid(resolution: int) -> np.ndarray:
-    t = (np.arange(resolution) + 0.5) / resolution        # cell-centred in [0,1]
+    t = (np.arange(resolution) + 0.5) / resolution  # cell-centred in [0,1]
     return np.stack(np.meshgrid(t, t, t, indexing="ij"), -1).reshape(-1, 3)
 
 
-def gauss_point_resin_P(points_m, cells, score_field, *, strategy="exact",
-                        resolution=3, idw_power=2.0) -> np.ndarray:
+def gauss_point_resin_P(
+    points_m, cells, score_field, *, strategy="exact", resolution=3, idw_power=2.0
+) -> np.ndarray:
     """P(resin) at each element's 8 Gauss points -> (n_elem, 8).
 
     ``strategy="exact"`` samples the field at the Gauss point; ``"local_cloud"``
     samples a ``resolution**3`` cloud of material sub-points per element and
     inverse-distance-weights them to each Gauss point (sub-element averaging).
     """
-    Xe = points_m[cells]                                  # (n, 8, 3) metres
-    gp = np.einsum("gn,enj->egj", _N, Xe) * 1000.0        # (n, 8, 3) mm Gauss coords
+    Xe = points_m[cells]  # (n, 8, 3) metres
+    gp = np.einsum("gn,enj->egj", _N, Xe) * 1000.0  # (n, 8, 3) mm Gauss coords
     n = len(cells)
     if strategy == "exact":
         return score_field.resin_probability(gp.reshape(-1, 3)).reshape(n, 8)
-    ref = _unit_grid(resolution)                          # (M, 3) in [0,1]
-    lo, hi = Xe.min(axis=1), Xe.max(axis=1)               # (n, 3) element AABB
-    cloud = (lo[:, None, :] + ref[None, :, :] * (hi - lo)[:, None, :]) * 1000.0   # (n,M,3) mm
-    Pc = score_field.resin_probability(cloud.reshape(-1, 3)).reshape(n, -1)       # (n, M)
-    dist = np.linalg.norm(gp[:, :, None, :] - cloud[:, None, :, :], axis=-1)      # (n, 8, M)
+    ref = _unit_grid(resolution)  # (M, 3) in [0,1]
+    lo, hi = Xe.min(axis=1), Xe.max(axis=1)  # (n, 3) element AABB
+    cloud = (
+        lo[:, None, :] + ref[None, :, :] * (hi - lo)[:, None, :]
+    ) * 1000.0  # (n,M,3) mm
+    Pc = score_field.resin_probability(cloud.reshape(-1, 3)).reshape(n, -1)  # (n, M)
+    dist = np.linalg.norm(
+        gp[:, :, None, :] - cloud[:, None, :, :], axis=-1
+    )  # (n, 8, M)
     w = 1.0 / np.maximum(dist, 1e-9) ** idw_power
-    return (w * Pc[:, None, :]).sum(-1) / w.sum(-1)       # (n, 8)
+    return (w * Pc[:, None, :]).sum(-1) / w.sum(-1)  # (n, 8)
 
 
-def runnumpy(mesh, resin, core, face=None, *, score_field=None, scoring=None,
-             return_details=False):
+def runnumpy(
+    mesh,
+    resin,
+    core,
+    face=None,
+    *,
+    score_field=None,
+    scoring=None,
+    return_details=False,
+):
     """Drop-in for runmfem using the numpy anisotropic homogeniser.
 
     Accepts isotropic or orthotropic material dicts. With a ``score_field``
@@ -404,11 +440,13 @@ def runnumpy(mesh, resin, core, face=None, *, score_field=None, scoring=None,
         if len(foam):
             sampling = (scoring or {}).get("sampling") or {}
             P = gauss_point_resin_P(
-                points, cells[foam], score_field,
+                points,
+                cells[foam],
+                score_field,
                 strategy=sampling.get("strategy", "exact"),
                 resolution=int(sampling.get("resolution", 3)),
                 idw_power=float(sampling.get("idw_power", 2.0)),
-            )                                       # (n_foam, 8)
+            )  # (n_foam, 8)
             p = P[:, :, None, None]
             gp_C[foam] = p * C_resin + (1.0 - p) * C_core
 
@@ -430,6 +468,12 @@ def runnumpy(mesh, resin, core, face=None, *, score_field=None, scoring=None,
         w_node = W[3 * master_of[:, None] + np.array([0, 1, 2]), k]
         displacements[case] = points @ e0 + w_node
     return AnisoResult(
-        properties, stiffness, compliance, displacements, points,
-        info["elem_strain"], attr, info["vol"],
+        properties,
+        stiffness,
+        compliance,
+        displacements,
+        points,
+        info["elem_strain"],
+        attr,
+        info["vol"],
     )

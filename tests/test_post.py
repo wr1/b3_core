@@ -1,9 +1,10 @@
-import pytest
 import numpy as np
+import pytest
 import pyvista as pv
 import vtk
-from b3_core.post.skins import postprocess
+
 from b3_core.post.planar import postprocess_planar
+from b3_core.post.skins import postprocess
 
 
 @pytest.fixture

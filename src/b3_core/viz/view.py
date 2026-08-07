@@ -32,7 +32,9 @@ class GroovedCoreView:
         return cls(CoreModel.from_json(path), theme=theme)
 
     @classmethod
-    def from_dict(cls, inp: dict, *, theme: CoreTheme = DEFAULT_THEME, **kw) -> "GroovedCoreView":
+    def from_dict(
+        cls, inp: dict, *, theme: CoreTheme = DEFAULT_THEME, **kw
+    ) -> "GroovedCoreView":
         return cls(CoreModel.from_dict(inp, **kw), theme=theme)
 
     def scene(self, *, off_screen: bool = True, **kw) -> CoreScene:
@@ -98,16 +100,24 @@ class GroovedCoreView:
         import matplotlib.pyplot as plt
 
         out = Path(out)
-        root = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="b3core_viz_"))
+        root = (
+            Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="b3core_viz_"))
+        )
         root.mkdir(parents=True, exist_ok=True)
 
         panels = [
             ("3D geometry", self.geometry_png(root / "geom.png")),
-            ("cutaway (internal architecture)", self.geometry_png(root / "cut.png", cutaway=True)),
+            (
+                "cutaway (internal architecture)",
+                self.geometry_png(root / "cut.png", cutaway=True),
+            ),
             ("directional modulus  E(n)", self.modulus_surface_png(root / "mod.png")),
             ("orthogonal cuts + mesh", self.slices_png(root / "cuts.png")),
             ("effective stiffness", self.stiffness_heatmap_png(root / "heat.png")),
-            ("directional modulus  E(theta)", self.modulus_polar_png(root / "polar.png")),
+            (
+                "directional modulus  E(theta)",
+                self.modulus_polar_png(root / "polar.png"),
+            ),
         ]
 
         fig, axes = plt.subplots(2, 3, figsize=(15, 8.6))
@@ -120,8 +130,8 @@ class GroovedCoreView:
         g = self.model.geom
         banner = (
             f"Grooved core — {self.model.name}        "
-            f"E = ({ec['E_x']/1e9:.2f}, {ec['E_y']/1e9:.2f}, {ec['E_z']/1e9:.2f}) GPa     "
-            f"G = ({ec['G_xy']/1e9:.2f}, {ec['G_xz']/1e9:.2f}, {ec['G_yz']/1e9:.2f}) GPa     "
+            f"E = ({ec['E_x'] / 1e9:.2f}, {ec['E_y'] / 1e9:.2f}, {ec['E_z'] / 1e9:.2f}) GPa     "
+            f"G = ({ec['G_xy'] / 1e9:.2f}, {ec['G_xz'] / 1e9:.2f}, {ec['G_yz'] / 1e9:.2f}) GPa     "
             f"nu = ({ec['nu_xy']:.2f}, {ec['nu_xz']:.2f}, {ec['nu_yz']:.2f})     "
             f"resin Vf = {g['resin_vf']:.3f}     rho = {g['rho_infused']:.0f} kg/m3"
         )

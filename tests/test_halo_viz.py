@@ -15,7 +15,11 @@ from b3_core.viz.halo import (
 )
 
 CASE = json.loads(
-    Path(__file__).resolve().parents[1].joinpath("examples/diab_gs30_scored.json").read_text()
+    Path(__file__)
+    .resolve()
+    .parents[1]
+    .joinpath("examples/diab_gs30_scored.json")
+    .read_text()
 )
 
 
@@ -37,6 +41,7 @@ def test_plot_halo_degradation_runs():
     fig, _ = plot_halo_degradation([0.3, 0.6], e_foam=70e6, e_resin=3e9)
     assert len(fig.axes) == 2
     import matplotlib.pyplot as plt
+
     plt.close(fig)
 
 
@@ -44,6 +49,7 @@ def test_plot_halo_side_cut_runs():
     fig, ax = plot_halo_side_cut(CASE)
     assert ax.images
     import matplotlib.pyplot as plt
+
     plt.close(fig)
 
 
@@ -51,6 +57,7 @@ def test_plot_halo_intuitive_board_runs():
     fig = plot_halo_intuitive_board(CASE)
     assert len(fig.axes) >= 3
     import matplotlib.pyplot as plt
+
     plt.close(fig)
 
 

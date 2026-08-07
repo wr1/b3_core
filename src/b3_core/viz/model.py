@@ -52,8 +52,12 @@ class CoreModel:
 
             i = self.inp
             self._mesh = create_grooved_mesh(
-                thickness=i["thickness"], dx=i["dx"], dy=i["dy"],
-                xcuts=i["xgr"], ycuts=i["ygr"], madd=tuple(i["madd"]),
+                thickness=i["thickness"],
+                dx=i["dx"],
+                dy=i["dy"],
+                xcuts=i["xgr"],
+                ycuts=i["ygr"],
+                madd=tuple(i["madd"]),
                 tface=(i.get("face") or {}).get("thickness", 0.0),
                 kx=(i.get("curvature") or {}).get("kx", 0.0),
                 ky=(i.get("curvature") or {}).get("ky", 0.0),
@@ -84,8 +88,7 @@ class CoreModel:
                 g["effective_resin_vf"] = eff
                 g["halo_vf"] = halo_vf
             g["rho_infused"] = (
-                self.inp["core"]["rho"] * (1.0 - eff)
-                + self.inp["resin"]["rho"] * eff
+                self.inp["core"]["rho"] * (1.0 - eff) + self.inp["resin"]["rho"] * eff
             )
             self._geom = g
         return self._geom
@@ -105,15 +108,22 @@ class CoreModel:
 
                 logger.info("running numpy anisotropic backend for %s", self.name)
                 self._details = aniso.runnumpy(
-                    self.mesh, self.inp["resin"], self.inp["core"],
-                    self.inp.get("face"), score_field=_score_field(self.inp),
-                    scoring=self.inp.get("scoring"), return_details=True,
+                    self.mesh,
+                    self.inp["resin"],
+                    self.inp["core"],
+                    self.inp.get("face"),
+                    score_field=_score_field(self.inp),
+                    scoring=self.inp.get("scoring"),
+                    return_details=True,
                 )
             else:
                 logger.info("running MFEM backend for %s", self.name)
                 self._details = mfem_backend.runmfem(
-                    self.mesh, self.inp["resin"], self.inp["core"],
-                    self.inp.get("face"), return_details=True,
+                    self.mesh,
+                    self.inp["resin"],
+                    self.inp["core"],
+                    self.inp.get("face"),
+                    return_details=True,
                 )
         return self._details
 

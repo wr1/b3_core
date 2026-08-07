@@ -3,9 +3,10 @@ import json
 import numpy as np
 import pytest
 import yaml
-from b3_core.core.mesh import create_grooves, create_grooved_mesh
+
 from b3_core.core.analysis import geom_analysis
 from b3_core.core.cprop import CpropInput, load_case
+from b3_core.core.mesh import create_grooved_mesh, create_grooves
 
 
 def test_create_grooves():

@@ -57,9 +57,7 @@ def test_cprop_mfem_validation_dispatch(monkeypatch, tmp_path):
     assert "mfem" in out["ccx_validation"]["properties"]["Exx"]
 
 
-@pytest.mark.skipif(
-    not mfem_backend.is_mfem_available(), reason="MFEM not installed"
-)
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
 def test_mfem_recovers_isotropic_tensor():
     """A homogeneous RVE (no grooves, no skin, core == resin) must recover the
     input isotropic tensor under true periodic BCs."""
@@ -67,7 +65,13 @@ def test_mfem_recovers_isotropic_tensor():
     g = e / (2.0 * (1.0 + nu))
     mat = {"E": e, "nu": nu, "rho": 100.0}
     mesh = create_grooved_mesh(
-        thickness=30.0, dx=50.0, dy=50.0, xcuts=[], ycuts=[], madd=[-0.3, 0, 0.3], tface=0.0
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[],
+        ycuts=[],
+        madd=[-0.3, 0, 0.3],
+        tface=0.0,
     )
 
     props = mfem_backend.runmfem(mesh, mat, mat, None)
@@ -80,9 +84,7 @@ def test_mfem_recovers_isotropic_tensor():
         assert props[key] == pytest.approx(nu, rel=1e-3)
 
 
-@pytest.mark.skipif(
-    not mfem_backend.is_mfem_available(), reason="MFEM not installed"
-)
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
 def test_mfem_grooved_is_orthotropic_and_positive_definite():
     """Symmetric crossed grooves filled with stiffer resin give a symmetric,
     positive-definite stiffness with Exx == Eyy and stiffening over the core."""
@@ -107,17 +109,20 @@ def test_mfem_grooved_is_orthotropic_and_positive_definite():
     assert result.properties["Exx"] >= core["E"]
 
 
-@pytest.mark.skipif(
-    not mfem_backend.is_mfem_available(), reason="MFEM not installed"
-)
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
 def test_mfem_returns_periodic_displacement_field():
     """return_details exposes u = E.x + w on the grid, and the recovered
     fluctuation w must match on opposite faces (the periodic-BC invariant)."""
     mat = {"E": 4e9, "nu": 0.3, "rho": 100.0}
     resin = {"E": 40e9, "nu": 0.3, "rho": 1100.0}
     mesh = create_grooved_mesh(
-        thickness=30.0, dx=50.0, dy=50.0,
-        xcuts=[[10, 10, 8, 3]], ycuts=[[10, 10, 8, 3]], madd=[-0.3, 0, 0.3], tface=0.0,
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[10, 10, 8, 3]],
+        ycuts=[[10, 10, 8, 3]],
+        madd=[-0.3, 0, 0.3],
+        tface=0.0,
     )
     result = mfem_backend.runmfem(mesh, resin, mat, None, return_details=True)
 
@@ -128,7 +133,10 @@ def test_mfem_returns_periodic_displacement_field():
     xmin, xmax = pts[:, 0].min(), pts[:, 0].max()
     fmin = np.where(np.isclose(pts[:, 0], xmin))[0]
     fmax = np.where(np.isclose(pts[:, 0], xmax))[0]
-    key = lambda i: (round(float(pts[i, 1]), 9), round(float(pts[i, 2]), 9))
+
+    def key(i):
+        return (round(float(pts[i, 1]), 9), round(float(pts[i, 2]), 9))
+
     by_yz = {key(i): i for i in fmax}
     for case in ("xx", "xy"):
         strain = mfem_backend._macro_strain(case)

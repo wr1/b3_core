@@ -24,7 +24,7 @@ def test_bend_points_bends_and_preserves_count():
     pts = np.column_stack([x, np.zeros_like(x), np.zeros_like(x)])
     bent = animate._bend_points(pts, 0.02, axis=0)
     assert bent.shape == pts.shape
-    assert np.ptp(bent[:, 2]) > 1.0         # it actually curved out of plane
+    assert np.ptp(bent[:, 2]) > 1.0  # it actually curved out of plane
     assert abs(bent[:, 0]).max() < abs(x).max() + 1e-9  # arc pulls ends inward
 
 
@@ -32,8 +32,12 @@ def test_bend_points_bends_and_preserves_count():
 def test_render_explainer_writes_files(tmp_path):
     out = tmp_path / "a.mp4"
     paths = animate.render_explainer(
-        "examples/with_grooves.json", out,
-        seconds=2, fps=6, size=(240, 240), stations=2,
+        "examples/with_grooves.json",
+        out,
+        seconds=2,
+        fps=6,
+        size=(240, 240),
+        stations=2,
     )
     assert out.is_file() and out.stat().st_size > 5_000
     gif = out.with_suffix(".gif")

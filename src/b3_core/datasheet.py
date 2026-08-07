@@ -62,8 +62,10 @@ def _groove_rows(prefix: str, grooves: list[list[float]]) -> list[tuple[str, str
     for k, g in enumerate(grooves, 1):
         off, pitch, depth, width = g
         rows.append(
-            (f"{prefix}-groove {k}", f"off {off:.3g}, pitch {pitch:.3g}, "
-             f"depth {depth:.3g}, w {width:.3g}")
+            (
+                f"{prefix}-groove {k}",
+                f"off {off:.3g}, pitch {pitch:.3g}, depth {depth:.3g}, w {width:.3g}",
+            )
         )
     return rows
 
@@ -73,7 +75,10 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     import numpy as np
 
     rve_rows: list[tuple[str, str]] = [
-        ("RVE size [mm]", f"{inp['dx']:.4g} × {inp['dy']:.4g} × {inp['thickness']:.4g}"),  # noqa: RUF001
+        (
+            "RVE size [mm]",
+            f"{inp['dx']:.4g} × {inp['dy']:.4g} × {inp['thickness']:.4g}",
+        ),  # noqa: RUF001
         ("x-grooves", str(len(inp["xgr"]))),
         *_groove_rows("x", inp["xgr"]),
         ("y-grooves", str(len(inp["ygr"]))),
@@ -82,7 +87,10 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     cur = inp.get("curvature") or {}
     if cur.get("kx") or cur.get("ky"):
         rve_rows.append(
-            ("curvature [1/mm]", f"kx {cur.get('kx', 0):.4g}, ky {cur.get('ky', 0):.4g}")
+            (
+                "curvature [1/mm]",
+                f"kx {cur.get('kx', 0):.4g}, ky {cur.get('ky', 0):.4g}",
+            )
         )
     face = inp.get("face") or {}
     rve_rows.append(("face thickness [mm]", f"{face.get('thickness', 0.0):.3g}"))
@@ -107,9 +115,15 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     ]
     p = details.properties
     eng = {
-        "E_x": p["Exx"], "E_y": p["Eyy"], "E_z": p["Ezz"],
-        "G_xy": p["Gxy"], "G_xz": p["Gxz"], "G_yz": p["Gyz"],
-        "nu_xy": p["nuxy"], "nu_xz": p["nuxz"], "nu_yz": p["nuyz"],
+        "E_x": p["Exx"],
+        "E_y": p["Eyy"],
+        "E_z": p["Ezz"],
+        "G_xy": p["Gxy"],
+        "G_xz": p["Gxz"],
+        "G_yz": p["Gyz"],
+        "nu_xy": p["nuxy"],
+        "nu_xz": p["nuxz"],
+        "nu_yz": p["nuyz"],
     }
     return DatasheetSpec(
         title=f"Grooved core — {name}",
@@ -129,15 +143,18 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
 # --------------------------------------------------------------------------- #
 def _typst_escape(text: str) -> str:
     return (
-        text.replace("\\", "\\\\").replace("#", "\\#").replace("$", "\\$")
-        .replace("[", "\\[").replace("]", "\\]").replace("_", "\\_")
+        text.replace("\\", "\\\\")
+        .replace("#", "\\#")
+        .replace("$", "\\$")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("_", "\\_")
     )
 
 
 def _render_table(header: str, rows: list[tuple[str, str]]) -> str:
     cells = ", ".join(
-        f"[#text(size: 6.5pt)[{_typst_escape(c)}]]"
-        for a, b in rows for c in (a, b)
+        f"[#text(size: 6.5pt)[{_typst_escape(c)}]]" for a, b in rows for c in (a, b)
     )
     return (
         f'#text(weight: "bold", size: 7.5pt)[{header}]\n'
@@ -184,7 +201,8 @@ def build_typst(spec: DatasheetSpec) -> str:
             matrix_rows.append((labels[i], *(f"{c[i, j]:.2f}" for j in range(6))))
         mcells = ", ".join(
             f"[#text(size: 6pt)[{_typst_escape(str(x))}]]"
-            for row in matrix_rows for x in row
+            for row in matrix_rows
+            for x in row
         )
         matrix_block = (
             "#table(\n  columns: (auto,) + (auto,) * 6,\n  inset: 1.5pt,\n"
@@ -228,7 +246,11 @@ def build_typst(spec: DatasheetSpec) -> str:
 
 
 def compile_datasheet(
-    typst_src: str, out_pdf: Path, *, out_png: Path | None = None, root: Path | None = None
+    typst_src: str,
+    out_pdf: Path,
+    *,
+    out_png: Path | None = None,
+    root: Path | None = None,
 ) -> None:
     """Compile Typst to PDF (and optionally PNG); `root` holds the figure PNGs."""
     out_pdf = Path(out_pdf)
@@ -238,7 +260,9 @@ def compile_datasheet(
     src.write_text(typst_src)
     proc = subprocess.run(
         ["typst", "compile", src.name, str(out_pdf.resolve())],
-        cwd=root, capture_output=True, text=True,
+        cwd=root,
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"typst compile failed ({proc.returncode}):\n{proc.stderr}")
@@ -246,12 +270,24 @@ def compile_datasheet(
         out_png = Path(out_png)
         out_png.parent.mkdir(parents=True, exist_ok=True)
         proc2 = subprocess.run(
-            ["typst", "compile", "--format", "png", "--ppi", "150", src.name,
-             "datasheet-{p}.png"],
-            cwd=root, capture_output=True, text=True,
+            [
+                "typst",
+                "compile",
+                "--format",
+                "png",
+                "--ppi",
+                "150",
+                src.name,
+                "datasheet-{p}.png",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
         )
         if proc2.returncode != 0:
-            raise RuntimeError(f"typst png export failed ({proc2.returncode}):\n{proc2.stderr}")
+            raise RuntimeError(
+                f"typst png export failed ({proc2.returncode}):\n{proc2.stderr}"
+            )
         shutil.copy(next(root.glob("datasheet-*.png")), out_png)
 
 
@@ -274,7 +310,11 @@ def generate(
 
     root = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="b3core_ds_"))
     root.mkdir(parents=True, exist_ok=True)
-    fig_cuts, fig_iso, fig_mod = root / "cuts.png", root / "iso.png", root / "modulus.png"
+    fig_cuts, fig_iso, fig_mod = (
+        root / "cuts.png",
+        root / "iso.png",
+        root / "modulus.png",
+    )
 
     fig, a_cuts = slices.plot_orthogonal_cuts(model)
     fig.savefig(fig_cuts, dpi=_FIG_DPI, bbox_inches="tight")
@@ -291,8 +331,12 @@ def generate(
     total = a_cuts + a_iso + a_mod
 
     spec = collect_spec(
-        model.inp, model.mesh, model.geom, model.details,
-        name=model.name, config_name=model.config_path or Path(json_path).name,
+        model.inp,
+        model.mesh,
+        model.geom,
+        model.details,
+        name=model.name,
+        config_name=model.config_path or Path(json_path).name,
     )
     spec.figure_cuts, spec.figure_iso, spec.figure_modulus = fig_cuts, fig_iso, fig_mod
     spec.figure_col_fracs = (a_cuts / total, a_iso / total, a_mod / total)

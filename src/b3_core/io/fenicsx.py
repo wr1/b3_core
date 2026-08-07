@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-
 LOAD_CASES = ("xx", "yy", "zz", "yz", "xz", "xy")
 PROPERTY_KEYS = (
     "Exx",
@@ -65,7 +64,9 @@ def _vtk_hexahedra(mesh):
 
     cells = grid.cells.reshape((-1, 9))
     if not np.all(cells[:, 0] == 8):
-        raise ValueError("FEniCSx backend currently supports linear hexahedral cells only")
+        raise ValueError(
+            "FEniCSx backend currently supports linear hexahedral cells only"
+        )
 
     vtk_to_fenicsx = [0, 1, 3, 2, 4, 5, 7, 6]
     return (
@@ -77,7 +78,9 @@ def _vtk_hexahedra(mesh):
 
 def _material_field(fem, domain, grid, core, resin, face):
     if "E" not in core:
-        raise ValueError("FEniCSx backend currently supports isotropic core material only")
+        raise ValueError(
+            "FEniCSx backend currently supports isotropic core material only"
+        )
 
     q = fem.functionspace(domain, ("DG", 0))
     young = fem.Function(q)
@@ -103,7 +106,9 @@ def _material_field(fem, domain, grid, core, resin, face):
     dolfinx_centers = np.array(
         [geometry[cell_vertices.links(i)].mean(axis=0) for i in range(local_cells)]
     )
-    pyvista_centers = np.asarray(grid.cell_centers().points, dtype=dolfinx_centers.dtype)
+    pyvista_centers = np.asarray(
+        grid.cell_centers().points, dtype=dolfinx_centers.dtype
+    )
     center_to_cell = {
         tuple(np.round(center, 12)): index
         for index, center in enumerate(pyvista_centers)
@@ -271,9 +276,9 @@ def runfenicsx(mesh, resin, core, face=None, *, return_details=False):
         total = fem.Function(v)
         total.x.array[:] = fluctuation.x.array + macro.x.array
         for row, (i, j) in enumerate(stress_entries):
-            stiffness[row, col] = fem.assemble_scalar(
-                fem.form(sigma(total)[i, j] * ufl.dx)
-            ) / volume
+            stiffness[row, col] = (
+                fem.assemble_scalar(fem.form(sigma(total)[i, j] * ufl.dx)) / volume
+            )
 
     properties, compliance = _properties_from_stiffness(stiffness)
     if return_details:
@@ -281,7 +286,9 @@ def runfenicsx(mesh, resin, core, face=None, *, return_details=False):
     return properties
 
 
-def validate_against_ccx(ccx_output, other_output, *, label="fenicsx", rtol=0.05, atol=0.0):
+def validate_against_ccx(
+    ccx_output, other_output, *, label="fenicsx", rtol=0.05, atol=0.0
+):
     comparison = {}
     passed = True
     for key in PROPERTY_KEYS:

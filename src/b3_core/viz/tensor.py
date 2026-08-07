@@ -81,9 +81,14 @@ def engineering_constants(C: np.ndarray) -> dict[str, float]:
     """Orthotropic engineering constants from the 6x6 stiffness (Pa / -)."""
     S = compliance(C)
     return {
-        "E_x": 1.0 / S[0, 0], "E_y": 1.0 / S[1, 1], "E_z": 1.0 / S[2, 2],
-        "G_yz": 1.0 / S[3, 3], "G_xz": 1.0 / S[4, 4], "G_xy": 1.0 / S[5, 5],
-        "nu_xy": -S[1, 0] / S[0, 0], "nu_xz": -S[2, 0] / S[0, 0],
+        "E_x": 1.0 / S[0, 0],
+        "E_y": 1.0 / S[1, 1],
+        "E_z": 1.0 / S[2, 2],
+        "G_yz": 1.0 / S[3, 3],
+        "G_xz": 1.0 / S[4, 4],
+        "G_xy": 1.0 / S[5, 5],
+        "nu_xy": -S[1, 0] / S[0, 0],
+        "nu_xz": -S[2, 0] / S[0, 0],
         "nu_yz": -S[2, 1] / S[1, 1],
     }
 
@@ -113,7 +118,9 @@ def modulus_surface(C: np.ndarray, *, kind: str = "E", resolution: int = 120):
     ``"beta"`` (linear compressibility).
     """
     pv = require_pyvista()
-    sphere = pv.Sphere(radius=1.0, theta_resolution=resolution, phi_resolution=resolution)
+    sphere = pv.Sphere(
+        radius=1.0, theta_resolution=resolution, phi_resolution=resolution
+    )
     dirs = _unit(sphere.points)
     if kind == "E":
         vals = youngs_modulus(C, dirs)

@@ -39,13 +39,41 @@ from b3_core.skill import read_skill, skill_path
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM (`mfem` extra; default backend)
+- PyMFEM (`mfem` package; default backend)
 - CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
 - `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
 - `typst` on PATH (only for `b3_core viz datasheet`)
 
 ```bash
-uv sync --extra mfem   # default backend + optional extras
+uv sync --extra dev    # package + pytest + ruff + pre-commit
+```
+
+## Development
+
+```bash
+make install           # uv sync --extra dev && pre-commit install
+make lint              # ruff check src tests
+make format            # ruff format + ruff check --fix
+make pre-commit        # full hook suite (ruff format/lint + basic files)
+make test              # pytest
+```
+
+GitHub Actions (`.github/workflows/`):
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **CI** | push / PR to `master` | pre-commit (ruff) + pytest on 3.11 & 3.12 |
+| **Release** | tag `v*` | build sdist/wheel, GitHub Release with notes |
+
+## Release
+
+First release is **v0.1.0**. See [CHANGELOG.md](CHANGELOG.md).
+
+```bash
+# after merging to master:
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+# Release workflow builds artifacts and creates the GitHub release
 ```
 
 ## CLI

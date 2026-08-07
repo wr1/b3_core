@@ -246,7 +246,9 @@ def _breaks_at_z(grooves, length: float, z: float, thickness: float) -> np.ndarr
     )
 
 
-def _affine_remap_1d(u: np.ndarray, breaks_src: np.ndarray, breaks_dst: np.ndarray) -> np.ndarray:
+def _affine_remap_1d(
+    u: np.ndarray, breaks_src: np.ndarray, breaks_dst: np.ndarray
+) -> np.ndarray:
     """Map each u from intervals breaks_src → breaks_dst (monotone, no crossing)."""
     u = np.asarray(u, dtype=float)
     n = len(breaks_src) - 1
@@ -430,9 +432,7 @@ def create_grooved_mesh(
 
     # Flattened-for-FEA morph: walls track hw(z); foam bays become trapezoidal.
     if abs(kx) > 0.0 or abs(ky) > 0.0:
-        morph_kerf_walls(
-            grd, xcuts, ycuts, thickness, dx, dy, kx=kx, ky=ky, madd=madd
-        )
+        morph_kerf_walls(grd, xcuts, ycuts, thickness, dx, dy, kx=kx, ky=ky, madd=madd)
 
     # Halo after morph so the band sits outside the *physical* tapered walls
     # (same hw(z) as ScoreField / morph). Pre-morph tagging misses open mouths.

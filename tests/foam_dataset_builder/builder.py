@@ -30,12 +30,12 @@ Output schema
     targets   : (N, 21)  float64  — upper-triangle stiffness tensor (Voigt)
     provenance : list[dict] — one entry per sample with foam_type, backend, geometry, etc.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass, field
 from glob import glob
 from typing import Any, Dict, List, Optional, Tuple
@@ -88,22 +88,22 @@ LOG_MODULUS_FEATURE_INDICES: Tuple[int, ...] = (1, 3, 4, 5, 7)
 
 DEFAULT_FEATURE_BOUNDS: NDArray[np.float64] = np.array(
     [
-        [0.0, 1.0],          # [0] Vf
-        [0.5e9, 15.0e9],     # [1] E_m (Pa)
-        [0.0, 0.5],          # [2] nu_m
+        [0.0, 1.0],  # [0] Vf
+        [0.5e9, 15.0e9],  # [1] E_m (Pa)
+        [0.0, 0.5],  # [2] nu_m
         [50.0e9, 1000.0e9],  # [3] E_Lf (Pa)
-        [5.0e9, 500.0e9],    # [4] E_Tf (Pa)
-        [1.0e9, 300.0e9],    # [5] G_LTf (Pa)
-        [0.0, 0.5],          # [6] nu_LTf
-        [1.0e9, 300.0e9],    # [7] G_TTf (Pa)
-        [0.0, 1.0],          # [8] Vf duplicate
-        [0.0, 1.0],          # [9] normalised density
-        [0.0, 1.0],          # [10] relative density
-        [0.0, 1.0],          # [11] normalised cell size
-        [0.0, 1.0],          # [12] normalised kerf depth
-        [0.0, 5.0],          # [13] normalised kerf spacing
-        [0.0, 2.0],          # [14] normalised curvature
-        [0.0, 0.0],          # [15] pad (always 0)
+        [5.0e9, 500.0e9],  # [4] E_Tf (Pa)
+        [1.0e9, 300.0e9],  # [5] G_LTf (Pa)
+        [0.0, 0.5],  # [6] nu_LTf
+        [1.0e9, 300.0e9],  # [7] G_TTf (Pa)
+        [0.0, 1.0],  # [8] Vf duplicate
+        [0.0, 1.0],  # [9] normalised density
+        [0.0, 1.0],  # [10] relative density
+        [0.0, 1.0],  # [11] normalised cell size
+        [0.0, 1.0],  # [12] normalised kerf depth
+        [0.0, 5.0],  # [13] normalised kerf spacing
+        [0.0, 2.0],  # [14] normalised curvature
+        [0.0, 0.0],  # [15] pad (always 0)
     ],
     dtype=float,
 )
@@ -113,9 +113,15 @@ DEFAULT_FEATURE_BOUNDS: NDArray[np.float64] = np.array(
 # ---------------------------------------------------------------------------
 
 ENGINEERING_CONSTANTS = (
-    "Exx", "Eyy", "Ezz",
-    "Gxy", "Gxz", "Gyz",
-    "nuxy", "nuxz", "nuyz",
+    "Exx",
+    "Eyy",
+    "Ezz",
+    "Gxy",
+    "Gxz",
+    "Gyz",
+    "nuxy",
+    "nuxz",
+    "nuyz",
 )
 REQUIRED_FIELDS = set(ENGINEERING_CONSTANTS) | {"hash"}
 
@@ -123,6 +129,7 @@ REQUIRED_FIELDS = set(ENGINEERING_CONSTANTS) | {"hash"}
 # ---------------------------------------------------------------------------
 # Transform functions (standalone copies of foam_registry helpers)
 # ---------------------------------------------------------------------------
+
 
 def _transform_features_for_regression(
     features: NDArray[np.float64], *, log_modulus: bool = True
@@ -145,7 +152,9 @@ def _transform_features_for_regression(
 
 def encode_foam_code(name: str) -> int:
     if name not in FOAM_CODES:
-        raise ValueError(f"unknown foam type {name!r}; valid: {', '.join(ALL_FOAM_NAMES)}")
+        raise ValueError(
+            f"unknown foam type {name!r}; valid: {', '.join(ALL_FOAM_NAMES)}"
+        )
     return FOAM_CODES[name]
 
 
@@ -164,9 +173,9 @@ def stiffness_to_targets(stiffness: NDArray[np.float64]) -> NDArray[np.float64]:
     c = np.asarray(stiffness, dtype=float)
     if c.ndim == 2:
         c = 0.5 * (c + c.T)
-        return np.array(
-            [c[i, j] for i, j in _STIFFNESS_UPPER_TRIANGLE], dtype=float
-        )[None, :]
+        return np.array([c[i, j] for i, j in _STIFFNESS_UPPER_TRIANGLE], dtype=float)[
+            None, :
+        ]
     if c.ndim != 3 or c.shape[1:] != (6, 6):
         raise ValueError(f"stiffness must have shape (N, 6, 6), got {c.shape}")
     c_sym = 0.5 * (c + np.transpose(c, (0, 2, 1)))
@@ -199,9 +208,7 @@ def relative_frobenius_error(
     pred = np.asarray(predicted, dtype=float)
     ref = np.asarray(reference, dtype=float)
     diff = np.linalg.norm((pred - ref).reshape(pred.shape[0], -1), axis=1)
-    denom = np.maximum(
-        np.linalg.norm(ref.reshape(ref.shape[0], -1), axis=1), 1e-12
-    )
+    denom = np.maximum(np.linalg.norm(ref.reshape(ref.shape[0], -1), axis=1), 1e-12)
     return diff / denom
 
 
@@ -232,7 +239,11 @@ def build_foam_feature_vector(
     n_density = (density or 0.0) / max_rho if max_rho > 0 else 0.0
     n_cell = (cell_size or 0.0) / 2.0
     kerf_spacing_val = kerf_spacing or 0.0
-    n_kerf_spacing = min(kerf_spacing_val / cell_size, 5.0) if (kerf_spacing_val > 0 and cell_size > 0) else 0.0
+    n_kerf_spacing = (
+        min(kerf_spacing_val / cell_size, 5.0)
+        if (kerf_spacing_val > 0 and cell_size > 0)
+        else 0.0
+    )
     # kerf_depth and curvature are assumed pre-normalised by the caller
     n_kerf_depth = kerf_depth or 0.0
     n_curv = abs(curvature or 0.0)
@@ -260,9 +271,15 @@ def build_foam_feature_vector(
 
 
 def engineering_to_stiffness(
-    Exx: float, Eyy: float, Ezz: float,
-    Gxy: float, Gxz: float, Gyz: float,
-    nuxy: float, nuxz: float, nuyz: float,
+    Exx: float,
+    Eyy: float,
+    Ezz: float,
+    Gxy: float,
+    Gxz: float,
+    Gyz: float,
+    nuxy: float,
+    nuxz: float,
+    nuyz: float,
 ) -> NDArray[np.float64]:
     """Convert 9 engineering constants to a 6x6 symmetric stiffness tensor."""
     S = np.zeros((6, 6), dtype=np.float64)
@@ -283,13 +300,15 @@ def engineering_to_stiffness(
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SampleRecord:
     """A single (features, targets, provenance) record extracted from one JSON."""
+
     index: int
     foam_type: str
-    features: NDArray[np.float64]       # (24,)
-    targets: NDArray[np.float64]        # (21,)
+    features: NDArray[np.float64]  # (24,)
+    targets: NDArray[np.float64]  # (21,)
     stiffness_raw: NDArray[np.float64]  # (6, 6) before flattening
     backend: str
     provenance: Dict[str, Any] = field(default_factory=dict)
@@ -298,6 +317,7 @@ class SampleRecord:
 # ---------------------------------------------------------------------------
 # Dataset builder
 # ---------------------------------------------------------------------------
+
 
 class FoamDatasetBuilder:
     """Collect FEA result JSONs into (features, targets) arrays for MoE training.
@@ -337,11 +357,13 @@ class FoamDatasetBuilder:
             for jf in json_files:
                 fname = os.path.basename(jf)
                 total += 1
-                self._scan_results.append({
-                    "file": jf,
-                    "name": fname,
-                    "size": os.path.getsize(jf),
-                })
+                self._scan_results.append(
+                    {
+                        "file": jf,
+                        "name": fname,
+                        "size": os.path.getsize(jf),
+                    }
+                )
                 logger.info("found: %s (%d bytes)", fname, os.path.getsize(jf))
 
         logger.info("scan complete: %d JSON files in %d dirs", total, len(dirs))
@@ -363,11 +385,10 @@ class FoamDatasetBuilder:
         foam_type = meta.get("foam_type", "generic_foam")
 
         try:
-            code = encode_foam_code(foam_type)
+            encode_foam_code(foam_type)
         except ValueError:
             logger.warning("unknown foam type %s, using generic_foam", foam_type)
             foam_type = "generic_foam"
-            code = 7
 
         # Default constituent values
         Vf = 0.6
@@ -411,11 +432,17 @@ class FoamDatasetBuilder:
         n_density = density_raw / max_rho if max_rho > 0 else 0.0
         n_cell = cell_size / 2.0
         n_kerf_depth = kerf_depth / thickness if thickness > 0 else 0.0
-        n_kerf_spacing = min(kerf_spacing / cell_size, 5.0) if (kerf_spacing > 0 and cell_size > 0) else 0.0
+        n_kerf_spacing = (
+            min(kerf_spacing / cell_size, 5.0)
+            if (kerf_spacing > 0 and cell_size > 0)
+            else 0.0
+        )
         n_curv = abs(curvature) * thickness  # |curv| * thickness
 
         feature_vec = build_foam_feature_vector(
-            constituents=np.array([Vf, E_m, nu_m, E_Lf, E_Tf, G_LTf, nu_LTf, G_TTf], dtype=np.float64),
+            constituents=np.array(
+                [Vf, E_m, nu_m, E_Lf, E_Tf, G_LTf, nu_LTf, G_TTf], dtype=np.float64
+            ),
             foam_type=foam_type,
             density=n_density,
             kerf_depth=n_kerf_depth,
@@ -442,9 +469,7 @@ class FoamDatasetBuilder:
             logger.warning("missing engineering constant %s", e)
             return None
 
-        C = engineering_to_stiffness(
-            Exx, Eyy, Ezz, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz
-        )
+        C = engineering_to_stiffness(Exx, Eyy, Ezz, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz)
         targets = stiffness_to_targets(C)
         # stiffness_to_targets returns (1, 21) for single tensor; squeeze to (21,)
         if targets.ndim == 2 and targets.shape[0] == 1:
@@ -566,6 +591,7 @@ class FoamDatasetBuilder:
 # Convenience
 # ---------------------------------------------------------------------------
 
+
 def build_foam_dataset(
     scan_dirs: Optional[List[str]] = None,
     validate_bounds: bool = True,
@@ -584,6 +610,7 @@ def build_foam_dataset(
 
 if __name__ == "__main__":
     import sys
+
     logging.basicConfig(level=logging.INFO)
     dirs = sys.argv[1:] if len(sys.argv) > 1 else ["."]
     builder, X, y = build_foam_dataset(scan_dirs=dirs)
@@ -593,6 +620,8 @@ if __name__ == "__main__":
     print(f"\nFoam types found: {np.unique(builder.foam_types)}")
     if builder.out_of_bounds_samples:
         print(f"\nWARNING: {len(builder.out_of_bounds_samples)} out-of-bounds samples")
-    print(f"\nProvenance:")
+    print("\nProvenance:")
     for p in builder.provenance:
-        print(f"  {os.path.basename(p['file'])}: foam_type={p['foam_type']}, backend={p['backend']}")
+        print(
+            f"  {os.path.basename(p['file'])}: foam_type={p['foam_type']}, backend={p['backend']}"
+        )

@@ -5,8 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from b3_core.sweep.context import SweepContext, default_root
 from b3_core.sweep import homogenise, plots, render_viz
+from b3_core.sweep.context import SweepContext, default_root
 
 __all__ = ["run", "SweepContext", "default_root"]
 
@@ -40,7 +40,9 @@ def run(what: str, root: Path | None = None) -> int:
         handler = dispatch[key]
     except KeyError:
         valid = ", ".join(sorted(dispatch))
-        print(f"unknown sweep stage {what!r}; expected one of: {valid}", file=sys.stderr)
+        print(
+            f"unknown sweep stage {what!r}; expected one of: {valid}", file=sys.stderr
+        )
         return 1
 
     return handler()

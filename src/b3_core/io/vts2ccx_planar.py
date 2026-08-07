@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-import pyvista as pv
-import numpy as np
 import argparse
+
+import numpy as np
+import pyvista as pv
 
 
 def write_mpc(vtkids):

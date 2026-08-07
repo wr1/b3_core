@@ -1,8 +1,8 @@
 import json
 
 import numpy as np
-import pyvista as pv
 import pytest
+import pyvista as pv
 
 from b3_core.core.cprop import Material
 from b3_core.core.mesh import create_grooved_mesh
@@ -16,8 +16,12 @@ needs_mfem = pytest.mark.skipif(
 def _mesh(path):
     i = json.loads(open(path).read())
     m = create_grooved_mesh(
-        thickness=i["thickness"], dx=i["dx"], dy=i["dy"],
-        xcuts=i["xgr"], ycuts=i["ygr"], madd=tuple(i.get("madd", [0])),
+        thickness=i["thickness"],
+        dx=i["dx"],
+        dy=i["dy"],
+        xcuts=i["xgr"],
+        ycuts=i["ygr"],
+        madd=tuple(i.get("madd", [0])),
         tface=(i.get("face") or {}).get("thickness", 0.0),
     )
     return m, i
@@ -37,16 +41,20 @@ def test_uniform_cube_recovers_input_stiffness():
 
 
 @needs_mfem
-@pytest.mark.parametrize("case", [
-    "examples/with_grooves.json",
-    "examples/mfem_patterns/two_sided.json",
-    "examples/complex.json",
-])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "examples/with_grooves.json",
+        "examples/mfem_patterns/two_sided.json",
+        "examples/complex.json",
+    ],
+)
 def test_numpy_matches_mfem(case):
     m, i = _mesh(case)
     Cm = np.asarray(
-        mfem_backend.runmfem(m, i["resin"], i["core"], i.get("face"),
-                             return_details=True).stiffness
+        mfem_backend.runmfem(
+            m, i["resin"], i["core"], i.get("face"), return_details=True
+        ).stiffness
     )
     Ca = aniso.runnumpy(m, i["resin"], i["core"], i.get("face")).stiffness
     assert np.abs(Ca - Cm).max() / np.abs(Cm).max() < 1e-5
@@ -55,14 +63,14 @@ def test_numpy_matches_mfem(case):
 # -- orthotropic GS30 benchmark (Laustsen et al. 2014, Table 2) -------------
 def test_orthotropic_gs30_benchmark():
     m, i = _mesh("examples/diab_gs30.json")
-    assert i["core"].get("E1") is not None      # the example uses orthotropic foam
+    assert i["core"].get("E1") is not None  # the example uses orthotropic foam
     C = aniso.runnumpy(m, i["resin"], i["core"]).stiffness
     ec = aniso._properties_from_stiffness(C)[0]
-    assert ec["Exx"] == pytest.approx(ec["Eyy"], rel=1e-6)   # square grid symmetry
+    assert ec["Exx"] == pytest.approx(ec["Eyy"], rel=1e-6)  # square grid symmetry
     assert ec["Gxz"] == pytest.approx(ec["Gyz"], rel=1e-6)
-    assert ec["Ezz"] > ec["Exx"]                            # stiffer through-thickness
-    assert 200e6 < ec["Ezz"] < 320e6                        # paper rule-of-mixtures 262 MPa
-    assert 15e6 < ec["Gxy"] < 30e6                          # paper 20 MPa
+    assert ec["Ezz"] > ec["Exx"]  # stiffer through-thickness
+    assert 200e6 < ec["Ezz"] < 320e6  # paper rule-of-mixtures 262 MPa
+    assert 15e6 < ec["Gxy"] < 30e6  # paper 20 MPa
 
 
 # -- resin-grid failure check ----------------------------------------------
@@ -84,9 +92,17 @@ def test_resin_failure_index_scales_linearly():
 def test_material_isotropic_or_orthotropic():
     Material(E=1e9, nu=0.3, rho=60)
     ortho = Material(
-        E1=32e6, E2=32e6, E3=70e6, G12=19e6, G13=19e6, G23=19e6,
-        nu12=0.3, nu13=0.3, nu23=0.3, rho=60,
+        E1=32e6,
+        E2=32e6,
+        E3=70e6,
+        G12=19e6,
+        G13=19e6,
+        G23=19e6,
+        nu12=0.3,
+        nu13=0.3,
+        nu23=0.3,
+        rho=60,
     )
     assert ortho.is_orthotropic
     with pytest.raises(ValueError):
-        Material(rho=60)   # neither complete set
+        Material(rho=60)  # neither complete set

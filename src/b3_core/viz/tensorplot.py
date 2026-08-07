@@ -37,7 +37,9 @@ def plot_stiffness_heatmap(C: np.ndarray, *, ax=None, theme: CoreTheme = DEFAULT
         for c in range(6):
             val = shown[r, c]
             color = "white" if abs(val) > 0.6 * vmax else "black"
-            ax.text(c, r, f"{val:.2g}", ha="center", va="center", color=color, fontsize=7)
+            ax.text(
+                c, r, f"{val:.2g}", ha="center", va="center", color=color, fontsize=7
+            )
     ax.figure.colorbar(im, ax=ax, shrink=0.82)
     return ax
 
@@ -57,8 +59,11 @@ def plot_modulus_polar(
 
     if axes is None:
         _, axes = plt.subplots(
-            1, len(planes), subplot_kw={"projection": "polar"},
-            figsize=(3.0 * len(planes), 3.0), constrained_layout=True,
+            1,
+            len(planes),
+            subplot_kw={"projection": "polar"},
+            figsize=(3.0 * len(planes), 3.0),
+            constrained_layout=True,
         )
         axes = np.atleast_1d(axes)
     for ax, plane in zip(axes, planes, strict=False):

@@ -19,18 +19,18 @@ PHASE_NAMES = ("core", "resin", "face")
 class CoreTheme:
     """Named colours / colormaps shared across all grooved-core renderers."""
 
-    core_color: str = "#d9d9d9"        # lightweight foam / balsa core
-    resin_color: str = "#2ca7a0"       # resin-infused grooves (teal)
-    face_color: str = "#d8b274"        # optional face skin (tan)
-    edge_color: str = "#333333"        # FE mesh / cell edges
-    cut_line: str = "#39d0ff"          # slice-plane indicator (cyan)
+    core_color: str = "#d9d9d9"  # lightweight foam / balsa core
+    resin_color: str = "#2ca7a0"  # resin-infused grooves (teal)
+    face_color: str = "#d8b274"  # optional face skin (tan)
+    edge_color: str = "#333333"  # FE mesh / cell edges
+    cut_line: str = "#39d0ff"  # slice-plane indicator (cyan)
     background: str = "white"
 
     cmap_displacement: str = "viridis"  # |u| on the deformed modes
-    cmap_modulus: str = "turbo"         # directional Young's modulus surface
-    cmap_stiffness: str = "coolwarm"    # signed 6x6 C_eff heatmap
+    cmap_modulus: str = "turbo"  # directional Young's modulus surface
+    cmap_stiffness: str = "coolwarm"  # signed 6x6 C_eff heatmap
 
-    core_opacity: float = 0.12          # translucent so internal grooves show
+    core_opacity: float = 0.12  # translucent so internal grooves show
     face_opacity: float = 0.55
     edge_width: float = 0.3
 

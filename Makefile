@@ -11,7 +11,7 @@ PORT ?= 3000
 CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
-.PHONY: help install test lint run sweep selfdoc docs docs-serve docs-open docs-static
+.PHONY: help install test lint format pre-commit run sweep selfdoc docs docs-serve docs-open docs-static
 
 .DEFAULT_GOAL := help
 
@@ -28,18 +28,27 @@ help: ## List targets (default goal)
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 	@printf '%b\n' \
 		'' \
+		'Dev: make install | make lint | make format | make pre-commit | make test' \
 		'DocKB: make selfdoc | make docs | make docs-open' \
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
 
-install: ## uv sync
-	$(UV) sync
+install: ## uv sync (+ dev extras)
+	$(UV) sync --extra dev
+	$(RUN) pre-commit install
 
 test: ## pytest
 	$(RUN) pytest
 
-lint: ## ruff check
-	$(RUN) ruff check src tests examples
+lint: ## ruff check (src + tests)
+	$(RUN) ruff check src tests
+
+format: ## ruff format (src + tests)
+	$(RUN) ruff format src tests
+	$(RUN) ruff check --fix src tests
+
+pre-commit: ## run pre-commit hooks on all files
+	$(RUN) pre-commit run --all-files
 
 run: ## b3_core run — homogenise one case
 	$(B3) run $(CASE)

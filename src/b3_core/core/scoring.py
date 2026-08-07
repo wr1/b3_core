@@ -52,7 +52,9 @@ def survival(cell_size):
         rv = stats.lognorm(s=sigma, scale=np.exp(mu))
         reach = float(rv.ppf(0.999))
     else:
-        raise ValueError(f"cell_size dist must be 'lognormal' or 'normal', got {dist!r}")
+        raise ValueError(
+            f"cell_size dist must be 'lognormal' or 'normal', got {dist!r}"
+        )
 
     s0 = float(rv.sf(0.0)) or 1.0
     return (lambda d: np.clip(rv.sf(np.asarray(d, float)) / s0, 0.0, 1.0), float(reach))
@@ -106,7 +108,11 @@ def parse_surface_halo(inp: dict) -> dict[str, dict[str, Any]]:
         ("saw_cut", saw_cs, saw_enabled),
         ("face", face_cs, face_enabled and face_cs is not None),
     ):
-        s_fn, reach = survival(cs) if enabled and cs is not None else (lambda d: np.zeros(np.shape(d)), 0.0)
+        s_fn, reach = (
+            survival(cs)
+            if enabled and cs is not None
+            else (lambda d: np.zeros(np.shape(d)), 0.0)
+        )
         out[key] = {
             "cell_size": cs,
             "enabled": enabled and reach > 0.0,
@@ -129,14 +135,20 @@ class ScoreField:
         thk = float(inp["thickness"])
         kx = (inp.get("curvature") or {}).get("kx", 0.0)
         ky = (inp.get("curvature") or {}).get("ky", 0.0)
-        bx, tx, hx, sx = create_grooves(inp["xgr"], float(inp["dx"]), meshadd=[0.0], kappa=kx)
-        by, ty, hy, sy = create_grooves(inp["ygr"], float(inp["dy"]), meshadd=[0.0], kappa=ky)
+        bx, tx, hx, sx = create_grooves(
+            inp["xgr"], float(inp["dx"]), meshadd=[0.0], kappa=kx
+        )
+        by, ty, hy, sy = create_grooves(
+            inp["ygr"], float(inp["dy"]), meshadd=[0.0], kappa=ky
+        )
 
         self.grooves = []
         for axis, (b, t, h, s) in ((0, (bx, tx, hx, sx)), (1, (by, ty, hy, sy))):
             for c0, hw, d, sl in zip(0.5 * (b + t), 0.5 * (t - b), h, s, strict=True):
                 if hw > 0 and abs(d) != 0:
-                    self.grooves.append((axis, float(c0), float(hw), float(sl), float(d)))
+                    self.grooves.append(
+                        (axis, float(c0), float(hw), float(sl), float(d))
+                    )
         self.thickness = thk
         self.surfaces = parse_surface_halo(inp)
         # Legacy aliases (saw-cut only).
@@ -226,8 +238,10 @@ def effective_resin_vf(mesh, field, resin_vf: float):
         return resin_vf, 0.0
     ma = mesh.compute_cell_sizes()
     vol = np.abs(ma.cell_data["Volume"])
-    foam = ~(np.asarray(mesh.cell_data["resin"], bool)
-             | np.asarray(mesh.cell_data["face"], bool))
+    foam = ~(
+        np.asarray(mesh.cell_data["resin"], bool)
+        | np.asarray(mesh.cell_data["face"], bool)
+    )
     p = field.resin_probability(mesh.cell_centers().points)
     halo_vf = float((p[foam] * vol[foam]).sum() / vol.sum())
     return resin_vf + halo_vf, halo_vf

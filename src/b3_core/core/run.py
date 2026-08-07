@@ -195,8 +195,10 @@ def cmd_viz_halo_curvature(output: str, case: str, kx_open: float, kx_closed: fl
     from b3_core.viz.halo import render_halo_curvature_figures
 
     base = _json.loads(Path(case).read_text()) if case else None
-    out = Path(output) if output else (
-        Path(case).parent / "img" if case else Path("examples/img")
+    out = (
+        Path(output)
+        if output
+        else (Path(case).parent / "img" if case else Path("examples/img"))
     )
     paths = render_halo_curvature_figures(
         out, base_inp=base, kx_open=kx_open, kx_closed=kx_closed
@@ -231,16 +233,40 @@ def _viz_subgroup() -> group:
                 callback=cmd_viz_view,
                 arguments=[_CASE_ARG],
                 options=[
-                    option(flags=["--what"], arg_type=str, default="gallery",
-                           choices=["geometry", "slices", "deformation", "modulus",
-                                    "polar", "heatmap", "gallery", "all"],
-                           help="Which view to render (default: gallery)."),
-                    option(flags=["--output", "-o"], arg_type=str, default="",
-                           help="Output file (single view) or directory (--what all)."),
-                    option(flags=["--serve"], arg_type=str, default="",
-                           help="Export interactive HTML (needs [interactive] extra)."),
-                    option(flags=["--warp"], arg_type=float, default=0.3,
-                           help="Warp factor for --what deformation."),
+                    option(
+                        flags=["--what"],
+                        arg_type=str,
+                        default="gallery",
+                        choices=[
+                            "geometry",
+                            "slices",
+                            "deformation",
+                            "modulus",
+                            "polar",
+                            "heatmap",
+                            "gallery",
+                            "all",
+                        ],
+                        help="Which view to render (default: gallery).",
+                    ),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Output file (single view) or directory (--what all).",
+                    ),
+                    option(
+                        flags=["--serve"],
+                        arg_type=str,
+                        default="",
+                        help="Export interactive HTML (needs [interactive] extra).",
+                    ),
+                    option(
+                        flags=["--warp"],
+                        arg_type=float,
+                        default=0.3,
+                        help="Warp factor for --what deformation.",
+                    ),
                 ],
             ),
             command(
@@ -249,10 +275,18 @@ def _viz_subgroup() -> group:
                 callback=cmd_viz_halo,
                 arguments=[_CASE_ARG],
                 options=[
-                    option(flags=["--output", "-o"], arg_type=str, default="",
-                           help="Output directory (default: <case-dir>/img/)."),
-                    option(flags=["--sharp"], arg_type=str, default="",
-                           help="Sharp-kerf case JSON for before/after comparison."),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Output directory (default: <case-dir>/img/).",
+                    ),
+                    option(
+                        flags=["--sharp"],
+                        arg_type=str,
+                        default="",
+                        help="Sharp-kerf case JSON for before/after comparison.",
+                    ),
                 ],
             ),
             command(
@@ -260,14 +294,30 @@ def _viz_subgroup() -> group:
                 help="Halo + curvature composition figures (closed|flat|open).",
                 callback=cmd_viz_halo_curvature,
                 options=[
-                    option(flags=["--output", "-o"], arg_type=str, default="",
-                           help="Output directory (default: examples/img or <case>/img)."),
-                    option(flags=["--case"], arg_type=str, default="",
-                           help="Optional scored case JSON (default: built-in uniaxial demo)."),
-                    option(flags=["--kx-open"], arg_type=float, default=0.012,
-                           help="kx for open panel (curved_panel: + opens top-mouth)."),
-                    option(flags=["--kx-closed"], arg_type=float, default=-0.012,
-                           help="kx for closed panel (curved_panel: − pinches top-mouth)."),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Output directory (default: examples/img or <case>/img).",
+                    ),
+                    option(
+                        flags=["--case"],
+                        arg_type=str,
+                        default="",
+                        help="Optional scored case JSON (default: built-in uniaxial demo).",
+                    ),
+                    option(
+                        flags=["--kx-open"],
+                        arg_type=float,
+                        default=0.012,
+                        help="kx for open panel (curved_panel: + opens top-mouth).",
+                    ),
+                    option(
+                        flags=["--kx-closed"],
+                        arg_type=float,
+                        default=-0.012,
+                        help="kx for closed panel (curved_panel: − pinches top-mouth).",
+                    ),
                 ],
             ),
             command(
@@ -276,10 +326,18 @@ def _viz_subgroup() -> group:
                 callback=cmd_viz_datasheet,
                 arguments=[_CASE_ARG],
                 options=[
-                    option(flags=["--output", "-o"], arg_type=str, default="",
-                           help="Output PDF path (default: <case>.pdf)."),
-                    option(flags=["--png"], arg_type=str, default="",
-                           help="Also export a PNG to this path."),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Output PDF path (default: <case>.pdf).",
+                    ),
+                    option(
+                        flags=["--png"],
+                        arg_type=str,
+                        default="",
+                        help="Also export a PNG to this path.",
+                    ),
                 ],
             ),
             command(
@@ -288,10 +346,18 @@ def _viz_subgroup() -> group:
                 callback=cmd_viz_deformed,
                 arguments=[_CASE_ARG],
                 options=[
-                    option(flags=["--output", "-o"], arg_type=str, default="",
-                           help="Output PNG path (default: <case>_deformed.png)."),
-                    option(flags=["--warp"], arg_type=float, default=0.3,
-                           help="Displacement warp factor (unit strain = 1.0)."),
+                    option(
+                        flags=["--output", "-o"],
+                        arg_type=str,
+                        default="",
+                        help="Output PNG path (default: <case>_deformed.png).",
+                    ),
+                    option(
+                        flags=["--warp"],
+                        arg_type=float,
+                        default=0.3,
+                        help="Displacement warp factor (unit strain = 1.0).",
+                    ),
                 ],
             ),
         ],
@@ -303,7 +369,9 @@ def cmd_surrogate_fit(output: str, cache: str):
     from b3_core.physics_surrogate import fit_from_homogenization
 
     out = Path(output) if output else Path("examples/img/core_physics_surrogate.json")
-    cache_path = Path(cache) if cache else out.with_name("halo_curvature_param_grid.json")
+    cache_path = (
+        Path(cache) if cache else out.with_name("halo_curvature_param_grid.json")
+    )
     surr = fit_from_homogenization(cache_path=cache_path)
     surr.to_json(out)
     print(f"Wrote {out}  targets={surr.targets}")
@@ -400,8 +468,12 @@ def main():
                 help="Print the packaged agent SKILL.md path (or dump with --stdout).",
                 callback=cmd_skill,
                 options=[
-                    option(flags=["--stdout"], arg_type=bool, default=False,
-                           help="Print the full SKILL.md to stdout."),
+                    option(
+                        flags=["--stdout"],
+                        arg_type=bool,
+                        default=False,
+                        help="Print the full SKILL.md to stdout.",
+                    ),
                 ],
             ),
         ],

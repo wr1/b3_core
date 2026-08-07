@@ -92,7 +92,9 @@ def run_case(base: dict, overrides: dict, out_dir: Path) -> dict:
         return json.loads(Path(cached[0]).read_text())
 
 
-def scale_groove_depth(depth: float, thickness: float, *, ref: float = REF_THICKNESS) -> float:
+def scale_groove_depth(
+    depth: float, thickness: float, *, ref: float = REF_THICKNESS
+) -> float:
     sign = -1.0 if depth < 0 else 1.0
     mag = abs(depth) * thickness / ref
     cap = max(thickness - LIGAMENT, 0.5)

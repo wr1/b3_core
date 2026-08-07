@@ -102,7 +102,9 @@ def _sorted_curvature_rows(ctx: SweepContext) -> list[tuple[float, dict]]:
 
 def _fig_to_rgb(fig) -> np.ndarray:
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    fig.savefig(
+        buf, format="png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor()
+    )
     plt.close(fig)
     buf.seek(0)
     _, Image = _require_imageio()

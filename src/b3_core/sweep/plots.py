@@ -41,7 +41,7 @@ def _ensure_data(rows: list, name: str) -> int:
 
 def plot_thickness_response(ctx: SweepContext, path: Path) -> int:
     rows = collect_sweep(ctx, "thickness_")
-    if (code := _ensure_data(rows, "thickness")):
+    if code := _ensure_data(rows, "thickness"):
         return code
 
     pts = []
@@ -77,7 +77,7 @@ def plot_thickness_response(ctx: SweepContext, path: Path) -> int:
 
 def plot_curvature_response(ctx: SweepContext, path: Path) -> int:
     rows = collect_sweep(ctx, "kx_")
-    if (code := _ensure_data(rows, "curvature")):
+    if code := _ensure_data(rows, "curvature"):
         return code
 
     pts = []
@@ -113,7 +113,7 @@ def plot_curvature_response(ctx: SweepContext, path: Path) -> int:
 
 def plot_patterns_comparison(ctx: SweepContext, path: Path) -> int:
     rows = collect_sweep(ctx, "pattern_")
-    if (code := _ensure_data(rows, "patterns")):
+    if code := _ensure_data(rows, "patterns"):
         return code
 
     pts = []

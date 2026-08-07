@@ -38,8 +38,8 @@ def test_stiffness_is_physical(built):
     spec, _ = built
     c = spec.c_eff_gpa
     assert c.shape == (6, 6)
-    assert np.allclose(c, c.T, atol=1e-3)          # symmetric
-    assert np.all(np.linalg.eigvalsh(c) > 0.0)     # positive definite
+    assert np.allclose(c, c.T, atol=1e-3)  # symmetric
+    assert np.all(np.linalg.eigvalsh(c) > 0.0)  # positive definite
     ec = spec.engineering_constants
     assert all(ec[k] > 0 for k in ("E_x", "E_y", "E_z", "G_xy", "G_xz", "G_yz"))
 
@@ -47,8 +47,13 @@ def test_stiffness_is_physical(built):
 def test_build_typst_contains_tables_and_matrix(built):
     spec, _ = built
     src = datasheet.build_typst(spec)
-    for token in ("RVE / Geometry", "Materials", "Analysis",
-                  "Engineering constants", 'C_"eff"'):
+    for token in (
+        "RVE / Geometry",
+        "Materials",
+        "Analysis",
+        "Engineering constants",
+        'C_"eff"',
+    ):
         assert token in src
 
 

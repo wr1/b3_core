@@ -42,16 +42,20 @@ def test_zero_curvature_is_identical_to_flat():
     )
     flat = create_grooved_mesh(**common)
     explicit_zero = create_grooved_mesh(**common, kx=0.0, ky=0.0)
-    assert np.array_equal(
-        flat.cell_data["resin"], explicit_zero.cell_data["resin"]
-    )
+    assert np.array_equal(flat.cell_data["resin"], explicit_zero.cell_data["resin"])
     assert np.allclose(flat.points, explicit_zero.points)
 
 
 def test_opening_raises_closing_lowers_resin_vf():
     """A top-mouth groove (depth<0) opens under +kx and closes under -kx."""
     common = dict(
-        thickness=30.0, dx=50.0, dy=50.0, xcuts=[[10, 10, -8, 3]], ycuts=[], madd=MADD, tface=0.0
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[10, 10, -8, 3]],
+        ycuts=[],
+        madd=MADD,
+        tface=0.0,
     )
     opened = _resin_vf(**common, kx=0.008)
     flat = _resin_vf(**common, kx=0.0)
@@ -64,7 +68,13 @@ def test_full_closure_pinches_groove_shut():
     w, p, d = 3.0, 10.0, 8.0
     kappa_close = w / (p * d)  # +kx closes a bottom-mouth groove
     common = dict(
-        thickness=30.0, dx=50.0, dy=50.0, xcuts=[[10, p, d, w]], ycuts=[], madd=MADD, tface=0.0
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[10, p, d, w]],
+        ycuts=[],
+        madd=MADD,
+        tface=0.0,
     )
     flat = _resin_vf(**common, kx=0.0)
     pinched = _resin_vf(**common, kx=2.0 * kappa_close)
@@ -78,9 +88,14 @@ def test_wall_nodes_track_analytical_taper():
     kx = 0.01
     hw0 = 0.5 * width
     mesh = create_grooved_mesh(
-        thickness=th, dx=50.0, dy=50.0,
-        xcuts=[[c0, pitch, depth, width]], ycuts=[],
-        madd=[0.0], tface=0.0, kx=kx,
+        thickness=th,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[c0, pitch, depth, width]],
+        ycuts=[],
+        madd=[0.0],
+        tface=0.0,
+        kx=kx,
     )
     grooves = _physical_grooves([[c0, pitch, depth, width]], 50.0, kx)
     assert len(grooves) == 1
@@ -109,9 +124,14 @@ def test_mouth_wider_than_root_on_wall_line():
     assert hw_mouth > hw_root
 
     mesh = create_grooved_mesh(
-        thickness=th, dx=50.0, dy=50.0,
-        xcuts=[[c0, 60.0, depth, width]], ycuts=[],
-        madd=MADD, tface=0.0, kx=kx,
+        thickness=th,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[c0, 60.0, depth, width]],
+        ycuts=[],
+        madd=MADD,
+        tface=0.0,
+        kx=kx,
     )
     # Resin cell-centre span at mouth vs root (should track morphed walls)
     pts = _resin_centres(mesh)
@@ -127,9 +147,14 @@ def test_mouth_wider_than_root_on_wall_line():
 def test_taper_has_multiple_z_stations_not_prismatic():
     """Opened kerfs resolve hw(z) over several z layers; width grows with z."""
     mesh = create_grooved_mesh(
-        thickness=30.0, dx=50.0, dy=50.0,
-        xcuts=[[10, 10, -27, 3]], ycuts=[],
-        madd=MADD, tface=0.0, kx=0.012,
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[10, 10, -27, 3]],
+        ycuts=[],
+        madd=MADD,
+        tface=0.0,
+        kx=0.012,
     )
     pts = _resin_centres(mesh)
     pts = pts[(pts[:, 0] > 6.0) & (pts[:, 0] < 14.0)]
@@ -152,8 +177,13 @@ def test_taper_has_multiple_z_stations_not_prismatic():
 def test_positive_cell_volumes_after_morph():
     """Morphed open and near-closed meshes keep positive cell volumes."""
     common = dict(
-        thickness=30.0, dx=50.0, dy=50.0,
-        xcuts=[[10, 10, -27, 3]], ycuts=[], madd=MADD, tface=0.0,
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[[10, 10, -27, 3]],
+        ycuts=[],
+        madd=MADD,
+        tface=0.0,
     )
     for kx in (0.012, -0.012, 0.0):
         mesh = create_grooved_mesh(**common, kx=kx)
@@ -169,8 +199,13 @@ def test_two_sided_opposite_ky_swaps_band_volumes():
     kerf grows while the other pinches.
     """
     common = dict(
-        thickness=30.0, dx=50.0, dy=50.0, xcuts=[],
-        ycuts=[[-2, 25, 17, 2], [2, 25, -17, 2]], madd=MADD, tface=0.0,
+        thickness=30.0,
+        dx=50.0,
+        dy=50.0,
+        xcuts=[],
+        ycuts=[[-2, 25, 17, 2], [2, 25, -17, 2]],
+        madd=MADD,
+        tface=0.0,
     )
 
     def band_share(ky: float) -> tuple[float, float]:
@@ -192,7 +227,11 @@ def test_two_sided_opposite_ky_swaps_band_volumes():
 
 def test_cprop_input_accepts_and_validates_curvature():
     base = dict(
-        dx=50.0, dy=50.0, thickness=30.0, xgr=[[10, 10, 8, 3]], ygr=[],
+        dx=50.0,
+        dy=50.0,
+        thickness=30.0,
+        xgr=[[10, 10, 8, 3]],
+        ygr=[],
         core={"E": 4e9, "nu": 0.3, "rho": 100.0},
         resin={"E": 4e9, "nu": 0.3, "rho": 1100.0},
     )

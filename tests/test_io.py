@@ -1,7 +1,8 @@
-import pytest
 import numpy as np
+import pytest
 import pyvista as pv
 import vtk
+
 from b3_core.io.vts2ccx import vtstoccx
 
 

@@ -21,8 +21,13 @@ def _lin(lo, hi, length, ref, px):
 
 def _draw_panel(ax, grid, extent, cmap, norm, lines_u, lines_v, title):
     ax.imshow(
-        grid, origin="lower", extent=extent, cmap=cmap, norm=norm,
-        aspect="equal", interpolation="nearest",
+        grid,
+        origin="lower",
+        extent=extent,
+        cmap=cmap,
+        norm=norm,
+        aspect="equal",
+        interpolation="nearest",
     )
     for u in lines_u:
         ax.axvline(u, color="0.35", lw=0.15, alpha=0.45)
@@ -58,7 +63,7 @@ def plot_orthogonal_cuts(model, *, px: int = 240, theme: CoreTheme = DEFAULT_THE
     uz = _lin(z0, z1, Lz, ref, px)
 
     plan = geometry.sample_plane(mesh, mat, 0, 1, 2, zc, ux, uy)  # z=zc : x,y
-    top = geometry.sample_plane(mesh, mat, 0, 2, 1, yc, ux, uz)   # y=yc : x,z
+    top = geometry.sample_plane(mesh, mat, 0, 2, 1, yc, ux, uz)  # y=yc : x,z
     side = geometry.sample_plane(mesh, mat, 2, 1, 0, xc, uz, uy)  # x=xc : z,y
 
     cmap, norm = theme.phase_cmap()
@@ -72,8 +77,12 @@ def plot_orthogonal_cuts(model, *, px: int = 240, theme: CoreTheme = DEFAULT_THE
     ax_plan = fig.add_subplot(gs[1, 1])
 
     _draw_panel(ax_top, top, (x0, x1, z0, z1), cmap, norm, xv, zv, f"top  y={yc:.3g}")
-    _draw_panel(ax_side, side, (z0, z1, y0, y1), cmap, norm, zv, yv, f"side  x={xc:.3g}")
-    _draw_panel(ax_plan, plan, (x0, x1, y0, y1), cmap, norm, xv, yv, f"plan  z={zc:.3g}")
+    _draw_panel(
+        ax_side, side, (z0, z1, y0, y1), cmap, norm, zv, yv, f"side  x={xc:.3g}"
+    )
+    _draw_panel(
+        ax_plan, plan, (x0, x1, y0, y1), cmap, norm, xv, yv, f"plan  z={zc:.3g}"
+    )
 
     ax_plan.axvline(xc, color=theme.cut_line, lw=0.9, ls="--")
     ax_plan.axhline(yc, color=theme.cut_line, lw=0.9, ls="--")

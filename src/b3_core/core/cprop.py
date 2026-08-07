@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 
-import json
 import hashlib
+import json
 import logging
 import os
-from .mesh import create_grooved_mesh
-from .analysis import geom_analysis
-from ..io.vts2ccx import vtstoccx
-from ..io.runccx import runccx
+
+import pyvista as pv
+from frd2vtu import frd2vtu
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 from ..io.fenicsx import runfenicsx, validate_against_ccx
 from ..io.mfem_backend import runmfem
-from frd2vtu import frd2vtu
-import pyvista as pv
+from ..io.runccx import runccx
+from ..io.vts2ccx import vtstoccx
 from ..post.skins import postprocess
 from ..result import CoreResult
+from .analysis import geom_analysis
+from .mesh import create_grooved_mesh
 from .scoring import effective_resin_vf
-from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +163,12 @@ def _run_numpy_backend(mesh, dct):
 
     logger.info("running numpy anisotropic homogenisation")
     return runnumpy(
-        mesh, dct["resin"], dct["core"], dct.get("face"),
-        score_field=_score_field(dct), scoring=dct.get("scoring"),
+        mesh,
+        dct["resin"],
+        dct["core"],
+        dct.get("face"),
+        score_field=_score_field(dct),
+        scoring=dct.get("scoring"),
     ).properties
 
 
@@ -218,7 +224,9 @@ def cprop(case_data):
         dct = case_data
         dirname = "."
     else:
-        raise TypeError(f"cprop expected a path or dict, got {type(case_data).__name__}")
+        raise TypeError(
+            f"cprop expected a path or dict, got {type(case_data).__name__}"
+        )
 
     # Validate input
     validated = CpropInput(**dct)

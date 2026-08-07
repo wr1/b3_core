@@ -246,9 +246,7 @@ def test_edge_kerf_wall_continuous_with_foam_land(render, layout):
 
     for z in (layout["z_root"], layout["z_ref"], layout["z_mouth"]):
         kerf_wall = np.array(
-            render._map_kerf_gap_point(
-                hw0, z, -hw0, hw0, xc_L, xc_R, kx, z_ref, x_mid
-            )
+            render._map_kerf_gap_point(hw0, z, -hw0, hw0, xc_L, xc_R, kx, z_ref, x_mid)
         )
         land_face = np.array(render._rect_point(a0, z, xc_foam, kx, z_ref, x_mid))
         assert kerf_wall == pytest.approx(land_face, abs=1e-9)
@@ -335,7 +333,6 @@ def test_mould_mesh_edge_not_overopen_vs_mid(render, layout):
 def test_flat_fea_implements_hw_at(base):
     th = float(base["thickness"])
     dx = float(base["dx"])
-    pitch = float(base["xgr"][0][1])
     depth = float(base["xgr"][0][2])
     hw0 = 0.5 * float(base["xgr"][0][3])
     kx = 0.012

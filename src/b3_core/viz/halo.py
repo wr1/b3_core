@@ -73,7 +73,8 @@ def plot_halo_degradation(
 
     with plt.rc_context(theme.publication_rcparams()):
         fig, axes = plt.subplots(
-            1, 2 if e_foam and e_resin else 1,
+            1,
+            2 if e_foam and e_resin else 1,
             figsize=figsize if e_foam and e_resin else (figsize[0] * 0.55, figsize[1]),
             squeeze=False,
             layout="constrained",
@@ -104,10 +105,21 @@ def plot_halo_degradation(
             e_ratio = effective_modulus_ratio(p, e_foam=e_foam, e_resin=e_resin)
             foam_frac = 1.0 - p
 
-            ax_e.plot(d, e_ratio, color=theme.resin_color, lw=2.4,
-                      label=f"{modulus_label}_eff / {modulus_label}_foam")
-            ax_e.plot(d, foam_frac, color=theme.core_color, lw=1.8, ls="--",
-                      label="1 − P(resin)  (intact foam fraction)")
+            ax_e.plot(
+                d,
+                e_ratio,
+                color=theme.resin_color,
+                lw=2.4,
+                label=f"{modulus_label}_eff / {modulus_label}_foam",
+            )
+            ax_e.plot(
+                d,
+                foam_frac,
+                color=theme.core_color,
+                lw=1.8,
+                ls="--",
+                label="1 − P(resin)  (intact foam fraction)",
+            )
             if reach > 0:
                 ax_e.axvline(reach, color="#888888", ls=":", lw=1.0, alpha=0.7)
                 ax_e.axhline(1.0, color="#cccccc", lw=0.8)
@@ -117,7 +129,7 @@ def plot_halo_degradation(
             ax_e.set_ylabel("Normalized property")
             ax_e.set_title(
                 f"Stiffness grading ({modulus_label}: "
-                f"{e_foam/1e6:.0f} → {e_resin/1e9:.1f} GPa mix)"
+                f"{e_foam / 1e6:.0f} → {e_resin / 1e9:.1f} GPa mix)"
             )
             ax_e.grid(True, alpha=0.25)
             ax_e.legend(loc="upper right", fontsize=8)
@@ -146,8 +158,7 @@ def plot_halo_cross_section_strip(
 
     groove = field.grooves[0]
     g_axis, c0, hw, _slope, depth = groove
-    z = (depth * 0.5 if depth > 0
-         else field.thickness + depth * 0.5)
+    z = depth * 0.5 if depth > 0 else field.thickness + depth * 0.5
     if span_mm is None:
         span_mm = field.reach * 1.15
 
@@ -170,8 +181,13 @@ def plot_halo_cross_section_strip(
         fig, ax = plt.subplots(figsize=figsize, layout="constrained")
         ax.fill_between(t, 0, p, color=theme.resin_color, alpha=0.35)
         ax.plot(t, p, color=theme.resin_color, lw=2.0)
-        ax.axvline(field.reach, color="#888888", ls=":", lw=1.0,
-                   label=f"cell_size reach ≈ {field.reach:.2g} mm")
+        ax.axvline(
+            field.reach,
+            color="#888888",
+            ls=":",
+            lw=1.0,
+            label=f"cell_size reach ≈ {field.reach:.2g} mm",
+        )
         ax.set_xlim(0.0, span_mm)
         ax.set_ylim(0.0, 1.02)
         ax.set_xlabel(xlabel)
@@ -289,8 +305,11 @@ def plot_halo_side_cut(
     with plt.rc_context(theme.publication_rcparams()):
         fig, ax = plt.subplots(figsize=figsize, layout="constrained")
         ax.imshow(
-            rgba, origin="lower", extent=[x0, x1, z0, z1],
-            aspect="equal", interpolation="nearest",
+            rgba,
+            origin="lower",
+            extent=[x0, x1, z0, z1],
+            aspect="equal",
+            interpolation="nearest",
         )
         ax.set_xlabel("x [mm]")
         ax.set_ylabel("z [mm]")
@@ -308,7 +327,11 @@ def plot_halo_side_cut(
                     xy=(c0, z_mid),
                     xytext=(c0 + field.reach * 2.2, z_mid + Lz * 0.22),
                     fontsize=8,
-                    arrowprops={"arrowstyle": "->", "color": theme.edge_color, "lw": 1.0},
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "color": theme.edge_color,
+                        "lw": 1.0,
+                    },
                 )
                 ax.annotate(
                     "halo\n(opened foam cells)",
@@ -343,11 +366,14 @@ def plot_halo_side_cut(
         if face_on:
             legend_handles.insert(
                 2,
-                Patch(facecolor=halo_cmap(0.35), label="face halo (closed cells, thinner)"),
+                Patch(
+                    facecolor=halo_cmap(0.35), label="face halo (closed cells, thinner)"
+                ),
             )
         ax.legend(handles=legend_handles, loc="upper right", fontsize=7, framealpha=0.9)
 
     return fig, ax
+
 
 def plot_halo_sharp_vs_scored(
     sharp_inp: dict,
@@ -386,8 +412,13 @@ def plot_halo_sharp_vs_scored(
         grid.ravel()[inside] = mat[cids[inside]]
         cmap, norm = theme.phase_cmap()
         ax.imshow(
-            grid, origin="lower", extent=[xv[0], xv[-1], zv[0], zv[-1]],
-            cmap=cmap, norm=norm, aspect="equal", interpolation="nearest",
+            grid,
+            origin="lower",
+            extent=[xv[0], xv[-1], zv[0], zv[-1]],
+            cmap=cmap,
+            norm=norm,
+            aspect="equal",
+            interpolation="nearest",
         )
         ax.set_title(title, fontsize=9)
         ax.set_xlabel("x [mm]")
@@ -468,9 +499,12 @@ def plot_halo_intuitive_board(
         ax_strip.axvline(field.reach, color="#888888", ls=":", lw=1.0)
         ax_strip.axvspan(0, field.reach, color=theme.resin_color, alpha=0.06)
         ax_strip.text(
-            field.reach * 0.5, 0.55,
+            field.reach * 0.5,
+            0.55,
             "halo reach",
-            ha="center", fontsize=8, color=theme.resin_color,
+            ha="center",
+            fontsize=8,
+            color=theme.resin_color,
         )
         ax_strip.set_xlim(0, span)
         ax_strip.set_ylim(0, 1.05)
@@ -488,8 +522,14 @@ def plot_halo_intuitive_board(
         ax_curve.set_ylim(0, 1.05)
         ax_curve.grid(True, alpha=0.25)
         ax2 = ax_curve.twinx()
-        ax2.plot(d, e_ratio, color=theme.face_color, lw=2.0, ls="--",
-                 label=r"$E_\mathrm{eff}/E_\mathrm{foam}$")
+        ax2.plot(
+            d,
+            e_ratio,
+            color=theme.face_color,
+            lw=2.0,
+            ls="--",
+            label=r"$E_\mathrm{eff}/E_\mathrm{foam}$",
+        )
         ax2.set_ylabel(r"$E_\mathrm{eff}/E_\mathrm{foam}$", color=theme.face_color)
         ax2.set_ylim(0, max(e_ratio.max() * 1.08, 1.05))
         ax_curve.set_title(
@@ -511,8 +551,8 @@ def render_halo_3d_png(
     window_size: tuple[int, int] = (900, 720),
 ) -> Path:
     """3D view: neat resin solid, foam coloured by ``P(resin)`` at cell centres."""
-    from b3_core.viz._deps import ensure_headless, require_pyvista
     from b3_core.viz import geometry
+    from b3_core.viz._deps import ensure_headless, require_pyvista
 
     mesh, mat, field = _mesh_and_field(inp)
     centers = mesh.cell_centers().points
@@ -833,16 +873,25 @@ def plot_halo_curvature_compose(
 
         sm = plt.cm.ScalarMappable(cmap=band_cmap, norm=band_norm)
         sm.set_array([])
-        cbar = fig.colorbar(sm, ax=axes, fraction=0.025, pad=0.02, ticks=[0.1, 0.3, 0.5, 0.7, 0.9])
+        cbar = fig.colorbar(
+            sm, ax=axes, fraction=0.025, pad=0.02, ticks=[0.1, 0.3, 0.5, 0.7, 0.9]
+        )
         cbar.set_label("P(resin) in halo rim  (blue→white→red)")
         cbar.ax.set_yticklabels(["0–0.2", "0.2–0.4", "0.4–0.6", "0.6–0.8", "0.8–1"])
         legend_handles = [
-            Patch(facecolor=theme.halo_resin_color(), label="neat resin (morphed kerf)"),
+            Patch(
+                facecolor=theme.halo_resin_color(), label="neat resin (morphed kerf)"
+            ),
             Patch(facecolor="#ef8a62", label="halo rim (graded P)"),
             Patch(facecolor="#e8e8e8", edgecolor="#888", label="intact foam (P ≈ 0)"),
             Line2D([0], [0], color=theme.edge_color, lw=1.4, label="kerf wall hw(z)"),
             Line2D(
-                [0], [0], color="#2166ac", lw=1.2, ls=":", label="halo reach (wall + cell_size)"
+                [0],
+                [0],
+                color="#2166ac",
+                lw=1.2,
+                ls=":",
+                label="halo reach (wall + cell_size)",
             ),
         ]
         fig.legend(
@@ -934,6 +983,7 @@ def plot_halo_curvature_wall_strip(
         ax.grid(True, alpha=0.25)
         ax.legend(loc="upper right", fontsize=7, ncol=2)
     return fig, ax
+
 
 def _resin_probability_flat_walls(field, points: np.ndarray) -> np.ndarray:
     """P(resin) as if kerf walls stayed rectangular (slope forced to 0).
@@ -1106,9 +1156,7 @@ def plot_halo_follows_angled_walls(
 
     def _paint(ax, p_fn, *, zoom_box=None, contours: bool = False):
         ux, uz, ext = _grid(zoom_box)
-        p_grid, phase = _sample_p_plane(
-            mesh, mat, p_fn, 0, 2, 1, yc, ux, uz
-        )
+        p_grid, phase = _sample_p_plane(mesh, mat, p_fn, 0, 2, 1, yc, ux, uz)
         ax.imshow(
             _rgba(p_grid, phase),
             origin="lower",
@@ -1160,11 +1208,15 @@ def plot_halo_follows_angled_walls(
         return p_grid, phase, ux, uz, ext
 
     p_correct = field.resin_probability
-    p_flat = lambda pts: _resin_probability_flat_walls(field, pts)
+
+    def p_flat(pts):
+        return _resin_probability_flat_walls(field, pts)
 
     with plt.rc_context(theme.publication_rcparams()):
         fig = plt.figure(figsize=figsize, layout="constrained")
-        gs = fig.add_gridspec(2, 3, height_ratios=[1.05, 1.0], width_ratios=[1.0, 1.0, 1.0])
+        gs = fig.add_gridspec(
+            2, 3, height_ratios=[1.05, 1.0], width_ratios=[1.0, 1.0, 1.0]
+        )
         ax_full = fig.add_subplot(gs[0, 0])
         ax_zoom = fig.add_subplot(gs[0, 1:])
         ax_wrong = fig.add_subplot(gs[1, 0])
@@ -1236,12 +1288,8 @@ def plot_halo_follows_angled_walls(
 
         # Difference on foam only: where the band moved with the wall.
         ux, uz, ext = _grid(zoom)
-        p_bad, phase_bad = _sample_p_plane(
-            mesh, mat, p_flat, 0, 2, 1, yc, ux, uz
-        )
-        p_ok2, phase_ok2 = _sample_p_plane(
-            mesh, mat, p_correct, 0, 2, 1, yc, ux, uz
-        )
+        p_bad, phase_bad = _sample_p_plane(mesh, mat, p_flat, 0, 2, 1, yc, ux, uz)
+        p_ok2, phase_ok2 = _sample_p_plane(mesh, mat, p_correct, 0, 2, 1, yc, ux, uz)
         foam = (
             (~np.isnan(p_ok2))
             & (~np.isnan(p_bad))
@@ -1300,7 +1348,12 @@ def plot_halo_follows_angled_walls(
             Patch(facecolor=halo_cmap(0.55), label="P(resin) halo in foam"),
             Line2D([0], [0], color=theme.edge_color, lw=1.6, label="angled wall hw(z)"),
             Line2D(
-                [0], [0], color="#888888", lw=1.4, ls=":", label="rectangular wall (ghost)"
+                [0],
+                [0],
+                color="#888888",
+                lw=1.4,
+                ls=":",
+                label="rectangular wall (ghost)",
             ),
         ]
         fig.legend(
@@ -1447,9 +1500,7 @@ def sweep_halo_curvature_grid(
     import json
 
     kx_values = list(
-        kx_values
-        if kx_values is not None
-        else np.linspace(-0.010, 0.010, 9)
+        kx_values if kx_values is not None else np.linspace(-0.010, 0.010, 9)
     )
     cell_sizes = list(
         cell_sizes if cell_sizes is not None else [0.0, 0.3, 0.6, 1.0, 1.5]
@@ -1466,9 +1517,7 @@ def sweep_halo_curvature_grid(
         }
         if need.issubset(have):
             return [
-                r
-                for r in rows
-                if (round(r["kx"], 6), round(r["cell_size"], 6)) in need
+                r for r in rows if (round(r["kx"], 6), round(r["cell_size"], 6)) in need
             ]
 
     rows: list[dict[str, float]] = []
@@ -1700,9 +1749,7 @@ def render_halo_curvature_figures(
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    fig = plot_halo_curvature_compose(
-        base_inp, kx_open=kx_open, kx_closed=kx_closed
-    )
+    fig = plot_halo_curvature_compose(base_inp, kx_open=kx_open, kx_closed=kx_closed)
     p = out_dir / "halo_curvature_compose.png"
     fig.savefig(p, dpi=dpi, bbox_inches="tight")
     plt.close(fig)

@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from b3_core.physics_surrogate import (
     GeometrySpec,
-    build_training_frame,
     fit_from_homogenization,
-    fit_physics_surrogate,
     physics_base,
 )
 

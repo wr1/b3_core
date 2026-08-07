@@ -58,9 +58,13 @@ def render_deformed_modes(
             plotter.add_mesh(core, color=theme.core_color, opacity=theme.core_opacity)
         if resin.n_cells:
             plotter.add_mesh(
-                resin, scalars="umag_mm", cmap=theme.cmap_displacement,
-                show_edges=True, edge_color=theme.edge_color,
-                line_width=theme.edge_width, show_scalar_bar=False,
+                resin,
+                scalars="umag_mm",
+                cmap=theme.cmap_displacement,
+                show_edges=True,
+                edge_color=theme.edge_color,
+                line_width=theme.edge_width,
+                show_scalar_bar=False,
             )
         plotter.add_text(f"strain {lc}", font_size=10, color="black")
         plotter.camera_position = "iso"

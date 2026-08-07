@@ -25,7 +25,7 @@ cross-channel moduli, and the two-phase density for mass.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -66,10 +66,14 @@ def _col(feat, name: str, default: float = 0.0) -> np.ndarray:
 def _as_feat(X, features: list[str]) -> dict[str, np.ndarray]:
     """Accept DataFrame, dict of arrays, or ndarray in ``features`` order."""
     if isinstance(X, pd.DataFrame):
-        return {c: X[c].to_numpy(dtype=float) if c in X.columns else np.zeros(len(X)) for c in features}
+        return {
+            c: X[c].to_numpy(dtype=float) if c in X.columns else np.zeros(len(X))
+            for c in features
+        }
     if isinstance(X, dict):
-        n = len(np.atleast_1d(next(iter(X.values()))))
-        return {c: np.atleast_1d(np.asarray(X.get(c, 0.0), dtype=float)) for c in features}
+        return {
+            c: np.atleast_1d(np.asarray(X.get(c, 0.0), dtype=float)) for c in features
+        }
     arr = np.atleast_2d(np.asarray(X, dtype=float))
     if arr.shape[1] != len(features):
         raise ValueError(
@@ -269,7 +273,13 @@ class CorePhysicsSurrogate:
     def _geom(self) -> GeometrySpec:
         if not self.geometry:
             return GeometrySpec()
-        return GeometrySpec(**{k: self.geometry[k] for k in GeometrySpec.__dataclass_fields__ if k in self.geometry})
+        return GeometrySpec(
+            **{
+                k: self.geometry[k]
+                for k in GeometrySpec.__dataclass_fields__
+                if k in self.geometry
+            }
+        )
 
     def predict(
         self,
@@ -282,7 +292,11 @@ class CorePhysicsSurrogate:
         ``(n, n_features)`` ndarray in ``self.features`` order.
         """
         feat = _as_feat(X, self.features)
-        want = self.targets if targets is None else [t for t in targets if t in self.targets]
+        want = (
+            self.targets
+            if targets is None
+            else [t for t in targets if t in self.targets]
+        )
         base = physics_base(feat, self._geom())
         phi = _phi(feat)
         out: dict[str, np.ndarray] = {}
@@ -396,7 +410,9 @@ def fit_physics_surrogate(
         coefs=coefs,
         features=list(FEATURE_NAMES),
         targets=want,
-        geometry={k: float(getattr(geom, k)) for k in GeometrySpec.__dataclass_fields__},
+        geometry={
+            k: float(getattr(geom, k)) for k in GeometrySpec.__dataclass_fields__
+        },
     )
 
 

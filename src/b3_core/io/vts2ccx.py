@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-import pyvista as pv
-import numpy as np
 import argparse
+
+import numpy as np
+import pyvista as pv
 
 
 def nset(nds, name):
@@ -93,7 +94,28 @@ def periodic_bcs(msh, added_nodes):
 
 
 _CCX_TO_VTK_C3D8 = [0, 3, 2, 1, 4, 7, 6, 5]
-_CCX_TO_VTK_C3D20 = [0, 3, 2, 1, 4, 7, 6, 5, 11, 10, 9, 8, 15, 14, 13, 12, 16, 19, 18, 17]
+_CCX_TO_VTK_C3D20 = [
+    0,
+    3,
+    2,
+    1,
+    4,
+    7,
+    6,
+    5,
+    11,
+    10,
+    9,
+    8,
+    15,
+    14,
+    13,
+    12,
+    16,
+    19,
+    18,
+    17,
+]
 
 
 def vtstoccx(mesh, outputname, resin, core, face=None, element_type="C3D8"):
@@ -104,7 +126,12 @@ def vtstoccx(mesh, outputname, resin, core, face=None, element_type="C3D8"):
         ccx_to_vtk = _CCX_TO_VTK_C3D8
     elif element_type == "C3D20":
         import vtk
-        ug = sigrd.cast_to_unstructured_grid() if hasattr(sigrd, "cast_to_unstructured_grid") else sigrd
+
+        ug = (
+            sigrd.cast_to_unstructured_grid()
+            if hasattr(sigrd, "cast_to_unstructured_grid")
+            else sigrd
+        )
         f = vtk.vtkLinearToQuadraticCellsFilter()
         f.SetInputData(ug)
         f.Update()

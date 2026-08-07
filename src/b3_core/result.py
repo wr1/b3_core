@@ -60,9 +60,7 @@ class CoreResult(BaseModel):
         )
 
     @classmethod
-    def from_cprop_output(
-        cls, output: dict, *, name: str | None = None
-    ) -> CoreResult:
+    def from_cprop_output(cls, output: dict, *, name: str | None = None) -> CoreResult:
         """Build a CoreResult from the dict returned by `cprop`.
 
         Pulls the engineering constants plus `rho_infused`, `resin_vf` and

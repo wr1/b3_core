@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
-import pyvista as pv
-import numpy as np
 import argparse
 import json
+
+import numpy as np
+import pyvista as pv
 
 
 def postprocess(results, datfiles, thickness):
     output = {}
     for i in zip(results, datfiles, strict=False):
         res = i[0]
-        lc = i[1].split("_")[-1].split(".")[0]
         res_cell = res.point_data_to_cell_data(pass_point_data=True)
         if res_cell.bounds[5] > thickness * 1e-3 + 1e-9:
             centers = res_cell.cell_centers().points
@@ -41,7 +41,6 @@ def postprocess(results, datfiles, thickness):
         #     )
         xmin, xmax, ymin, ymax, zmin, zmax = res_cell.bounds
         dx, dy, dz = xmax - xmin, ymax - ymin, zmax - zmin
-        bnds = res_cell.GetBounds()
         tol = 1e-7
         xminp = np.where(res_cell.points[:, 0] < xmin + tol)[0]
         xmaxp = np.where(res_cell.points[:, 0] > xmax - tol)[0]

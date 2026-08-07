@@ -9,7 +9,6 @@ volume (and effective resin with halo) correctly.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from b3_core.core.analysis import geom_analysis
 from b3_core.core.mesh import _hw_at, create_grooved_mesh
@@ -82,7 +81,9 @@ def test_scorefield_reads_curvature_slopes():
     sf_open = ScoreField(_inp(-0.01))  # depth>0: −κ opens the mouth
     sf_closed = ScoreField(_inp(+0.01))
     # axis 0 only — y-family has ky=0 so zero slopes
-    slopes_open = sorted({g[3] for g in sf_open.grooves if g[0] == 0 and abs(g[3]) > 1e-15})
+    slopes_open = sorted(
+        {g[3] for g in sf_open.grooves if g[0] == 0 and abs(g[3]) > 1e-15}
+    )
     slopes_closed = sorted(
         {g[3] for g in sf_closed.grooves if g[0] == 0 and abs(g[3]) > 1e-15}
     )

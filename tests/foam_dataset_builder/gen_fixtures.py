@@ -1,9 +1,12 @@
 """Generate 3 synthetic FEA result fixtures for Phase 1 dataset builder testing."""
-import numpy as np
+
 import json
 import os
 
+import numpy as np
+
 WORKSPACE = "/home/wr/.hermes/kanban/boards/blade3/workspaces/t_2c562aac"
+
 
 def engineering_to_stiffness(Exx, Eyy, Ezz, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz):
     """Convert 9 engineering constants to 6x6 stiffness tensor (Voigt notation)."""
@@ -22,10 +25,33 @@ def engineering_to_stiffness(Exx, Eyy, Ezz, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz):
     return C, upper
 
 
-def make_fixture(foam_type, name, Exx, Eyy, Ezz, Gxy, Gxz, Gyz,
-                 nuxy, nuxz, nuyz, core_E, core_nu, core_rho,
-                 resin_E, resin_nu, resin_rho, dx, dy, thickness,
-                 xgr, ygr, curvature, backend, md5):
+def make_fixture(
+    foam_type,
+    name,
+    Exx,
+    Eyy,
+    Ezz,
+    Gxy,
+    Gxz,
+    Gyz,
+    nuxy,
+    nuxz,
+    nuyz,
+    core_E,
+    core_nu,
+    core_rho,
+    resin_E,
+    resin_nu,
+    resin_rho,
+    dx,
+    dy,
+    thickness,
+    xgr,
+    ygr,
+    curvature,
+    backend,
+    md5,
+):
     """Create a synthetic cprop() output JSON fixture."""
     C, upper = engineering_to_stiffness(Exx, Eyy, Ezz, Gxy, Gxz, Gyz, nuxy, nuxz, nuyz)
     resin_vf = 0.35
@@ -83,42 +109,84 @@ if __name__ == "__main__":
     fixtures = [
         # Fixture 1: PVC high foam (Divinycell H250 equivalent)
         make_fixture(
-            foam_type="pvc_foam_high", name="pvc_high_plain",
-            Exx=320e6, Eyy=320e6, Ezz=22e6,
-            Gxy=160e6, Gxz=12e6, Gyz=12e6,
-            nuxy=0.30, nuxz=0.05, nuyz=0.05,
-            core_E=130e6, core_nu=0.30, core_rho=100,
-            resin_E=3.0e9, resin_nu=0.35, resin_rho=1100,
-            dx=50, dy=50, thickness=30,
-            xgr=[[10, 10, 8, 3]], ygr=[],
+            foam_type="pvc_foam_high",
+            name="pvc_high_plain",
+            Exx=320e6,
+            Eyy=320e6,
+            Ezz=22e6,
+            Gxy=160e6,
+            Gxz=12e6,
+            Gyz=12e6,
+            nuxy=0.30,
+            nuxz=0.05,
+            nuyz=0.05,
+            core_E=130e6,
+            core_nu=0.30,
+            core_rho=100,
+            resin_E=3.0e9,
+            resin_nu=0.35,
+            resin_rho=1100,
+            dx=50,
+            dy=50,
+            thickness=30,
+            xgr=[[10, 10, 8, 3]],
+            ygr=[],
             curvature={},
             backend="mfem",
             md5="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
         ),
         # Fixture 2: PET foam (Divinagard equivalent)
         make_fixture(
-            foam_type="pet_foam", name="pet_low_curved",
-            Exx=90e6, Eyy=90e6, Ezz=7e6,
-            Gxy=45e6, Gxz=5e6, Gyz=5e6,
-            nuxy=0.35, nuxz=0.06, nuyz=0.06,
-            core_E=60e6, core_nu=0.30, core_rho=50,
-            resin_E=3.0e9, resin_nu=0.35, resin_rho=1100,
-            dx=50, dy=50, thickness=25,
-            xgr=[[8, 8, 6, 2.5]], ygr=[],
+            foam_type="pet_foam",
+            name="pet_low_curved",
+            Exx=90e6,
+            Eyy=90e6,
+            Ezz=7e6,
+            Gxy=45e6,
+            Gxz=5e6,
+            Gyz=5e6,
+            nuxy=0.35,
+            nuxz=0.06,
+            nuyz=0.06,
+            core_E=60e6,
+            core_nu=0.30,
+            core_rho=50,
+            resin_E=3.0e9,
+            resin_nu=0.35,
+            resin_rho=1100,
+            dx=50,
+            dy=50,
+            thickness=25,
+            xgr=[[8, 8, 6, 2.5]],
+            ygr=[],
             curvature={"kx": -0.005},
             backend="mfem",
             md5="b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5",
         ),
         # Fixture 3: Balsa foam
         make_fixture(
-            foam_type="balsa_foam", name="balsa_crossed",
-            Exx=2200e6, Eyy=2200e6, Ezz=450e6,
-            Gxy=880e6, Gxz=220e6, Gyz=220e6,
-            nuxy=0.30, nuxz=0.04, nuyz=0.04,
-            core_E=1800e6, core_nu=0.30, core_rho=180,
-            resin_E=3.0e9, resin_nu=0.35, resin_rho=1100,
-            dx=50, dy=50, thickness=40,
-            xgr=[[12, 12, 10, 4]], ygr=[[12, 12, 10, 4]],
+            foam_type="balsa_foam",
+            name="balsa_crossed",
+            Exx=2200e6,
+            Eyy=2200e6,
+            Ezz=450e6,
+            Gxy=880e6,
+            Gxz=220e6,
+            Gyz=220e6,
+            nuxy=0.30,
+            nuxz=0.04,
+            nuyz=0.04,
+            core_E=1800e6,
+            core_nu=0.30,
+            core_rho=180,
+            resin_E=3.0e9,
+            resin_nu=0.35,
+            resin_rho=1100,
+            dx=50,
+            dy=50,
+            thickness=40,
+            xgr=[[12, 12, 10, 4]],
+            ygr=[[12, 12, 10, 4]],
             curvature={},
             backend="mfem",
             md5="c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6",

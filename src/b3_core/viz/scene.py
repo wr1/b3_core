@@ -60,32 +60,43 @@ class CoreScene:
         t = self.theme
         if phases["core"].n_cells:
             self.actors[prefix + "core"] = self.plotter.add_mesh(
-                phases["core"], color=t.core_color, opacity=t.core_opacity,
-                show_edges=edges, edge_color=t.edge_color,
+                phases["core"],
+                color=t.core_color,
+                opacity=t.core_opacity,
+                show_edges=edges,
+                edge_color=t.edge_color,
             )
         if phases["face"].n_cells:
             self.actors[prefix + "face"] = self.plotter.add_mesh(
-                phases["face"], color=t.face_color, opacity=t.face_opacity,
+                phases["face"],
+                color=t.face_color,
+                opacity=t.face_opacity,
             )
         if phases["resin"].n_cells:
             self.actors[prefix + "resin"] = self.plotter.add_mesh(
-                phases["resin"], color=t.resin_color, show_edges=True,
-                edge_color=t.edge_color, line_width=t.edge_width,
+                phases["resin"],
+                color=t.resin_color,
+                show_edges=True,
+                edge_color=t.edge_color,
+                line_width=t.edge_width,
             )
 
     def add_phases(self, *, edges: bool = False) -> "CoreScene":
         """Core (translucent), resin grooves (solid) and face skin."""
         self._add_phase_meshes(
-            geometry.split_phases(self.model.mesh, self.model.material_codes), edges=edges
+            geometry.split_phases(self.model.mesh, self.model.material_codes),
+            edges=edges,
         )
         return self
 
     def add_mesh_edges(self, *, color: str | None = None) -> "CoreScene":
         """Overlay the full FE mesh as a wireframe."""
         self.actors["edges"] = self.plotter.add_mesh(
-            self.model.mesh, style="wireframe",
+            self.model.mesh,
+            style="wireframe",
             color=color or self.theme.edge_color,
-            line_width=self.theme.edge_width, opacity=0.3,
+            line_width=self.theme.edge_width,
+            opacity=0.3,
         )
         return self
 
@@ -98,20 +109,32 @@ class CoreScene:
                 continue
             sl = view.slice(normal=axis, origin=_plane_origin(view, axis, val))
             self.actors[f"slice_{axis}"] = self.plotter.add_mesh(
-                sl, scalars="__phase", cmap=self.theme.phase_colors(), clim=[0, 2],
-                show_scalar_bar=False, show_edges=True,
-                edge_color=self.theme.edge_color, line_width=0.2,
+                sl,
+                scalars="__phase",
+                cmap=self.theme.phase_colors(),
+                clim=[0, 2],
+                show_scalar_bar=False,
+                show_edges=True,
+                edge_color=self.theme.edge_color,
+                line_width=0.2,
             )
         return self
 
-    def add_cutaway(self, axis: str = "x", frac: float = 0.5, *, edges: bool = False) -> "CoreScene":
+    def add_cutaway(
+        self, axis: str = "x", frac: float = 0.5, *, edges: bool = False
+    ) -> "CoreScene":
         """Phases clipped at a plane to reveal the internal groove nesting."""
         mesh = self.model.mesh
-        lo, hi = mesh.bounds[2 * "xyz".index(axis)], mesh.bounds[2 * "xyz".index(axis) + 1]
+        lo, hi = (
+            mesh.bounds[2 * "xyz".index(axis)],
+            mesh.bounds[2 * "xyz".index(axis) + 1],
+        )
         origin = _plane_origin(mesh, axis, lo + frac * (hi - lo))
         phases = geometry.split_phases(mesh, self.model.material_codes)
-        clipped = {k: (v.clip(normal=axis, origin=origin) if v.n_cells else v)
-                   for k, v in phases.items()}
+        clipped = {
+            k: (v.clip(normal=axis, origin=origin) if v.n_cells else v)
+            for k, v in phases.items()
+        }
         self._add_phase_meshes(clipped, edges=edges, prefix="cut_")
         return self
 
@@ -124,12 +147,18 @@ class CoreScene:
         core = warped.threshold(0.5, scalars="resin", invert=True)
         resin = warped.threshold(0.5, scalars="resin")
         if core.n_cells:
-            self.plotter.add_mesh(core, color=self.theme.core_color, opacity=self.theme.core_opacity)
+            self.plotter.add_mesh(
+                core, color=self.theme.core_color, opacity=self.theme.core_opacity
+            )
         if resin.n_cells:
             self.actors["deformed"] = self.plotter.add_mesh(
-                resin, scalars="umag_mm", cmap=self.theme.cmap_displacement,
-                show_edges=True, edge_color=self.theme.edge_color,
-                line_width=self.theme.edge_width, show_scalar_bar=False,
+                resin,
+                scalars="umag_mm",
+                cmap=self.theme.cmap_displacement,
+                show_edges=True,
+                edge_color=self.theme.edge_color,
+                line_width=self.theme.edge_width,
+                show_scalar_bar=False,
             )
         return self
 
@@ -138,7 +167,9 @@ class CoreScene:
         C = self.model.stiffness if C is None else C
         surf = tensor.modulus_surface(C, kind=kind)
         self.actors["modulus"] = self.plotter.add_mesh(
-            surf, scalars="value_GPa", cmap=self.theme.cmap_modulus,
+            surf,
+            scalars="value_GPa",
+            cmap=self.theme.cmap_modulus,
             scalar_bar_args={"title": "E [GPa]"},
         )
         return self
@@ -163,7 +194,10 @@ class CoreScene:
                 a.SetVisibility(state)
 
             self.plotter.add_checkbox_button_widget(
-                _cb, value=True, position=(10.0, 10.0 + 35 * i), size=25,
+                _cb,
+                value=True,
+                position=(10.0, 10.0 + 35 * i),
+                size=25,
             )
         return self
 

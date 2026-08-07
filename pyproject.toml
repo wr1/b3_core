@@ -5,6 +5,24 @@ description = "Homogenized elastic properties for sandwich-panel cores with sawc
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+authors = [{ name = "wr1" }]
+keywords = [
+    "homogenization",
+    "sandwich",
+    "foam",
+    "kerf",
+    "curvature",
+    "fea",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "numpy",
     "scipy",
@@ -22,7 +40,13 @@ dependencies = [
 [project.optional-dependencies]
 interactive = ["trame", "trame-vtk", "trame-vuetify"]
 anim = ["imageio", "imageio-ffmpeg", "pillow"]
-dev = ["pytest>=8", "ruff"]
+dev = ["pytest>=8", "ruff>=0.8", "pre-commit>=4.0"]
+
+[project.urls]
+Homepage = "https://github.com/wr1/b3_core"
+Repository = "https://github.com/wr1/b3_core"
+Issues = "https://github.com/wr1/b3_core/issues"
+Changelog = "https://github.com/wr1/b3_core/blob/master/CHANGELOG.md"
 
 [project.scripts]
 b3_core = "b3_core.core.run:main"
@@ -37,6 +61,17 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["src/b3_core"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/SKILL.md",
+]
+
 [tool.uv.sources]
 b3_mat = { path = "../b3_mat" }
 treeparse = { path = "/home/wr1/projects/treeparse" }
@@ -47,3 +82,26 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Gate CI on pyflakes + pycodestyle + isort. Broader rules (UP/SIM/B) can be
+# enabled later without blocking the first release.
+select = [
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+]
+ignore = [
+    "E501", # line length handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E402"]
+"examples/**" = ["E402", "F401", "F841"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
