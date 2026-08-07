@@ -64,13 +64,17 @@ jobs:
         run: uv venv --python ${{ matrix.python-version }}
 
       # Local path sources (b3_mat, treeparse) do not exist on the runner.
-      # --no-sources: treeparse from PyPI; b3_mat from GitHub (slim deps:
-      # OrthotropicMaterial only — no lamprop/composipy). frd2vtu stays a
-      # direct git URL from the project deps table.
+      # --no-sources: treeparse from PyPI; b3_mat from GitHub (needs only
+      # OrthotropicMaterial — no lamprop/composipy). frd2vtu stays a direct
+      # git URL from the project deps table.
+      # numba>=0.60: mfem 4.8 still declares numba==0.53 → llvmlite 0.36 which
+      # cannot build on Python 3.12; install a modern numba alongside so the
+      # resolver does not drag that pin in for the matrix.
       - name: Install dependencies
         run: |
           uv pip install --no-sources \
             "b3_mat @ git+https://github.com/wr1/b3_mat.git" \
+            "numba>=0.60" \
             ".[dev]"
 
       # CalculiX / typst not installed — related tests self-skip.
