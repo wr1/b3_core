@@ -6,4 +6,4 @@
 :HL["/figures/halo_curvature_wall_strip.png","image"]
 :HL["/figures/halo_curvature_stiffness.png","image"]
 :HL["/figures/halo_curvature_moduli_vs_kx.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"concepts/halo-curvature","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"3BgFcgL74ghWcqmPNbfx5"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"concepts/halo-curvature","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"DhtFwo5jDa2hseGmYGrEm"}
