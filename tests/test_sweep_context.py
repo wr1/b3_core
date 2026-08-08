@@ -168,6 +168,36 @@ def test_sweep_run_dispatch(monkeypatch, tmp_path):
     assert sweep_run("not-a-stage", root=tmp_path) == 1
 
 
+def test_run_case_merges_overrides_and_uses_cache(tmp_path, monkeypatch):
+    from b3_core.sweep import context as ctx_mod
+
+    base = {"a": 1, "nested": {"x": 1}, "dx": 1}
+    out_dir = tmp_path / "run1"
+    calls: list[str] = []
+
+    def fake_cprop(path):
+        calls.append(path)
+        return {"ok": True, "Exx": 1.0}
+
+    monkeypatch.setattr(ctx_mod, "cprop", fake_cprop)
+    result = ctx_mod.run_case(base, {"nested": {"y": 2}, "b": 3}, out_dir)
+    assert result["ok"] is True
+    assert calls
+    case = json.loads((out_dir / "case.json").read_text())
+    assert case["nested"] == {"x": 1, "y": 2}
+    assert case["b"] == 3
+
+    # Second call hits FileExistsError path via cached run*.json
+    (out_dir / "runcached.json").write_text(json.dumps({"cached": True}))
+
+    def boom(_path):
+        raise FileExistsError("exists")
+
+    monkeypatch.setattr(ctx_mod, "cprop", boom)
+    cached = ctx_mod.run_case(base, {}, out_dir)
+    assert cached["cached"] is True
+
+
 def test_homogenise_drivers_with_mocked_run_case(monkeypatch, tmp_path):
     from b3_core.sweep import homogenise
 

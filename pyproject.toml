@@ -86,7 +86,7 @@ testpaths = ["tests"]
 addopts = [
     "--cov=b3_core",
     "--cov-report=term-missing:skip-covered",
-    "--cov-fail-under=72",
+    "--cov-fail-under=90",
 ]
 
 [tool.coverage.run]

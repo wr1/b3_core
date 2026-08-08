@@ -85,13 +85,13 @@ make install           # uv sync --extra dev && pre-commit install
 make lint              # ruff check src tests
 make format            # ruff format + ruff check --fix
 make pre-commit        # full hook suite (ruff format/lint + basic files)
-make test              # pytest (+ coverage; fail under 72%)
+make test              # pytest (+ coverage; fail under 90%)
 make cov               # same + refresh badges/coverage.json
 ```
 
 Coverage is measured with `pytest-cov` on the mainline package (optional FEniCSx /
 ccx / anim / offline-sweep modules are omitted — see `pyproject.toml`). CI
-enforces `--cov-fail-under=72`. Refresh the README badge after a local run:
+enforces `--cov-fail-under=90`. Refresh the README badge after a local run:
 
 ```bash
 make cov
