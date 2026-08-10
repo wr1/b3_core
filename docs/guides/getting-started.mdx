@@ -15,41 +15,55 @@ description: Install b3_core, write a case file, and run a first homogenization.
 uv sync --extra mfem
 ```
 
-## Minimal case file
+## Textile-as-code (preferred)
 
-Geometry is mm; materials are SI. An ungrooved baseline:
+Geometry is mm; materials are SI. Build the RVE in Python, then homogenize —
+no YAML required:
 
-```yaml
-dx: 50
-dy: 50
-thickness: 30
-xgr: []
-ygr: []
-core:  { E: 4e9,  nu: 0.3, rho: 100 }
-resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
-# backend: mfem   # default — omit, or set ccx / fenicsx / numpy
+```python
+from b3_core import homogenize, plain, uniaxial, grid_scored
+
+r = homogenize(plain())
+r = homogenize(uniaxial(depth=8, pitch=10))
+r = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.008))
+print(r.material)  # b3_mat.OrthotropicMaterial
+```
+
+Named factories live in `b3_core.cases` (`plain`, `uniaxial`, `crossed`,
+`two_sided`, `curved_panel`, `grid_scored`) and return a `Textile` with fluent
+modifiers (`.with_curvature`, `.with_halo`, `.with_backend`, …). You can also
+construct a raw `CpropInput` / `Material` if you need full control.
+
+Optional JSON snapshot for the CLI or git fixtures:
+
+```python
+grid_scored().to_json("gs30.json")
+# then: uv run b3_core run gs30.json
+```
+
+```bash
+uv run python examples/textile_gs30.py
 ```
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
 Negative depth opens toward the mould face (useful with curvature).
-Default solver is **MFEM** (`uv sync --extra mfem`); set `backend: ccx` only if
-you want CalculiX.
+Default solver is **MFEM** (`uv sync --extra mfem`); halo / orthotropic foam
+auto-route to **numpy**.
 
-Shipped examples:
+Shipped examples (JSON is interchange; factories are the source of truth):
 
-| File | What it shows |
-|------|----------------|
-| `examples/simple.json` | Plain core baseline |
-| `examples/with_grooves.json` | Mixed x/y groove families |
-| `examples/mfem_patterns/*.json` | Pattern gallery (plain, uniaxial, crossed, two-sided) |
-| `examples/diab_gs30_scored.json` | Grid-scored foam with resin halo |
-| `examples/curved_panel/` | Groove taper under mould curvature |
+| Source | What it shows |
+|--------|----------------|
+| `plain()` / `examples/simple.json` | Plain core baseline |
+| `uniaxial` / `crossed` / `two_sided` | Pattern gallery |
+| `grid_scored()` / `diab_gs30_scored.json` | Grid-scored foam + resin halo |
+| `curved_panel()` / `examples/curved_panel/` | Groove taper under mould curvature |
 
-## Run
+## Run (CLI still accepts files)
 
 ```bash
-uv run b3_core run examples/simple.yaml
-uv run b3_core examples/simple.json    # run is the default command
+uv run b3_core run examples/simple.json
+uv run b3_core examples/simple.yaml    # YAML still loads; not the preferred authoring form
 ```
 
 Each run writes `run<HASH>.json` next to the input (or in the study root for sweeps)

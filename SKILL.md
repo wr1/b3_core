@@ -53,19 +53,42 @@ Or: `b3_core skill` (path) · `b3_core skill --stdout` (full text).
 ## Agent workflow
 
 ```
-1. Write a CpropInput case file (YAML or JSON — geometry + core/resin materials)
-2. b3_core run case.yaml  →  run<HASH>.json
+1. Construct a textile in Python (b3_core.cases factories or CpropInput)
+2. homogenize(textile)  →  CoreResult  (or b3_core run case.json if a file exists)
 3. Extract properties → table / JSON / CalculiX card
-4. (Optional) b3_core sweep homogenise  or  b3_core viz datasheet …
+4. (Optional) sweep / viz datasheet / physics surrogate
 5. Hand off OrthotropicMaterial or constants to the downstream FEA model
 ```
 
 Always run commands yourself. Do not ask the user to run them.
 
+**Prefer textile-as-code** over authoring YAML. JSON/YAML are optional interchange
+for CLI and frozen fixtures (`textile.to_json(path)`).
+
 ## 1. Define the case
 
-Write a YAML or JSON file describing the RVE and constituents. Minimal example
-(ungrooved baseline):
+### Python factories (preferred)
+
+```python
+from b3_core import (
+    plain, uniaxial, crossed, two_sided, curved_panel, grid_scored,
+    homogenize, CpropInput, Material,
+)
+
+case = plain()
+case = uniaxial(depth=8, pitch=10)
+case = grid_scored(cell_size=0.6).with_curvature(kx=0.008)
+case = curved_panel(thickness=30, ligament=3, kx=0.012)
+
+result = homogenize(case)
+```
+
+Or build `CpropInput` / `Material` directly when no factory fits.
+
+### File interchange (optional)
+
+JSON (or YAML) still loads via `homogenize("case.json")` / `b3_core run case.json`.
+Minimal ungrooved snapshot:
 
 ```yaml
 dx: 50

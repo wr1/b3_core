@@ -36,11 +36,11 @@ FEA.
 flowchart TB
   subgraph prep[1. Define]
     direction LR
-    case[CpropInput YAML/JSON]
+    code["Textile / CpropInput in Python"]
   end
   subgraph run[2. Homogenize]
     direction LR
-    cli["b3_core run"] ~~~ py["homogenize()"]
+    py["homogenize(textile)"] ~~~ cli["b3_core run case.json"]
   end
   subgraph handoff[3. Present + hand off]
     direction LR
@@ -49,9 +49,11 @@ flowchart TB
   prep --> run --> handoff
 ```
 
-1. **Write a case** — geometry in mm, materials in SI. Start from
-   `examples/simple.yaml` or a pattern under `examples/mfem_patterns/`.
-2. **Run yourself** — CLI or Python. Do not ask the user to run commands.
+1. **Construct a textile in Python** — prefer `b3_core.cases` factories
+   (`plain`, `uniaxial`, `grid_scored`, …) or `CpropInput`. Geometry mm, materials SI.
+   Dump JSON only if the CLI or a frozen fixture is required.
+2. **Run yourself** — `homogenize(textile)` (or CLI on a path). Do not ask the user
+   to run commands.
 3. **Extract** — engineering constants from `CoreResult` / `run*.json`.
 4. **Present** — markdown table with moduli in **GPa** (divide Pa by `1e9`).
 5. **Hand off** — `result.material` (`b3_mat.OrthotropicMaterial`), JSON card, or
@@ -75,9 +77,10 @@ orthotropic foam or `core.cell_size` (resin halo) auto-route to **numpy**.
 ## Minimal agent script
 
 ```python
-from b3_core import homogenize
+from b3_core import grid_scored, homogenize, plain
 
-r = homogenize("examples/simple.json")
+r = homogenize(plain())  # or grid_scored(cell_size=0.6).with_curvature(kx=0.0)
+# r = homogenize("examples/simple.json")  # file still works (interchange)
 m = r.material
 
 # Always show a table (moduli as GPa for humans / FEA decks)

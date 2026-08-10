@@ -98,15 +98,17 @@ from b3_core.skill import read_skill, skill_path
 
 ## Quick start
 
-```bash
-uv sync
-uv run b3_core run examples/simple.yaml
-uv run b3_core viz datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
+```python
+from b3_core import grid_scored, homogenize, plain
+
+result = homogenize(plain())
+result = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.0))
+print(result.material)  # b3_mat.OrthotropicMaterial
 ```
 
-```python
-from b3_core import homogenize
-
-result = homogenize("examples/simple.json")
-print(result.material)  # b3_mat.OrthotropicMaterial
+```bash
+uv sync
+uv run python examples/textile_gs30.py
+uv run b3_core run examples/simple.json   # file interchange still supported
+uv run b3_core viz datasheet examples/mfem_patterns/two_sided.json -o card.pdf --png card.png
 ```

@@ -216,20 +216,50 @@ def load_case(path: str) -> tuple[dict, str]:
     return dct, os.path.dirname(path)
 
 
-def cprop(case_data):
-    """Run FEA analysis on a YAML/JSON case file or configuration dict."""
-    if isinstance(case_data, str):
-        dct, dirname = load_case(case_data)
-    elif isinstance(case_data, dict):
-        dct = case_data
-        dirname = "."
-    else:
-        raise TypeError(
-            f"cprop expected a path or dict, got {type(case_data).__name__}"
-        )
+def normalize_case(case_data) -> tuple[CpropInput, str]:
+    """Normalize a case source to ``(CpropInput, workdir)``.
 
-    # Validate input
-    validated = CpropInput(**dct)
+    Accepts:
+
+    - path (``str`` / ``Path``) to JSON or YAML
+    - ``dict`` matching ``CpropInput``
+    - ``CpropInput`` instance
+    - ``b3_core.cases.Textile`` (textile-as-code builder)
+
+    Workdir is the directory of a path (for ``run*.json`` output), else ``"."``.
+    """
+    from pathlib import Path as _Path
+
+    # Lazy import: cases.py depends on CpropInput from this module.
+    from b3_core.cases import Textile
+
+    if isinstance(case_data, Textile):
+        workdir = case_data.workdir or "."
+        return case_data.input, str(workdir)
+
+    if isinstance(case_data, CpropInput):
+        return case_data, "."
+
+    if isinstance(case_data, (str, _Path)):
+        path = str(case_data)
+        dct, dirname = load_case(path)
+        payload = {k: v for k, v in dct.items() if not str(k).startswith("_")}
+        return CpropInput(**payload), (dirname or ".")
+
+    if isinstance(case_data, dict):
+        # strip non-schema keys used only in example JSON files
+        payload = {k: v for k, v in case_data.items() if not str(k).startswith("_")}
+        return CpropInput(**payload), "."
+
+    raise TypeError(
+        "cprop/homogenize expected a path, dict, CpropInput, or Textile, "
+        f"got {type(case_data).__name__}"
+    )
+
+
+def cprop(case_data):
+    """Run FEA analysis on a case (path, dict, CpropInput, or Textile)."""
+    validated, dirname = normalize_case(case_data)
     dct = validated.model_dump()
 
     dct["hash"] = hashlib.md5(str(dct).encode()).hexdigest()
@@ -300,13 +330,15 @@ def cprop(case_data):
     return output
 
 
-def homogenize(json_data, *, name: str | None = None) -> CoreResult:
+def homogenize(case_data, *, name: str | None = None) -> CoreResult:
     """Run the full pipeline and return a b3_mat-backed `CoreResult`.
 
     Thin wrapper over `cprop` for callers that want the homogenized result as
     a `b3_mat.OrthotropicMaterial` (ready for the b3 section / beam pipeline)
-    rather than the raw output dict that `cprop` writes to JSON. Requires the
-    orthotropic engineering constants the ccx backend produces.
+    rather than the raw output dict that `cprop` writes to JSON.
+
+    *case_data* may be a path, dict, ``CpropInput``, or ``Textile`` factory
+    result — see :func:`normalize_case`.
     """
-    output = cprop(json_data)
+    output = cprop(case_data)
     return CoreResult.from_cprop_output(output, name=name)

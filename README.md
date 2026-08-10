@@ -154,16 +154,19 @@ handoff). See `b3_core --help` and `b3_core viz --help`.
 ## Python API
 
 ```python
-from b3_core import homogenize
+from b3_core import grid_scored, homogenize, plain
 
-# json_data is a path to a CpropInput JSON file (or an equivalent dict)
-result = homogenize("examples/simple.json")
+# Prefer textile-as-code (factories / CpropInput); JSON path still works.
+result = homogenize(plain())
+result = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.0))
+# result = homogenize("examples/simple.json")
 print(result.material)                  # b3_mat.OrthotropicMaterial
 print(result.resin_volume_fraction, result.surface_area_factor)
 ```
 
 `homogenize` wraps the lower-level `cprop` pipeline; call `cprop(...)` directly
-for the full raw output dict.
+for the full raw output dict. Case sources: `Textile`, `CpropInput`, `dict`, or
+path (JSON/YAML interchange).
 
 See `examples/curved_panel/` and `examples/mfem_patterns/` for focused demos.
 For a unified parametric study (thickness, curvature, groove patterns) with

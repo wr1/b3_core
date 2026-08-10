@@ -46,7 +46,7 @@ def test_load_case_dict_and_type_error(tmp_path):
     dct, dirname = load_case(str(path))
     assert dct["dx"] == 30.0
     assert dirname == str(tmp_path)
-    with pytest.raises(TypeError, match="path or dict"):
+    with pytest.raises(TypeError, match="Textile"):
         cprop_mod.cprop(123)  # type: ignore[arg-type]
 
 
