@@ -74,16 +74,19 @@ If you hit `FileExistsError`, delete the cached `run*.json` or use a fresh outpu
 ## Python API
 
 ```python
-from b3_core import homogenize, cprop
+from b3_core import cprop, grid_scored, homogenize, plain
 
-result = homogenize("examples/simple.json")  # CoreResult
+result = homogenize(plain())                 # CoreResult
+result = homogenize(grid_scored(cell_size=0.6))
 mat = result.material                        # b3_mat.OrthotropicMaterial
 print(result.resin_volume_fraction, result.surface_area_factor)
 
+# path still works (interchange)
 raw = cprop("examples/simple.json")          # full dict + writes run*.json
 ```
 
 `homogenize` is the FEA handoff path. Call `cprop` when you need the full pipeline dict.
+See [Resin halo](/docs/concepts/resin-halo) for graphics of `cell_size` / scoring.
 
 ## Coordinate system
 

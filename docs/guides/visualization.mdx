@@ -77,6 +77,30 @@ For scored-foam cases with `core.cell_size`, the halo CLI writes a PNG bundle
 (degradation curves, side cut, wall-normal strip, intuitive board, optional
 3D field, and sharp-vs-scored comparison):
 
+What the band is (schematic) and how `P(d)` grades modulus — full physics write-up
+in [Resin halo](/docs/concepts/resin-halo):
+
+<img
+  src="/figures/halo_schematic_zones.png"
+  alt="Schematic neat kerf, halo of opened cells, intact foam."
+  className="my-4 w-full max-w-2xl mx-auto rounded-lg border border-fd-border"
+/>
+
+<img
+  src="/figures/halo_schematic_grading.png"
+  alt="P(resin) decay and E_eff/E_foam vs distance from the cut wall."
+  className="my-4 w-full max-w-3xl mx-auto rounded-lg border border-fd-border"
+/>
+
+```python
+from b3_core import grid_scored
+from b3_core.viz.halo import render_halo_figures
+
+scored = grid_scored(cell_size=0.6)
+sharp = grid_scored(with_halo=False, cell_size=None)
+# or dump JSON and use the CLI below
+```
+
 ```bash
 uv run b3_core viz halo examples/diab_gs30_scored.json \
   -o examples/img \
@@ -87,6 +111,12 @@ uv run b3_core viz halo examples/diab_gs30_scored.json \
   src="/figures/halo_sharp_vs_scored.png"
   alt="Sharp 1 mm kerf versus the same RVE with stochastic resin halo."
   className="my-6 w-full rounded-lg border border-fd-border"
+/>
+
+<img
+  src="/figures/halo_3d.png"
+  alt="3D RVE with foam coloured by resin probability."
+  className="my-6 w-full max-w-md mx-auto rounded-lg border border-fd-border"
 />
 
 <img

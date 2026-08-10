@@ -116,9 +116,9 @@ card = {
 
 | Need | Case knobs | Where to read |
 |------|------------|---------------|
-| Resin-rich band from opened cells | `core.cell_size`, optional `scoring` | [Resin halo](/docs/concepts/resin-halo) |
-| Kerf open/close on a mould | `curvature.kx` / `ky` (1/mm), groove depths | [Kerf open & close](/docs/concepts/curvature) |
-| Both together / κ mass lookup | scored + curved case; physics surrogate | [Halo + curvature](/docs/concepts/halo-curvature) |
+| Resin-rich band from opened cells | `grid_scored(cell_size=…)` or `.with_halo(…)` | [Resin halo](/docs/concepts/resin-halo) (graphics) |
+| Kerf open/close on a mould | `curved_panel(kx=…)` / `.with_curvature` | [Kerf open & close](/docs/concepts/curvature) |
+| Both together / κ mass lookup | `curved_panel(...).with_halo(...)`; physics surrogate | [Halo + curvature](/docs/concepts/halo-curvature) |
 | FEA material card detail | constants, CalculiX, 6×6 C | [Homogenize for FEA](/docs/guides/homogenize) |
 | Figures for review | `viz` gallery / datasheet / halo | [Visualization](/docs/guides/visualization) |
 

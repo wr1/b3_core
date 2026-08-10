@@ -71,9 +71,9 @@ by 1e-3 for solvers that need SI lengths.
 **Concepts** — the physics the pipeline encodes.
 
 - [Periodic homogenization](/docs/concepts/method) — RVE, load cases, engineering constants.
-- [Resin halo](/docs/concepts/resin-halo) — graded stiffness from opened foam cells (Laustsen-style).
+- [Resin halo](/docs/concepts/resin-halo) — opened-cell band + graphics (`P(d)`, side cut, 3D); textile `grid_scored` / `.with_halo`.
 - [Kerf open & close](/docs/concepts/curvature) — mould curvature opens/pinches grooves; local homogenization.
-- [Halo + curvature](/docs/concepts/halo-curvature) — one `hw(z)` law; halo grades off the tapered wall; **Eyy vs κ × cell_size**; physics surrogate mass lookup.
+- [Halo + curvature](/docs/concepts/halo-curvature) — one `hw(z)` law; halo on tapered walls; **Eyy vs κ × cell_size**; surrogates.
 
 **Reference** — the contract.
 

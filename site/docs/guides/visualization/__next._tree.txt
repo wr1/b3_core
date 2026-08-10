@@ -5,11 +5,14 @@
 :HL["/figures/modulus_surface.png","image"]
 :HL["/figures/datasheet_example.png","image"]
 :HL["/figures/deformed_example.png","image"]
+:HL["/figures/halo_schematic_zones.png","image"]
+:HL["/figures/halo_schematic_grading.png","image"]
 :HL["/figures/halo_sharp_vs_scored.png","image"]
+:HL["/figures/halo_3d.png","image"]
 :HL["/figures/halo_intuitive_board.png","image"]
 :HL["/figures/halo_curvature_compose.png","image"]
 :HL["/figures/halo_curvature_stiffness.png","image"]
 :HL["/figures/halo_curvature_moduli_vs_kx.png","image"]
 :HL["/figures/groove_curved_vs_flat.png","image"]
 :HL["/figures/groove_curved_vs_flat_closed.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"guides/visualization","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"h05tPUMcHkIxIVT0rRtbO"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"guides/visualization","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"wFsCk225E2fE5vRDm4Ide"}

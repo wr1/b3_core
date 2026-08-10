@@ -18,6 +18,15 @@ flat rectangular resin tags
         └─ geometric halo tags (viz / band) outside post-morph walls
 ```
 
+Zone picture (flat kerf) from the halo concept page — same three layers when
+the wall is tapered:
+
+<img
+  src="/figures/halo_schematic_zones.png"
+  alt="Schematic neat resin, halo band, intact foam — geometry that rides the morphed wall when κ ≠ 0."
+  className="my-6 w-full max-w-2xl mx-auto rounded-lg border border-fd-border"
+/>
+
 ## Halo on the kerf open & close RVE
 
 Same geometry and κ as [Kerf open & close](/docs/concepts/curvature)
@@ -290,29 +299,31 @@ band is resolved:
 `s_halo` itself is `damage_cells × max active surface reach` (see
 [Resin halo](/docs/concepts/resin-halo#scoring-block)).
 
-## Minimal case
+## Minimal case (textile-as-code)
 
-Same as the kerf open & close example, plus `cell_size`:
+Top-mouth curved panel + resin halo; **`kx > 0` opens**, `kx < 0` closes:
 
-```json
-{
-  "dx": 50, "dy": 50, "thickness": 30,
-  "xgr": [[10, 10, -27, 3]],
-  "ygr": [],
-  "core": { "E": 130e6, "nu": 0.3, "rho": 100, "cell_size": 0.6 },
-  "resin": { "E": 3e9, "nu": 0.35, "rho": 1100 },
-  "curvature": { "kx": 0.012, "ky": 0.0 },
-  "scoring": { "damage_cells": 1.0, "surfaces": { "face": { "enabled": false } } },
-  "backend": "numpy"
-}
+```python
+from b3_core import curved_panel, homogenize
+
+case = (
+    curved_panel(thickness=30, ligament=3, kx=0.012)
+    .with_halo(0.6, face_enabled=False)  # saw-cut rim only
+)
+result = homogenize(case)
+# optional interchange: case.to_json("curved_halo.json")
 ```
 
-Top-mouth (`depth < 0`): **`kx > 0` opens**, `kx < 0` closes — same as
-[Kerf open & close](/docs/concepts/curvature). Drop `cell_size` for sharp kerf
-only; drop `curvature` for halo on a prismatic groove.
+Drop `.with_halo(...)` for sharp kerf only; drop `kx` / use
+`curved_panel(kx=0)` for halo on a prismatic groove. Grid-scored flat sheet:
 
-Reference: `examples/curved_panel/base.json` + `cell_size`. Composition tests:
-`tests/test_halo_curvature.py`. Parametric stiffness:
+```python
+from b3_core import grid_scored
+
+grid_scored(cell_size=0.6)  # both directions, DIAB-style
+```
+
+Composition tests: `tests/test_halo_curvature.py`. Parametric stiffness:
 `tests/test_halo_viz.py::test_parametric_stiffness_ranks_open_and_halo`.
 
 ## What each output means under composition
