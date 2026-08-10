@@ -3,6 +3,11 @@ title: Input schema
 description: Full CpropInput field list (pydantic).
 ---
 
+Prefer building cases in Python (`b3_core.cases` / `CpropInput`) — see
+[Getting started](/docs/guides/getting-started). JSON/YAML are optional
+interchange for the CLI (`b3_core run case.json`). The fields below are the
+validated model either way.
+
 All geometry fields are **mm**. Material moduli are **Pa**, densities **kg/m³**.
 
 ## Geometry
