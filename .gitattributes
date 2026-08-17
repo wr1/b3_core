@@ -1,0 +1,3 @@
+# Prebuilt DocKB export for GitHub Pages. Generated HTML/JS would otherwise
+# dominate Linguist's language bar (and PR diffs).
+site/** linguist-generated
