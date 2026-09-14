@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CalculiX ``*elastic,type=ortho`` card from C_eff (`CoreResult.ccx_ortho()`,
   `CoreModel.ccx_ortho()`, `b3_core run CASE --ccx-ortho out.inp`).
+- Git pre-commit hook (``.githooks/pre-commit``): ruff check + format on
+  staged ``src/`` / ``tests/`` Python (`make install` sets ``core.hooksPath``).
 
 ## [0.2.0] — 2026-09-14
 

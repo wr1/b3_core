@@ -176,7 +176,7 @@ uv sync --extra anim         # optional GIF/MP4 explainer
 ## Development
 
 ```bash
-make install           # uv sync --extra dev && pre-commit install
+make install           # uv sync --extra dev && git hooks → .githooks (ruff)
 make lint              # ruff check
 make format            # ruff format + fix
 make pre-commit        # full hooks

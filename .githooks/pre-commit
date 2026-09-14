@@ -1,0 +1,26 @@
+#!/bin/sh
+# Ruff lint + format on staged src/ and tests/ Python.
+# Installed via: git config core.hooksPath .githooks  (make install)
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+files=$(git diff --cached --name-only --diff-filter=ACMR |
+    grep -E '^(src|tests)/.+\.py$' || true)
+[ -n "$files" ] || exit 0
+
+if command -v uv >/dev/null 2>&1; then
+    ruff() { uv run ruff "$@"; }
+fi
+
+# Word-split is intentional: git paths here have no spaces.
+# shellcheck disable=SC2086
+ruff check --fix $files
+# shellcheck disable=SC2086
+ruff format $files
+
+dirty=$(echo "$files" | tr '\n' '\0' | xargs -0 git diff --name-only --)
+if [ -n "$dirty" ]; then
+    echo "ruff modified files; re-stage and commit:" >&2
+    echo "$dirty" >&2
+    exit 1
+fi

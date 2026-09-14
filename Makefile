@@ -41,9 +41,9 @@ help: ## List targets (default goal)
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
 
-install: ## uv sync (+ dev extras)
+install: ## uv sync (+ dev extras) and enable .githooks (ruff lint + format)
 	$(UV) sync --extra dev
-	$(RUN) pre-commit install
+	git config core.hooksPath .githooks
 
 test: ## pytest (+ coverage; fail under pyproject threshold)
 	$(RUN) pytest
