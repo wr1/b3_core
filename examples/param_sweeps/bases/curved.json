@@ -1,0 +1,12 @@
+{
+    "_comment": "Deep x-grooves through a 30 mm core with a 3 mm foam ligament (depth = -(thickness - 3)). Used by sweep_curvature.py; curvature.kx is overridden per case.",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, -27, 3]],
+    "ygr": [],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.4, -0.2, 0, 0.2, 0.4],
+    "backend": "mfem"
+}

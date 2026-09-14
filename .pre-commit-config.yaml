@@ -1,0 +1,29 @@
+# Pre-commit: ruff lint + format. Install once:
+#   uv sync --extra dev && uv run pre-commit install
+# Run all files:
+#   uv run pre-commit run --all-files
+# Or: make pre-commit
+#
+# Rule config lives in pyproject.toml. Scoped to src/ + tests/
+# (examples/ stay out of the gate).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(src|tests)/
+      - id: ruff-format
+        files: ^(src|tests)/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^(src|tests|README\.md|CHANGELOG\.md|pyproject\.toml)$
+      - id: end-of-file-fixer
+        files: ^(src|tests|README\.md|CHANGELOG\.md|pyproject\.toml)$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2048]

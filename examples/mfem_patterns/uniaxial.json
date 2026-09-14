@@ -1,0 +1,13 @@
+{
+    "_comment": "Single x-groove family: resin-filled slots at a 10 mm pitch along x, each spanning the full y-extent and cut 8 mm down from the top. Breaks in-plane symmetry -> orthotropy (Exx != Eyy).",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, 8, 3]],
+    "ygr": [],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.3, 0, 0.3],
+    "backend": "mfem",
+    "validate_with_ccx": true
+}
