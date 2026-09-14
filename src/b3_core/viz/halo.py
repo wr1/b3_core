@@ -1824,7 +1824,10 @@ def render_halo_figures(
     written.append(p)
 
     for name, plot_fn in (
-        ("halo_strip_grid_scored.png", lambda: plot_halo_cross_section_strip(scored_inp)),
+        (
+            "halo_strip_grid_scored.png",
+            lambda: plot_halo_cross_section_strip(scored_inp),
+        ),
         ("halo_side_cut.png", lambda: plot_halo_side_cut(scored_inp)),
     ):
         fig_i, _ = plot_fn()
