@@ -2,6 +2,8 @@
 
 import pytest
 
+from b3_core.io.aniso import orthotropic_C
+from b3_core.io.ccx_card import ortho_dijkl
 from b3_core.result import CoreResult
 
 
@@ -60,3 +62,28 @@ def test_from_cprop_output_missing_keys():
         CoreResult.from_cprop_output(
             {"Exx": 1.0, "rho_infused": 1.0, "resin_vf": 0.0, "area_increase": 1.0}
         )
+
+
+def test_ccx_ortho_card_from_result():
+    r = CoreResult.from_engineering_constants(
+        _eng(),
+        rho=120.0,
+        resin_volume_fraction=0.1,
+        surface_area_factor=1.2,
+        name="demo",
+    )
+    card = r.ccx_ortho()
+    assert card.startswith("*material,name=demo\n")
+    assert "*elastic,type=ortho" in card
+    assert "*density\n120" in card
+    lines = [ln for ln in card.splitlines() if ln and not ln.startswith("*")]
+    # 8 Dijkl + last line D2323,T
+    first = [float(x) for x in lines[0].rstrip(",").split(",")]
+    last = [float(x) for x in lines[1].split(",")]
+    assert len(first) == 8
+    assert last[1] == 293.0
+    C = orthotropic_C(1e9, 2e9, 3e9, 0.5e9, 0.4e9, 0.3e9, 0.3, 0.25, 0.2)
+    d = ortho_dijkl(C)
+    assert first[0] == pytest.approx(d[0])
+    assert first[6] == pytest.approx(d[6])  # D1212 = Gxy
+    assert last[0] == pytest.approx(d[8])  # D2323 = Gyz

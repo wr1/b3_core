@@ -79,6 +79,31 @@ card = {
 
 Load into `b3_mat.MaterialDB` or pass to laminate / section builders.
 
+## CalculiX `*elastic,type=ortho` card
+
+Homogenized C_eff as CalculiX ORTHO (D1111, D1122, D2222, D1133, D2233, D3333,
+D1212, D1313, D2323). Package Voigt is xx,yy,zz,yz,xz,xy so D1212=C_xyxy,
+D1313=C_xzxz, D2323=C_yzyz.
+
+```python
+from b3_core import homogenize
+
+print(homogenize("case.json").ccx_ortho())
+```
+
+```bash
+b3_core run case.json --ccx-ortho core.inp
+```
+
+```text
+*material,name=core_hom
+*elastic,type=ortho
+D1111,D1122,D2222,D1133,D2233,D3333,D1212,D1313,
+D2323,293
+*density
+rho
+```
+
 ## CalculiX engineering-constants card
 
 ```text
@@ -108,7 +133,7 @@ C_GPa = C * 1e-9
 | Target | What to pass |
 |--------|--------------|
 | `b3_mat` / `b3_gx` | `homogenize(...).material` |
-| CalculiX solid core | Engineering-constants card or matdb JSON |
+| CalculiX solid core | `ccx_ortho()` (`*elastic,type=ortho`) or engineering-constants card |
 | Full anisotropic solid | `CoreModel.stiffness` |
 | Mass properties | `rho_infused` / `material.rho` |
 

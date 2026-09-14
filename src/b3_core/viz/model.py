@@ -132,6 +132,22 @@ class CoreModel:
         """Effective 6x6 stiffness C_eff (Pa, order xx,yy,zz,yz,xz,xy)."""
         return np.asarray(self.details.stiffness, dtype=float)
 
+    def ccx_ortho(
+        self,
+        *,
+        name: str | None = None,
+        temperature: float | None = 293.0,
+    ) -> str:
+        """CalculiX ``*elastic,type=ortho`` card from C_eff."""
+        from b3_core.io.ccx_card import ccx_ortho_card
+
+        return ccx_ortho_card(
+            self.stiffness,
+            name=name or self.name,
+            rho=float(self.geom["rho_infused"]),
+            temperature=temperature,
+        )
+
     @property
     def compliance(self) -> np.ndarray:
         return np.asarray(self.details.compliance, dtype=float)

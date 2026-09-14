@@ -81,3 +81,22 @@ class CoreResult(BaseModel):
             surface_area_factor=output["area_increase"],
             name=name,
         )
+
+    def ccx_ortho(
+        self,
+        *,
+        name: str | None = None,
+        temperature: float | None = 293.0,
+    ) -> str:
+        """CalculiX ``*elastic,type=ortho`` card from the nine constants.
+
+        Reconstructs C from ``material`` (Voigt xx,yy,zz,yz,xz,xy) and emits
+        D1111…D2323. Includes ``*density`` from ``material.rho``.
+        """
+        from b3_core.io.aniso import orthotropic_C
+        from b3_core.io.ccx_card import ccx_ortho_card
+
+        m = self.material
+        C = orthotropic_C(m.Ex, m.Ey, m.Ez, m.Gxy, m.Gxz, m.Gyz, m.nuxy, m.nuxz, m.nuyz)
+        mat_name = name or m.name or "core_hom"
+        return ccx_ortho_card(C, name=mat_name, rho=m.rho, temperature=temperature)

@@ -308,6 +308,33 @@ card = {
 
 Load into `b3_mat.MaterialDB` or pass to `b3_gx` / laminate builders.
 
+### CalculiX `*elastic,type=ortho`
+
+Preferred solid-core card (stiffness Dijkl, SI Pa). Voigt in this package is
+xx,yy,zz,yz,xz,xy; CalculiX ORTHO wants D1212=Gxy, D1313=Gxz, D2323=Gyz.
+
+```python
+from b3_core import homogenize
+
+r = homogenize("case.json")
+print(r.ccx_ortho())                 # *material / *elastic,type=ortho / *density
+# or from C_eff directly:
+# CoreModel.from_json("case.json").ccx_ortho()
+```
+
+```bash
+b3_core run case.json --ccx-ortho core.inp
+```
+
+```text
+*material,name=core_hom
+*elastic,type=ortho
+D1111,D1122,D2222,D1133,D2233,D3333,D1212,D1313,
+D2323,293
+*density
+rho
+```
+
 ### CalculiX `*elastic,type=engineering constants`
 
 ```text
@@ -370,7 +397,7 @@ b3_core viz view case.json --what gallery -o board.png
 | Target | What to pass |
 |--------|--------------|
 | `b3_mat` / `b3_gx` laminate | `homogenize(...).material` (`OrthotropicMaterial`) |
-| CalculiX solid core layer | Engineering-constants card (§3) or matdb JSON |
+| CalculiX solid core layer | `ccx_ortho()` (`*elastic,type=ortho`) or engineering-constants card |
 | Full anisotropic solid | `CoreModel.stiffness` 6×6 tensor |
 | Density in structural model | `rho_infused` from result |
 

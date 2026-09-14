@@ -73,9 +73,33 @@ def test_main_builds_and_runs_cli(monkeypatch):
 
 def test_cmd_run_delegates_to_cprop(monkeypatch):
     calls: list[str] = []
-    monkeypatch.setattr(run_mod, "cprop", lambda p: calls.append(p))
+    monkeypatch.setattr(run_mod, "cprop", lambda p: calls.append(p) or {})
     run_mod.cmd_run("case.json")
     assert calls == ["case.json"]
+
+
+def test_cmd_run_writes_ccx_ortho(monkeypatch, tmp_path, capsys):
+    out = {
+        "Exx": 1e9,
+        "Eyy": 2e9,
+        "Ezz": 3e9,
+        "Gxy": 0.5e9,
+        "Gxz": 0.4e9,
+        "Gyz": 0.3e9,
+        "nuxy": 0.3,
+        "nuxz": 0.25,
+        "nuyz": 0.2,
+        "rho_infused": 150.0,
+        "resin_vf": 0.05,
+        "area_increase": 1.1,
+    }
+    monkeypatch.setattr(run_mod, "cprop", lambda p: out)
+    dest = tmp_path / "core.inp"
+    run_mod.cmd_run("case.json", ccx_ortho=str(dest))
+    text = dest.read_text()
+    assert "*elastic,type=ortho" in text
+    assert "*density" in text
+    assert "Wrote" in capsys.readouterr().out
 
 
 def test_sharp_sibling_from_halo_name(tmp_path):

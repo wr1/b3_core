@@ -22,8 +22,16 @@ _SWEEP_ROOT_OPT = option(
 _SWEEP_ROOT_STATE: list[str] = [""]
 
 
-def cmd_run(path: str):
-    cprop(path)
+def cmd_run(path: str, ccx_ortho: str = ""):
+    out = cprop(path)
+    if not ccx_ortho:
+        return
+    from b3_core.result import CoreResult
+
+    card = CoreResult.from_cprop_output(out).ccx_ortho()
+    dest = Path(ccx_ortho)
+    dest.write_text(card)
+    print(f"Wrote {dest}")
 
 
 def cmd_skill(stdout: bool):
@@ -473,6 +481,14 @@ def main():
                 help="Homogenise a case from YAML or JSON.",
                 callback=cmd_run,
                 arguments=[_CASE_ARG],
+                options=[
+                    option(
+                        flags=["--ccx-ortho"],
+                        arg_type=str,
+                        default="",
+                        help="Write a CalculiX *elastic,type=ortho card to this path.",
+                    ),
+                ],
             ),
             command(
                 name="skill",

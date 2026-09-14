@@ -19,6 +19,12 @@ b3_core examples/simple.json
 
 Writes `run<HASH>.json` with engineering constants and metrics.
 
+```bash
+b3_core run examples/simple.yaml --ccx-ortho core.inp
+```
+
+`--ccx-ortho` writes a CalculiX `*elastic,type=ortho` + `*density` card.
+
 ## `sweep`
 
 Parametric studies under a study root (default `examples/param_sweeps/`):
