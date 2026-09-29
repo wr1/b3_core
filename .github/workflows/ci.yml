@@ -14,7 +14,7 @@ jobs:
     name: lint (pre-commit / ruff)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -37,7 +37,7 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Headless OpenGL for PyVista/VTK (package may call pv.start_xvfb()).
       - name: Install headless GL + xvfb
@@ -86,7 +86,7 @@ jobs:
     name: pip install smoke (3.12)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -112,7 +112,7 @@ jobs:
     name: test (calculix)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install CalculiX
         run: |
@@ -135,7 +135,7 @@ jobs:
     name: test (fenicsx)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: mamba-org/setup-micromamba@v3
         with:
