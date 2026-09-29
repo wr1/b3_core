@@ -19,7 +19,7 @@ CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
 .PHONY: help install test cov lint format pre-commit skill-sync run sweep \
-	selfdoc docs docs-serve docs-open docs-static docs-build docs-preview
+	selfdoc tree docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
 
@@ -78,7 +78,10 @@ sweep: ## b3_core sweep homogenise
 # DocKB (fumano) — docs/*.mdx (+ optional kb/) via shared dockb runtime
 # ---------------------------------------------------------------------------
 
-selfdoc: docs-static ## list docs tree + serve hints (no server)
+selfdoc: tree docs-static ## directory tree, then docs list + serve hints (no server)
+
+tree: ## Python source tree (gitignored paths omitted)
+	@tree --gitignore --dirsfirst --noreport --prune -P '*.py' .
 
 docs: docs-serve ## serve DocKB site with dockb (default PORT=3000)
 
