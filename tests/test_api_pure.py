@@ -153,3 +153,27 @@ def test_write_true_overwrites_one_file(tmp_path):
     payload = json.loads(files[0].read_text())
     assert payload["schema"] == "b3_core.run/1"
     assert payload["result"]["backend"] == "fake"
+
+
+def test_validate_skips_when_ccx_is_missing(monkeypatch, caplog):
+    from b3_core.api import run_case
+    from b3_core.solvers.calculix.backend import CalculixBackend
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    monkeypatch.setattr(CalculixBackend, "is_available", lambda self: False)
+    try:
+        with caplog.at_level(logging.WARNING, logger="b3_core.cache"):
+            record = run_case(plain().with_backend("fake", validate_with_ccx=True))
+    finally:
+        unregister("fake")
+    assert record.validation is None
+    assert "skipping the cross-check" in caplog.text
+
+
+def test_ccx_solve_raises_when_binary_is_missing(monkeypatch):
+    from b3_core.solvers.calculix.backend import CalculixBackend
+
+    monkeypatch.setattr(CalculixBackend, "is_available", lambda self: False)
+    with pytest.raises(RuntimeError, match="ccx is not on PATH"):
+        CalculixBackend().solve(None)

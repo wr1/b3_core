@@ -36,6 +36,8 @@ class CalculixBackend:
         return shutil.which("ccx") is not None
 
     def solve(self, req: SolveRequest) -> SolveResult:
+        if not self.is_available():
+            raise RuntimeError("ccx is not on PATH")
         from frd2vtu import frd2vtu
 
         from b3_core.solvers.calculix.runner import runccx

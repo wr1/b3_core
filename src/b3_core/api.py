@@ -77,7 +77,13 @@ def _maybe_validate(
     from b3_core.pipeline import solve
     from b3_core.solvers import get_backend
 
-    reference = solve(prep, get_backend("ccx"))
+    reference_backend = get_backend("ccx")
+    if not reference_backend.is_available():
+        logger.warning(
+            "validate_with_ccx is set but ccx is not on PATH; skipping the cross-check"
+        )
+        return None
+    reference = solve(prep, reference_backend)
     return validate_against(reference.properties, solved.properties, label=resolved)
 
 

@@ -115,13 +115,17 @@ markers = [
 [tool.coverage.run]
 branch = false
 source = ["b3_core"]
-# Optional / offline paths: not exercised on default CI (no FEniCSx/ccx/anim
-# extras; sweep GIFs and legacy post CLIs are manual demos).
+# Optional / offline paths: not exercised on default CI (no FEniCSx, ccx,
+# typst, or anim extras). The CalculiX solve and the legacy post CLIs run in
+# the calculix job or by hand; sweep GIFs are manual demos.
 omit = [
     "*/b3_core/solvers/fenicsx.py",
     "*/b3_core/solvers/calculix/runner.py",
     "*/b3_core/solvers/calculix/planar.py",
     "*/b3_core/solvers/calculix/base.py",
+    "*/b3_core/solvers/calculix/backend.py",
+    "*/b3_core/solvers/calculix/post.py",
+    "*/b3_core/solvers/calculix/planar_post.py",
     "*/b3_core/viz/animate.py",
     "*/b3_core/sweep/gifs.py",
     "*/b3_core/sweep/plots.py",

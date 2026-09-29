@@ -12,11 +12,11 @@ concurrency:
 jobs:
   lint:
     name: lint (pre-commit / ruff)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -30,14 +30,14 @@ jobs:
 
   test:
     name: test (py${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Headless OpenGL for PyVista/VTK (package may call pv.start_xvfb()).
       - name: Install headless GL + xvfb
@@ -56,7 +56,7 @@ jobs:
             libxi6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -84,11 +84,11 @@ jobs:
 
   pip-install-smoke:
     name: pip install smoke (3.12)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -110,9 +110,9 @@ jobs:
 
   test-ccx:
     name: test (calculix)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install CalculiX
         run: |
@@ -120,7 +120,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends calculix-ccx
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync --extra dev
@@ -133,11 +133,11 @@ jobs:
 
   test-fenicsx:
     name: test (fenicsx)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: fenicsx
           create-args: >-
@@ -165,6 +165,8 @@ jobs:
             "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
           python -m pip install --no-deps .
 
+      # Collecting the whole suite loads VTK beside dolfinx and the runner
+      # is SIGTERM'd (exit 143) before pytest prints anything.
       - name: Compare fenicsx with MFEM
         shell: bash -l {0}
-        run: pytest -m fenicsx -o addopts= -q --tb=short
+        run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_optional_solvers.py
