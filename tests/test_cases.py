@@ -16,7 +16,6 @@ from b3_core import (
     uniaxial,
 )
 from b3_core.cases import from_dict, from_path
-from b3_core.core import cprop as cprop_mod
 
 
 def test_plain_and_normalize_cprop_input():
@@ -63,9 +62,9 @@ def test_curved_panel_ligament_and_curvature():
     assert t2.input.xgr[0][2] == pytest.approx(-22.0)
 
 
-def test_grid_scored_halo_routes_numpy():
+def test_grid_scored_halo_leaves_backend_auto():
     g = grid_scored(cell_size=0.6)
-    assert g.input.backend == "numpy"
+    assert g.input.backend == "auto"
     assert g.input.core.cell_size == 0.6
     assert g.input.scoring
     sharp = grid_scored(with_halo=False, cell_size=None)
@@ -91,34 +90,21 @@ def test_from_dict_and_path_roundtrip(tmp_path):
     assert t2.input.dx == t0.input.dx
 
 
-def test_homogenize_accepts_textile_via_mock(monkeypatch):
-    eng = {
-        "Exx": 1e9,
-        "Eyy": 1e9,
-        "Ezz": 1e9,
-        "Gxy": 0.4e9,
-        "Gxz": 0.4e9,
-        "Gyz": 0.4e9,
-        "nuxy": 0.3,
-        "nuxz": 0.3,
-        "nuyz": 0.3,
-        "rho_infused": 200.0,
-        "resin_vf": 0.1,
-        "area_increase": 1.05,
-    }
+def test_homogenize_accepts_textile_via_mock():
+    from tests.fakes import fake_backend, unregister
 
-    def fake_cprop(case):
-        # ensure normalize works inside cprop path
-        inp, _ = normalize_case(case)
+    from b3_core import homogenize
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    try:
+        inp, _ = normalize_case(plain())
         assert isinstance(inp, CpropInput)
-        return eng
-
-    monkeypatch.setattr(cprop_mod, "cprop", fake_cprop)
-    # call homogenize from module under test path
-    from b3_core.core.cprop import homogenize as homog
-
-    r = homog(plain(), name="t")
-    assert r.material.name == "t"
+        result = homogenize(plain(), name="t", backend="fake")
+    finally:
+        unregister("fake")
+    assert result.material.name == "t"
+    assert result.material.Ex == 1.0e9
 
 
 def test_cprop_rejects_unknown_type():

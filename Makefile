@@ -4,7 +4,8 @@
 #        PORT=3011 DOCKB=dockb  DOCS_BASE=/b3_core  PREVIEW_PORT=4173
 
 UV ?= uv
-RUN ?= $(UV) run
+# --no-sync: this checkout's .venv is a shared environment. `uv sync` prunes it.
+RUN ?= UV_NO_SYNC=1 $(UV) run --no-sync
 B3 ?= $(RUN) b3_core
 DOCKB ?= dockb
 DOCKB_EXPORT ?= dockb-export
@@ -17,7 +18,7 @@ SITE_DIR ?= site
 CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
-.PHONY: help install test cov lint format pre-commit run sweep \
+.PHONY: help install test cov lint format pre-commit skill-sync run sweep \
 	selfdoc docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
@@ -52,8 +53,13 @@ cov: ## pytest with coverage JSON + refresh badges/coverage.json
 	$(RUN) pytest --cov-report=json:coverage.json
 	$(RUN) python scripts/update_coverage_badge.py
 
-lint: ## ruff check (src + tests)
+lint: ## ruff, import-linter, and the SKILL.md sync check
 	$(RUN) ruff check src tests
+	$(RUN) lint-imports --verbose
+	$(RUN) python scripts/sync_skill_md.py --check
+
+skill-sync: ## packaged SKILL.md matches the repo-root source
+	$(RUN) python scripts/sync_skill_md.py --check
 
 format: ## ruff format (src + tests)
 	$(RUN) ruff format src tests
@@ -66,7 +72,7 @@ run: ## b3_core run — homogenise one case
 	$(B3) run $(CASE)
 
 sweep: ## b3_core sweep homogenise
-	$(B3) sweep homogenise --root $(SWEEP_ROOT)
+	$(B3) sweep homogenize --root $(SWEEP_ROOT)
 
 # ---------------------------------------------------------------------------
 # DocKB (fumano) — docs/*.mdx (+ optional kb/) via shared dockb runtime
@@ -133,7 +139,7 @@ docs-build: ## static HTML export → site/ (basePath=$(DOCS_BASE); needs dockb-
 	@test -f $(SITE_DIR)/index.html && test -d $(SITE_DIR)/docs && test -d $(SITE_DIR)/figures || { \
 		echo "docs-build: incomplete export under $(SITE_DIR)/"; exit 1; \
 	}
-	@echo "docs-build: ready — make docs-preview, or commit $(SITE_DIR)/ for GitHub Pages"
+	@echo "docs-build: ready — make docs-preview, or push so Pages runs make docs-build"
 	@echo "  live URL: https://wr1.github.io/b3_core/"
 
 docs-preview: ## serve prebuilt site/ with basePath (default port $(PREVIEW_PORT))

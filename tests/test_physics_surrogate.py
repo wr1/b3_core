@@ -75,7 +75,8 @@ def test_predict_accepts_ndarray_and_dataframe():
         kx_values=[-0.008, 0.0, 0.008],
         cell_sizes=[0.0, 0.6],
     )
-    X = np.array([[0.0, 0.6], [0.008, 0.6]])
+    # Feature order is kx, ky, cell_size (schema 2).
+    X = np.array([[0.0, 0.0, 0.6], [0.008, 0.0, 0.6]])
     a = surr.predict(X, targets=["Eyy", "rho_infused"])
     df = pd.DataFrame({"kx": [0.0, 0.008], "cell_size": [0.6, 0.6]})
     b = surr.predict(df, targets=["Eyy", "rho_infused"])

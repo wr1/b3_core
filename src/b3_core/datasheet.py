@@ -7,7 +7,8 @@ with the engineering constants + 6x6 effective stiffness.
 
 The figures are produced by the shared :mod:`b3_core.viz` layer; the composition
 is Typst (vector tables + embedded PNG panels). Data comes from a cached
-:class:`b3_core.viz.CoreModel` (MFEM backend).
+:class:`b3_core.viz.CoreModel`, using the case's own backend through the
+shared pipeline.
 """
 
 from __future__ import annotations
@@ -70,7 +71,22 @@ def _groove_rows(prefix: str, grooves: list[list[float]]) -> list[tuple[str, str
     return rows
 
 
-def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name: str):
+def _prop(props: dict, canonical: str, legacy: str) -> float:
+    if canonical in props:
+        return float(props[canonical])
+    return float(props[legacy])
+
+
+def collect_spec(
+    inp: dict,
+    mesh,
+    geom: dict,
+    details,
+    *,
+    name: str,
+    config_name: str,
+    backend: str | None = None,
+):
     """Build the three header-table row lists + the result block from a run."""
     import numpy as np
 
@@ -97,7 +113,9 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     rve_rows.append(("mesh refine (madd)", ", ".join(f"{m:.2g}" for m in inp["madd"])))
 
     def _mat(label, m):
-        return (label, f"E {m['E'] / 1e9:.3g} GPa, ν {m['nu']:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
+        modulus = m.get("E") if m.get("E") else m.get("Ex")
+        nu = m.get("nu") if m.get("nu") is not None else m.get("nuxy")
+        return (label, f"E {modulus / 1e9:.3g} GPa, ν {nu:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
 
     material_rows = [
         _mat("core", inp["core"]),
@@ -107,7 +125,7 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
         ("groove area factor", f"{geom['area_increase']:.3f}"),
     ]
     analysis_rows = [
-        ("backend", "mfem (periodic)"),
+        ("backend", f"{backend or 'auto'} (periodic)"),
         ("element type", inp["element_type"]),
         ("mesh cells", f"{mesh.n_cells}"),
         ("BC", "periodic, 6 unit strains"),
@@ -115,15 +133,15 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     ]
     p = details.properties
     eng = {
-        "E_x": p["Exx"],
-        "E_y": p["Eyy"],
-        "E_z": p["Ezz"],
-        "G_xy": p["Gxy"],
-        "G_xz": p["Gxz"],
-        "G_yz": p["Gyz"],
-        "nu_xy": p["nuxy"],
-        "nu_xz": p["nuxz"],
-        "nu_yz": p["nuyz"],
+        "E_x": _prop(p, "Ex", "Exx"),
+        "E_y": _prop(p, "Ey", "Eyy"),
+        "E_z": _prop(p, "Ez", "Ezz"),
+        "G_xy": float(p["Gxy"]),
+        "G_xz": float(p["Gxz"]),
+        "G_yz": float(p["Gyz"]),
+        "nu_xy": float(p["nuxy"]),
+        "nu_xz": float(p["nuxz"]),
+        "nu_yz": float(p["nuyz"]),
     }
     return DatasheetSpec(
         title=f"Grooved core — {name}",
@@ -330,13 +348,15 @@ def generate(
     a_iso, a_mod = _png_aspect(fig_iso), _png_aspect(fig_mod)
     total = a_cuts + a_iso + a_mod
 
+    details = model.details
     spec = collect_spec(
         model.inp,
         model.mesh,
         model.geom,
-        model.details,
+        details,
         name=model.name,
         config_name=model.config_path or Path(json_path).name,
+        backend=getattr(model, "resolved_backend", None),
     )
     spec.figure_cuts, spec.figure_iso, spec.figure_modulus = fig_cuts, fig_iso, fig_mod
     spec.figure_col_fracs = (a_cuts / total, a_iso / total, a_mod / total)

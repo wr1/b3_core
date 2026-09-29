@@ -1,6 +1,6 @@
 [project]
 name = "b3_core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Homogenized elastic properties for sandwich-panel cores with sawcuts and machined grooves, via periodic-BC FEA (CalculiX / FEniCSx / MFEM)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,12 +29,15 @@ dependencies = [
     "pandas",
     "matplotlib~=3.9",
     "pyvista>=0.44,<0.45",
-    "frd2vtu @ git+https://github.com/wr1/frd2vtu.git",
     "pydantic>=2.0",
     "pyyaml",
     "treeparse",
+    "rich>=13",
     "mfem",
-    "b3_mat @ git+https://github.com/wr1/b3_mat.git",
+    # Pinned until these packages are on PyPI. frd2vtu v0.2.0 is the current tag;
+    # b3_mat has no tag, so the pin is the commit uv resolved on 2026-09-29.
+    "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0",
+    "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +48,12 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.8",
     "pre-commit>=4.0",
+    "import-linter>=2.0",
 ]
+# conda-forge only (fenics-dolfinx, dolfinx_mpc, mpi4py, petsc4py). The
+# test-fenicsx job installs that stack; it is not on PyPI as a universal extra.
+fenicsx = []
+ccx = []
 
 [project.urls]
 Homepage = "https://github.com/wr1/b3_core"
@@ -85,16 +93,23 @@ include = [
 [tool.uv]
 override-dependencies = [
     # mfem 4.8 still declares numba==0.53 → llvmlite 0.36, which cannot build
-    # on Python 3.12. Keep a modern numba so uv sync works on the CI matrix.
+    # on Python 3.12. uv overrides that pin. pip cannot; see README
+    # "Python 3.12 and pip". TODO: link the PyMFEM issue once opened
+    # (the pin should allow numba>=0.60).
     "numba>=0.60",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = [
     "--cov=b3_core",
     "--cov-report=term-missing:skip-covered",
     "--cov-fail-under=90",
+]
+markers = [
+    "fenicsx: needs a conda-forge FEniCSx environment",
+    "ccx: needs the calculix-ccx binary on PATH",
 ]
 
 [tool.coverage.run]
@@ -103,15 +118,57 @@ source = ["b3_core"]
 # Optional / offline paths: not exercised on default CI (no FEniCSx/ccx/anim
 # extras; sweep GIFs and legacy post CLIs are manual demos).
 omit = [
-    "*/b3_core/io/fenicsx.py",
-    "*/b3_core/io/runccx.py",
-    "*/b3_core/io/vts2ccx_planar.py",
+    "*/b3_core/solvers/fenicsx.py",
+    "*/b3_core/solvers/calculix/runner.py",
+    "*/b3_core/solvers/calculix/planar.py",
+    "*/b3_core/solvers/calculix/base.py",
     "*/b3_core/viz/animate.py",
     "*/b3_core/sweep/gifs.py",
     "*/b3_core/sweep/plots.py",
     "*/b3_core/sweep/render_viz.py",
     "*/b3_core/post/*",
 ]
+
+[tool.importlinter]
+root_package = "b3_core"
+
+[[tool.importlinter.contracts]]
+name = "Backend independence"
+type = "independence"
+modules = [
+    "b3_core.solvers.mfem",
+    "b3_core.solvers.fenicsx",
+    "b3_core.solvers.numpy_fe",
+    "b3_core.solvers.calculix",
+]
+
+[[tool.importlinter.contracts]]
+name = "Homogenisation layers"
+type = "layers"
+layers = [
+    "b3_core.api",
+    "b3_core.pipeline",
+    "b3_core.solvers",
+    "b3_core.core",
+]
+ignore_imports = [
+    "b3_core.core.cprop -> b3_core.api",
+    # The CLI lives in core/run.py and wires the layers above it.
+    "b3_core.core.run -> b3_core.**",
+]
+
+[[tool.importlinter.contracts]]
+name = "Viz and sweep stay off solvers"
+type = "forbidden"
+source_modules = [
+    "b3_core.viz",
+    "b3_core.sweep",
+]
+forbidden_modules = [
+    "b3_core.solvers",
+]
+# Spec: viz and sweep reach solvers only through pipeline, never by a direct import.
+allow_indirect_imports = true
 
 [tool.coverage.report]
 exclude_lines = [

@@ -112,7 +112,7 @@ def test_cprop_input_accepts_mfem_backend():
     assert cfg.validate_with_ccx is True
 
 
-def test_cprop_input_rejects_unknown_backend():
+def test_cprop_input_accepts_unregistered_identifier():
     data = {
         "dx": 50.0,
         "dy": 50.0,
@@ -122,6 +122,21 @@ def test_cprop_input_rejects_unknown_backend():
         "core": {"E": 4e9, "nu": 0.3, "rho": 100.0},
         "resin": {"E": 4e9, "nu": 0.3, "rho": 1100.0},
         "backend": "tensormesh",
+    }
+
+    assert CpropInput(**data).backend == "tensormesh"
+
+
+def test_cprop_input_rejects_non_identifier_backend():
+    data = {
+        "dx": 50.0,
+        "dy": 50.0,
+        "thickness": 30.0,
+        "xgr": [],
+        "ygr": [],
+        "core": {"E": 4e9, "nu": 0.3, "rho": 100.0},
+        "resin": {"E": 4e9, "nu": 0.3, "rho": 1100.0},
+        "backend": "tensor mesh",
     }
 
     with pytest.raises(ValueError):

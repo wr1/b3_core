@@ -71,7 +71,100 @@ jobs:
 
       # CalculiX / typst not installed — related tests self-skip.
       # Coverage: pytest-cov via pyproject addopts (--cov-fail-under=90).
+      - name: Import boundaries and skill sync
+        run: |
+          source .venv/bin/activate
+          lint-imports --verbose
+          python scripts/sync_skill_md.py --check
+
       - name: Run tests
         run: |
           source .venv/bin/activate
           pytest -q --tb=short --cov-report=term-missing:skip-covered
+
+  pip-install-smoke:
+    name: pip install smoke (3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # mfem 4.8 pins numba==0.53, which cannot build on 3.12. pip cannot
+      # override that pin; this is the README "Python 3.12 and pip" recipe.
+      - name: Install with the documented pip recipe
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install "numba>=0.60"
+          pip install "mfem" --no-deps
+          pip install \
+            "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
+            "pydantic>=2" "pyyaml" "treeparse" "rich>=13" \
+            "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
+            "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
+          pip install --no-deps .
+          python -c "import b3_core, numba; assert tuple(int(x) for x in numba.__version__.split('.')[:2]) >= (0, 60); assert b3_core.__version__ == '0.3.0'; print(b3_core.__version__)"
+
+  test-ccx:
+    name: test (calculix)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CalculiX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # Subset of the suite: drop the coverage gate in addopts.
+      - name: Compare ccx with MFEM
+        run: |
+          source .venv/bin/activate
+          pytest -m ccx -o addopts= -q --tb=short
+
+  test-fenicsx:
+    name: test (fenicsx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: fenicsx
+          create-args: >-
+            python=3.12
+            fenics-dolfinx
+            dolfinx_mpc
+            mpi4py
+            petsc4py
+            pip
+          condarc: |
+            channels:
+              - conda-forge
+            channel_priority: strict
+
+      - name: Install b3_core
+        shell: bash -l {0}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "numba>=0.60"
+          python -m pip install \
+            "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
+            "pydantic>=2" "pyyaml" "treeparse" "rich>=13" "pytest>=8" \
+            "mfem" \
+            "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
+            "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
+          python -m pip install --no-deps .
+
+      - name: Compare fenicsx with MFEM
+        shell: bash -l {0}
+        run: pytest -m fenicsx -o addopts= -q --tb=short

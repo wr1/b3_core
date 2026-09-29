@@ -11,7 +11,7 @@ warps the RVE by the true periodic displacement u = E.x + w, and renders:
 
     uv run python examples/mfem_patterns/deformed.py [pattern]
 
-Requires the optional MFEM stack (`uv sync --extra mfem`).
+Requires PyMFEM (a package dependency, via `uv sync`).
 """
 
 from __future__ import annotations

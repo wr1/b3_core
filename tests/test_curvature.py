@@ -236,7 +236,8 @@ def test_cprop_input_accepts_and_validates_curvature():
         resin={"E": 4e9, "nu": 0.3, "rho": 1100.0},
     )
     cfg = CpropInput(**base, curvature={"kx": 0.004, "ky": 0.0})
-    assert cfg.curvature == {"kx": 0.004, "ky": 0.0}
+    assert cfg.curvature.kx == pytest.approx(0.004)
+    assert cfg.curvature.ky == pytest.approx(0.0)
 
     with pytest.raises(ValueError):
         CpropInput(**base, curvature={"kz": 1.0})

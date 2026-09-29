@@ -84,19 +84,24 @@ def parse_surface_halo(inp: dict) -> dict[str, dict[str, Any]]:
     saw_cfg = surfaces_in.get("saw_cut") or {}
     face_cfg = surfaces_in.get("face") or {}
 
-    saw_cs = saw_cfg["cell_size"] if "cell_size" in saw_cfg else core_cs
+    # A missing or null cell size means "not overridden". Typed models dump
+    # every field, so ``cell_size: null`` is the unset value, not a disable.
+    saw_cs = saw_cfg.get("cell_size")
+    if saw_cs is None:
+        saw_cs = core_cs
     saw_enabled = saw_cfg.get("enabled", True) and saw_cs is not None
     if not saw_enabled:
         saw_cs = None
 
     face_enabled = face_cfg.get("enabled", True)
-    if "cell_size" in face_cfg:
-        face_cs = face_cfg["cell_size"]
-        if face_cs is None:
-            face_enabled = False
+    face_cs = face_cfg.get("cell_size")
+    if face_cs is not None:
+        pass
     elif face_enabled and saw_cs is not None:
-        scale = float(face_cfg.get("scale", _DEFAULT_FACE_SCALE))
-        face_cs = _scale_cell_size(saw_cs, scale)
+        scale = face_cfg.get("scale", _DEFAULT_FACE_SCALE)
+        if scale is None:
+            scale = _DEFAULT_FACE_SCALE
+        face_cs = _scale_cell_size(saw_cs, float(scale))
     else:
         face_cs = None
 
@@ -176,7 +181,7 @@ class ScoreField:
         kerf surface. Evaluate at **physical** post-morph coordinates — after
         the interval-affine morph, walls sit at ``c0 ± hw(z)``.
         """
-        from b3_core.core.mesh import _MIN_HW
+        from b3_core.core.mesh import MIN_HW as _MIN_HW
 
         pts = np.asarray(points, dtype=float)
         z = pts[:, 2]
@@ -225,6 +230,29 @@ class ScoreField:
         if face["enabled"]:
             p = np.maximum(p, face["S"](self.distance_to_face(pts)))
         return p
+
+
+def halo_reach(inp) -> float:
+    """Resin-halo mesh band (mm): ``damage_cells`` times the widest active reach."""
+    if hasattr(inp, "score_dict"):
+        data = inp.score_dict()
+        scoring = getattr(inp, "scoring", None)
+        damage = 1.0 if scoring is None else float(scoring.damage_cells)
+    else:
+        data = inp
+        damage = float((inp.get("scoring") or {}).get("damage_cells", 1.0))
+    field = ScoreField(data)
+    if not field.active or field.reach <= 0.0:
+        return 0.0
+    return damage * float(field.reach)
+
+
+def score_field_for(inp):
+    """ScoreField for a case, or None when the halo is inactive."""
+    if halo_reach(inp) <= 0.0:
+        return None
+    data = inp.score_dict() if hasattr(inp, "score_dict") else inp
+    return ScoreField(data)
 
 
 def effective_resin_vf(mesh, field, resin_vf: float):

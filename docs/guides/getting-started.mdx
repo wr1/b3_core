@@ -6,14 +6,19 @@ description: Install b3_core, write a case file, and run a first homogenization.
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM for the default backend (`uv sync --extra mfem`)
+- PyMFEM (`mfem` is a required dependency; it is the default backend)
 - CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
 - `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
 - `typst` on PATH only if you generate datasheets
 
 ```bash
-uv sync --extra mfem
+uv sync
 ```
+
+On Python 3.12, plain `pip install` cannot satisfy PyMFEM 4.8's `numba==0.53`
+pin (that numba does not build). Use `uv sync`, which overrides it to
+`numba>=0.60`, or follow the pip recipe in the README section
+"Python 3.12 and pip".
 
 ## Textile-as-code (preferred)
 
@@ -47,7 +52,7 @@ uv run python examples/textile_grid_scored.py
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
 Negative depth opens toward the mould face (useful with curvature).
-Default solver is **MFEM** (`uv sync --extra mfem`); halo / orthotropic foam
+Default solver is **MFEM** (installed with the package); halo / orthotropic foam
 auto-route to **numpy**.
 
 Shipped examples (JSON is interchange; factories are the source of truth):

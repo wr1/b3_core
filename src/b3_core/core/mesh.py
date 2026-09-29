@@ -16,6 +16,7 @@ import pyvista as pv
 
 # Minimum half-width after pinch (mm) so cells keep positive volume.
 _MIN_HW = 1e-3
+MIN_HW = _MIN_HW
 
 
 def create_grooves(cuts, bnd, meshadd=(-0.5, -0.2, 0, 0.2, 0.5), tol=1e-6, kappa=0.0):
@@ -149,6 +150,24 @@ def _collapse_lines(vals, tol=1e-6):
     return v[keep]
 
 
+def _at_least_three_elements(vals, length: float) -> np.ndarray:
+    """Grid stations with at least three elements on ``[0, length]``.
+
+    MFEM's periodic mesh needs three elements along each axis. Two elements
+    make ``MakePeriodic`` treat an interior face as a boundary. An ungrooved
+    case with ``madd=[0]`` otherwise collapses to a single hex.
+    """
+    lines = _collapse_lines(
+        np.concatenate([np.asarray(vals, dtype=float), [0.0, float(length)]])
+    )
+    while len(lines) < 4:
+        gaps = np.diff(lines)
+        index = int(np.argmax(gaps))
+        midpoint = 0.5 * (lines[index] + lines[index + 1])
+        lines = np.insert(lines, index + 1, midpoint)
+    return lines
+
+
 def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
     """Groove instances that intersect the domain (including edge partials).
 
@@ -184,6 +203,11 @@ def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
             out.append((float(c0), float(hw), float(depth), float(slope)))
     out.sort(key=lambda g: g[0])
     return out
+
+
+def hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
+    """Public name for the root-hinged half-width law."""
+    return _hw_at(hw0, depth, slope, z, thickness)
 
 
 def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
@@ -413,7 +437,9 @@ def create_grooved_mesh(
         dy,
     )
     X, Y, Z = np.meshgrid(
-        _collapse_lines(xlines), _collapse_lines(ylines), _collapse_lines(fz)
+        _at_least_three_elements(xlines, dx),
+        _at_least_three_elements(ylines, dy),
+        _at_least_three_elements(fz, thickness + tface),
     )
     grd = pv.StructuredGrid(X, Y, Z)
     c = grd.cell_centers().points

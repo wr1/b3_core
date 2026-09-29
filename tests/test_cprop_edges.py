@@ -29,7 +29,10 @@ def test_cprop_input_validators():
     with pytest.raises(ValidationError):
         CpropInput(**_base(element_type="C3D99"))
     with pytest.raises(ValidationError):
-        CpropInput(**_base(backend="abaqus"))
+        CpropInput(**_base(backend="abaqus-solver"))
+    with pytest.raises(ValidationError):
+        CpropInput(**_base(backend=""))
+    assert CpropInput(**_base(backend="abaqus")).backend == "abaqus"
     with pytest.raises(ValidationError):
         CpropInput(**_base(xgr=[[1, 2, 3]]))  # not 4-tuple
     with pytest.raises(ValidationError):
@@ -78,39 +81,37 @@ def test_halo_reach_and_needs_numpy():
     assert cprop_mod._score_field(scored) is not None
 
 
-def test_cprop_file_exists_error(tmp_path, monkeypatch):
-    case = _base(backend="numpy")
+def test_cprop_overwrites_existing_run(tmp_path):
+    from tests.fakes import fake_backend, unregister
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = _base(backend="fake")
     path = tmp_path / "case.json"
     path.write_text(json.dumps(case))
+    try:
+        first = cprop_mod.cprop(str(path))
+        written = list(tmp_path.glob("run*.json"))
+        assert len(written) == 1
+        written[0].write_text("{}\n")
+        second = cprop_mod.cprop(str(path))
+    finally:
+        unregister("fake")
+    assert second["Exx"] == first["Exx"]
+    assert json.loads(written[0].read_text())["Exx"] == first["Exx"]
+    assert len(list(tmp_path.glob("run*.json"))) == 1
 
-    # Pre-create the hashed output path that cprop will refuse to overwrite.
-    validated = CpropInput(**case).model_dump()
-    import hashlib
 
-    h = hashlib.md5(str(validated).encode()).hexdigest()
-    out = tmp_path / f"run{h}.json"
-    out.write_text("{}")
+def test_homogenize_uses_registered_backend():
+    from tests.fakes import fake_backend, unregister
 
-    with pytest.raises(FileExistsError):
-        cprop_mod.cprop(str(path))
+    from b3_core.cases import plain
 
-
-def test_homogenize_wraps_cprop(monkeypatch):
-    eng = {
-        "Exx": 1e9,
-        "Eyy": 1e9,
-        "Ezz": 1e9,
-        "Gxy": 0.4e9,
-        "Gxz": 0.4e9,
-        "Gyz": 0.4e9,
-        "nuxy": 0.3,
-        "nuxz": 0.3,
-        "nuyz": 0.3,
-        "rho_infused": 200.0,
-        "resin_vf": 0.1,
-        "area_increase": 1.05,
-    }
-    monkeypatch.setattr(cprop_mod, "cprop", lambda *_a, **_k: eng)
-    r = homogenize("ignored.json", name="wrap")
-    assert r.material.name == "wrap"
-    assert r.material.Ex == 1e9
+    register, cls = fake_backend("fake")
+    register(cls)
+    try:
+        result = homogenize(plain(), name="wrap", backend="fake")
+    finally:
+        unregister("fake")
+    assert result.material.name == "wrap"
+    assert result.material.Ex == 1e9

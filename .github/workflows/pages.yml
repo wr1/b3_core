@@ -1,5 +1,6 @@
-# Deploy prebuilt static docs (site/) to GitHub Pages.
-# Build locally with `make docs-build` (dockb-export, basePath=/b3_core), commit site/, push.
+# Build the DocKB static export and deploy it to GitHub Pages.
+# site/ is a build artifact (gitignored). dockb is not on npm: set the
+# repository variable DOCKB_RUNTIME_REPO to the fumano runtime git URL.
 # Repo Settings → Pages → Source: GitHub Actions.
 
 name: Pages
@@ -8,7 +9,10 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "site/**"
+      - "docs/**"
+      - "public/**"
+      - "dockb.json"
+      - "Makefile"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -23,7 +27,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: deploy site/
+    name: build and deploy site/
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -31,12 +35,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require prebuilt site/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dockb runtime
+        env:
+          DOCKB_RUNTIME_REPO: ${{ vars.DOCKB_RUNTIME_REPO }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCKB_RUNTIME_REPO}" ]; then
+            echo "::error::Set repository variable DOCKB_RUNTIME_REPO to the fumano/dockb git URL. The runtime is not published to npm."
+            exit 1
+          fi
+          git clone --depth 1 "$DOCKB_RUNTIME_REPO" "$HOME/apps/dockb-runtime"
+          npm ci --prefix "$HOME/apps/dockb-runtime"
+          mkdir -p "$HOME/.local/bin"
+          ln -sfn "$HOME/apps/dockb-runtime/bin/dockb-export" "$HOME/.local/bin/dockb-export"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build site
+        run: make docs-build
+
+      - name: Require export
         run: |
           test -f site/index.html
           test -d site/docs
           test -d site/figures
-          # basePath must match the project Pages URL (/b3_core)
           grep -q '/b3_core/' site/index.html
 
       - uses: actions/configure-pages@v5

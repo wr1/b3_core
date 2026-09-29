@@ -34,9 +34,9 @@ import pandas as pd
 
 # Targets with a defensible closed-form base + multiplicative log correction.
 TARGETS = (
-    "Exx",
-    "Eyy",
-    "Ezz",
+    "Ex",
+    "Ey",
+    "Ez",
     "Gxy",
     "Gxz",
     "Gyz",
@@ -47,7 +47,10 @@ TARGETS = (
     "mass_per_m2",
 )
 
-FEATURE_NAMES = ("kx", "cell_size")
+# Stored rows also keep Exx/Eyy/Ezz so older readers and halo figures still work.
+_LEGACY_TARGET = {"Exx": "Ex", "Eyy": "Ey", "Ezz": "Ez"}
+
+FEATURE_NAMES = ("kx", "ky", "cell_size")
 
 
 def _col(feat, name: str, default: float = 0.0) -> np.ndarray:
@@ -110,11 +113,29 @@ class GeometrySpec:
     def from_case(cls, case: dict) -> GeometrySpec:
         """Pull geometry + isotropic/orthotropic materials from a cprop-like case."""
         xgr = (case.get("xgr") or [[5.0, 10.0, -17.0, 2.0]])[0]
+        if isinstance(xgr, dict):
+            depth = float(xgr["depth"])
+            if xgr.get("mouth") == "top":
+                depth = -depth
+            groove = (
+                float(xgr["offset"]),
+                float(xgr["pitch"]),
+                depth,
+                float(xgr["width"]),
+            )
+        else:
+            groove = (float(xgr[0]), float(xgr[1]), float(xgr[2]), float(xgr[3]))
         core = case.get("core") or {}
         resin = case.get("resin") or {}
-        if "E1" in core:
-            Ec, Ecz = float(core["E1"]), float(core.get("E3", core["E1"]))
-            Gc = float(core.get("G12", core.get("G13", Ec / 2.6)))
+        ex = core.get("E1", core.get("Ex"))
+        if ex:
+            Ec = float(ex)
+            Ecz = float(core.get("E3", core.get("Ez", Ec)))
+            Gc = float(
+                core.get(
+                    "G12", core.get("Gxy", core.get("G13", core.get("Gxz", Ec / 2.6)))
+                )
+            )
         else:
             Ec = float(core.get("E", 32e6))
             Ecz = Ec
@@ -131,10 +152,10 @@ class GeometrySpec:
             dx=float(case.get("dx", 30.0)),
             dy=float(case.get("dy", 12.0)),
             thickness=float(case.get("thickness", 20.0)),
-            offset=float(xgr[0]),
-            pitch=float(xgr[1]),
-            depth=float(xgr[2]),
-            width=float(xgr[3]),
+            offset=groove[0],
+            pitch=groove[1],
+            depth=groove[2],
+            width=groove[3],
             E_core=Ec,
             E_core_z=Ecz,
             G_core=Gc,
@@ -211,10 +232,16 @@ def physics_base(feat, geom: GeometrySpec | None = None) -> dict[str, np.ndarray
     # Areal mass [kg/m²]: geometry mm → m.
     mass = rho * (g.thickness * 1e-3)
 
+    exx = np.maximum(Exx, 1e3)
+    eyy = np.maximum(Eyy, 1e3)
+    ezz = np.maximum(Ezz, 1e3)
     return {
-        "Exx": np.maximum(Exx, 1e3),
-        "Eyy": np.maximum(Eyy, 1e3),
-        "Ezz": np.maximum(Ezz, 1e3),
+        "Exx": exx,
+        "Eyy": eyy,
+        "Ezz": ezz,
+        "Ex": exx,
+        "Ey": eyy,
+        "Ez": ezz,
         "Gxy": np.maximum(Gxy, 1e2),
         "Gxz": np.maximum(Gxz, 1e2),
         "Gyz": np.maximum(Gyz, 1e2),
@@ -226,8 +253,13 @@ def physics_base(feat, geom: GeometrySpec | None = None) -> dict[str, np.ndarray
     }
 
 
-def _phi(feat, n: int | None = None) -> np.ndarray:
-    """Log-correction design matrix: 1, kx, kx², cs, cs², kx·cs."""
+def _phi(feat, features: list[str] | None = None, n: int | None = None) -> np.ndarray:
+    """Log-correction design matrix.
+
+    Six columns when ``ky`` is not a feature: 1, kx, kx², cs, cs², kx·cs.
+    With ``ky``, four more: ky, ky², kx·ky, ky·cs. Curvatures are scaled ×100.
+    """
+    names = list(features) if features is not None else list(FEATURE_NAMES)
     kx = _col(feat, "kx", 0.0)
     cs = _col(feat, "cell_size", 0.0)
     m = n or max(len(kx), len(cs))
@@ -238,16 +270,14 @@ def _phi(feat, n: int | None = None) -> np.ndarray:
     # Scale for conditioning (kx ~ 1e-2, cs ~ 1 mm).
     k = kx * 100.0  # now O(1)
     c = cs  # mm
-    return np.column_stack(
-        [
-            np.ones(m),
-            k,
-            k**2,
-            c,
-            c**2,
-            k * c,
-        ]
-    )
+    cols = [np.ones(m), k, k**2, c, c**2, k * c]
+    if "ky" in names:
+        ky = _col(feat, "ky", 0.0)
+        if len(ky) == 1 and m > 1:
+            ky = np.full(m, float(ky[0]))
+        y = ky * 100.0
+        cols.extend([y, y**2, k * y, y * c])
+    return np.column_stack(cols)
 
 
 def _ridge_lstsq(Phi: np.ndarray, r: np.ndarray, lam: float = 1e-2) -> np.ndarray:
@@ -270,7 +300,7 @@ class CorePhysicsSurrogate:
     targets: list[str] = field(default_factory=lambda: list(TARGETS))
     geometry: dict[str, float] = field(default_factory=dict)
 
-    def _geom(self) -> GeometrySpec:
+    def geometry_spec(self) -> GeometrySpec:
         if not self.geometry:
             return GeometrySpec()
         return GeometrySpec(
@@ -292,26 +322,32 @@ class CorePhysicsSurrogate:
         ``(n, n_features)`` ndarray in ``self.features`` order.
         """
         feat = _as_feat(X, self.features)
-        want = (
-            self.targets
-            if targets is None
-            else [t for t in targets if t in self.targets]
-        )
-        base = physics_base(feat, self._geom())
-        phi = _phi(feat)
+        # Callers may still ask for Exx/Eyy/Ezz. The fitted names are Ex/Ey/Ez;
+        # the returned key is the one the caller used.
+        if targets is None:
+            pairs = [(t, t) for t in self.targets]
+        else:
+            pairs = []
+            for name in targets:
+                canon = _LEGACY_TARGET.get(name, name)
+                if canon in self.targets:
+                    pairs.append((name, canon))
+        base = physics_base(feat, self.geometry_spec())
+        phi = _phi(feat, self.features)
         out: dict[str, np.ndarray] = {}
-        for t in want:
-            b = base[t]
-            c = np.asarray(self.coefs.get(t, np.zeros(phi.shape[1])), dtype=float)
+        for alias, canon in pairs:
+            b = base[canon]
+            c = np.asarray(self.coefs.get(canon, np.zeros(phi.shape[1])), dtype=float)
             if c.shape[0] != phi.shape[1]:
                 c = np.zeros(phi.shape[1])
-            out[t] = b * np.exp(phi @ c)
+            out[alias] = b * np.exp(phi @ c)
         return out
 
     def lookup(
         self,
         kx,
         *,
+        ky: float | np.ndarray = 0.0,
         cell_size: float | np.ndarray = 0.0,
         targets: list[str] | None = None,
     ) -> pd.DataFrame:
@@ -321,24 +357,44 @@ class CorePhysicsSurrogate:
         ----------
         kx
             1-D array of curvatures [1/mm] (e.g. panel stations).
+        ky
+            Scalar or per-station transverse curvature [1/mm]. Ignored when
+            the fitted feature list has no ``ky`` (schema-1 surrogates).
         cell_size
             Scalar or per-station halo width [mm]; 0 = sharp kerf.
         """
         kx_a = np.atleast_1d(np.asarray(kx, dtype=float))
-        cs_a = np.asarray(cell_size, dtype=float)
-        if cs_a.ndim == 0:
-            cs_a = np.full(len(kx_a), float(cs_a))
-        if len(cs_a) != len(kx_a):
-            raise ValueError("cell_size must be scalar or match len(kx)")
-        X = np.column_stack([kx_a, cs_a])
-        pred = self.predict(X, targets=targets)
+        n = len(kx_a)
+
+        def _station(value: float | np.ndarray, label: str) -> np.ndarray:
+            arr = np.asarray(value, dtype=float)
+            if arr.ndim == 0:
+                return np.full(n, float(arr))
+            if len(arr) != n:
+                raise ValueError(f"{label} must be scalar or match len(kx)")
+            return arr
+
+        ky_a = _station(ky, "ky")
+        cs_a = _station(cell_size, "cell_size")
+        columns = {"kx": kx_a, "ky": ky_a, "cell_size": cs_a}
+        pred = self.predict(
+            {name: columns[name] for name in self.features}, targets=targets
+        )
         df = pd.DataFrame(pred)
+        for legacy, canon in _LEGACY_TARGET.items():
+            if canon in df.columns and legacy not in df.columns:
+                df[legacy] = df[canon]
         df.insert(0, "kx", kx_a)
-        df.insert(1, "cell_size", cs_a)
+        insert_at = 1
+        if "ky" in self.features:
+            df.insert(insert_at, "ky", ky_a)
+            insert_at += 1
+        df.insert(insert_at, "cell_size", cs_a)
         return df
 
     def to_json(self, path: str | Path | None = None) -> dict[str, Any]:
         payload = {
+            "schema": 2,
             "coefs": {k: list(map(float, v)) for k, v in self.coefs.items()},
             "features": list(self.features),
             "targets": list(self.targets),
@@ -351,10 +407,14 @@ class CorePhysicsSurrogate:
     @classmethod
     def from_json(cls, path: str | Path | dict) -> CorePhysicsSurrogate:
         data = path if isinstance(path, dict) else json.loads(Path(path).read_text())
+        coefs = {_LEGACY_TARGET.get(k, k): list(v) for k, v in data["coefs"].items()}
+        targets = [
+            _LEGACY_TARGET.get(name, name) for name in data.get("targets", TARGETS)
+        ]
         return cls(
-            coefs={k: list(v) for k, v in data["coefs"].items()},
+            coefs=coefs,
             features=list(data.get("features", FEATURE_NAMES)),
-            targets=list(data.get("targets", TARGETS)),
+            targets=targets,
             geometry=dict(data.get("geometry") or {}),
         )
 
@@ -378,20 +438,21 @@ def fit_physics_surrogate(
     else:
         geom = geometry
 
-    feat_cols = [c for c in FEATURE_NAMES if c in df.columns]
-    if "kx" not in feat_cols:
+    if "kx" not in df.columns:
         raise ValueError("training frame must include a 'kx' column")
+    df = df.copy()
     if "cell_size" not in df.columns:
-        df = df.copy()
         df["cell_size"] = 0.0
-        feat_cols = list(FEATURE_NAMES)
+    if "ky" not in df.columns:
+        df["ky"] = 0.0
+    feat_cols = list(FEATURE_NAMES)
 
     want = [t for t in (targets or TARGETS) if t in df.columns]
     if not want:
         raise ValueError(f"no target columns found; expected one of {TARGETS}")
 
     base = physics_base(df, geom)
-    phi = _phi(df)
+    phi = _phi(df, feat_cols)
     coefs: dict[str, list[float]] = {}
     for t in want:
         y = df[t].to_numpy(dtype=float)
@@ -419,25 +480,29 @@ def fit_physics_surrogate(
 def build_training_frame(
     *,
     kx_values: list[float] | np.ndarray | None = None,
+    ky_values: list[float] | np.ndarray | None = None,
     cell_sizes: list[float] | np.ndarray | None = None,
     base_case: dict | None = None,
+    cache: Any | None = None,
     cache_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Run (or load) a κ × cell_size homogenization grid as a training table.
+    """Run a κ × ky × cell_size homogenization grid as a training table.
 
-    Wraps :func:`b3_core.viz.halo.sweep_halo_curvature_grid` and adds
-    ``mass_per_m2`` from density × thickness.
+    Adds ``mass_per_m2`` from density × thickness. ``cache_path`` is the
+    deprecated single-file alias of ``cache``.
     """
-    from b3_core.viz.halo import (
-        _parametric_base_case,
+    from b3_core.sweep.curvature_grid import (
+        parametric_base_case,
         sweep_halo_curvature_grid,
     )
 
-    case = base_case or _parametric_base_case()
+    case = base_case or parametric_base_case()
     rows = sweep_halo_curvature_grid(
         kx_values=kx_values,
+        ky_values=ky_values,
         cell_sizes=cell_sizes,
         base=case,
+        cache=cache,
         cache_path=cache_path,
     )
     df = pd.DataFrame(rows)
@@ -457,18 +522,22 @@ def build_training_frame(
 def fit_from_homogenization(
     *,
     kx_values: list[float] | np.ndarray | None = None,
+    ky_values: list[float] | np.ndarray | None = None,
     cell_sizes: list[float] | np.ndarray | None = None,
     base_case: dict | None = None,
+    cache: Any | None = None,
     cache_path: str | Path | None = None,
 ) -> CorePhysicsSurrogate:
     """Convenience: homogenize a grid, then fit the physics surrogate."""
-    from b3_core.viz.halo import _parametric_base_case
+    from b3_core.sweep.curvature_grid import parametric_base_case
 
-    case = base_case or _parametric_base_case()
+    case = base_case or parametric_base_case()
     df = build_training_frame(
         kx_values=kx_values,
+        ky_values=ky_values,
         cell_sizes=cell_sizes,
         base_case=case,
+        cache=cache,
         cache_path=cache_path,
     )
     return fit_physics_surrogate(df, geometry=GeometrySpec.from_case(case))

@@ -21,7 +21,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from b3_core.core.cprop import CpropInput, Material
+from b3_core.models import CaseInput as CpropInput
+from b3_core.models import Curvature, Material, Scoring
 
 # ---------------------------------------------------------------------------
 # Material presets (SI)
@@ -51,7 +52,7 @@ def _groove(offset: float, pitch: float, depth: float, width: float) -> list[flo
 
 
 @dataclass(frozen=True)
-class Textile:
+class CoreCase:
     """Validated RVE case with fluent modifiers (textile-as-code).
 
     Holds a :class:`CpropInput`. Pass a ``Textile`` directly to ``homogenize``
@@ -66,7 +67,7 @@ class Textile:
         return replace(
             self,
             input=self.input.model_copy(
-                update={"curvature": {"kx": float(kx), "ky": float(ky)}}
+                update={"curvature": Curvature(kx=float(kx), ky=float(ky))}
             ),
         )
 
@@ -87,37 +88,42 @@ class Textile:
         face_enabled: bool = True,
         sampling: dict | None = None,
     ) -> Textile:
-        """Attach resin-halo scoring (auto-routes solve to numpy)."""
+        """Attach resin-halo scoring. ``backend`` stays as set (default ``auto``)."""
         core = self.input.core.model_copy(update={"cell_size": cell_size})
-        scoring: dict[str, Any] = {
-            "damage_cells": damage_cells,
-            "surfaces": {
-                "saw_cut": {},
-                "face": {"scale": face_scale, "enabled": face_enabled},
-            },
-            "sampling": sampling or {"strategy": "local_cloud", "resolution": 3},
-        }
+        scoring = Scoring.model_validate(
+            {
+                "damage_cells": damage_cells,
+                "surfaces": {
+                    "saw_cut": {},
+                    "face": {"scale": face_scale, "enabled": face_enabled},
+                },
+                "sampling": sampling or {"strategy": "local_cloud", "resolution": 3},
+            }
+        )
         return replace(
             self,
-            input=self.input.model_copy(
-                update={"core": core, "scoring": scoring, "backend": "numpy"}
-            ),
+            input=self.input.model_copy(update={"core": core, "scoring": scoring}),
         )
 
     def with_thickness(
         self, thickness: float, *, ligament: float | None = None
     ) -> Textile:
-        """Set thickness; optionally keep a foam ligament (top-mouth grooves).
+        """Set thickness; optionally keep a foam ligament on top-mouth grooves.
 
-        If *ligament* is set and the first x-groove has negative depth, depth is
-        rewritten as ``-(thickness - ligament)`` (curved-panel convention).
+        Grooves with ``mouth="top"`` are rewritten to
+        ``depth = thickness - ligament``.
         """
         t = float(thickness)
-        xgr = [list(g) for g in self.input.xgr]
-        ygr = [list(g) for g in self.input.ygr]
-        if ligament is not None and xgr and xgr[0][2] < 0:
-            depth = -(t - float(ligament))
-            xgr = [[g[0], g[1], depth, g[3]] for g in xgr]
+        xgr = list(self.input.xgr)
+        ygr = list(self.input.ygr)
+        if ligament is not None:
+            depth = t - float(ligament)
+            xgr = [
+                groove.model_copy(update={"depth": depth, "mouth": "top"})
+                if groove.mouth == "top"
+                else groove
+                for groove in xgr
+            ]
         return replace(
             self,
             input=self.input.model_copy(
@@ -141,6 +147,9 @@ class Textile:
         return p
 
 
+Textile = CoreCase
+
+
 def _textile(
     *,
     dx: float,
@@ -151,7 +160,7 @@ def _textile(
     core: Material,
     resin: Material,
     madd: list[float] | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
     validate_with_ccx: bool = False,
     face: dict | None = None,
     curvature: dict | None = None,
@@ -187,7 +196,7 @@ def plain(
     thickness: float = 30.0,
     core: Material | None = None,
     resin: Material | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
 ) -> Textile:
     """Ungrooved homogeneous core (baseline RVE)."""
     return _textile(
@@ -214,7 +223,7 @@ def uniaxial(
     offset: float = 10.0,
     core: Material | None = None,
     resin: Material | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
     validate_with_ccx: bool = False,
 ) -> Textile:
     """Single x-family grooves (``examples/mfem_patterns/uniaxial``)."""
@@ -243,7 +252,7 @@ def crossed(
     offset: float = 10.0,
     core: Material | None = None,
     resin: Material | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
     validate_with_ccx: bool = False,
 ) -> Textile:
     """Symmetric x+y groove families (``examples/mfem_patterns/crossed``)."""
@@ -269,7 +278,7 @@ def two_sided(
     thickness: float = 30.0,
     core: Material | None = None,
     resin: Material | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
     validate_with_ccx: bool = False,
 ) -> Textile:
     """Top x-grooves + opposite-sign deep y-grooves (``mfem_patterns/two_sided``)."""
@@ -303,7 +312,7 @@ def curved_panel(
     ky: float = 0.0,
     core: Material | None = None,
     resin: Material | None = None,
-    backend: str = "mfem",
+    backend: str = "auto",
 ) -> Textile:
     """Deep top-mouth x-grooves for mould curvature (``examples/curved_panel``).
 
@@ -332,17 +341,21 @@ def grid_scored(
     depth: float = 18.0,
     width: float = 1.0,
     cell_size: float | dict | None = 0.6,
+    dx: float | None = None,
+    dy: float | None = None,
     core: Material | None = None,
     resin: Material | None = None,
+    backend: str = "auto",
     with_halo: bool = True,
-) -> Textile:
+) -> CoreCase:
     """Grid-scored foam (``examples/grid_scored_halo``).
 
     Orthotropic 60 kg/m³ PVC + epoxy; numpy backend when halo is on.
     Pass ``cell_size=None`` and ``with_halo=False`` for sharp kerfs only
     (``examples/grid_scored``).
     """
-    dx = dy = float(pitch)
+    dx = float(pitch if dx is None else dx)
+    dy = float(pitch if dy is None else dy)
     t = _textile(
         dx=dx,
         dy=dy,
@@ -352,7 +365,7 @@ def grid_scored(
         core=core or H60_ORTHO,
         resin=resin or EPOXY_A,
         madd=[-0.15, 0, 0.15],
-        backend="numpy",
+        backend=backend,
         validate_with_ccx=False,
     )
     if with_halo and cell_size is not None:
@@ -363,26 +376,22 @@ def grid_scored(
     return t
 
 
-def from_dict(data: dict) -> Textile:
-    """Validate a dict (e.g. loaded JSON) as a Textile."""
-    payload = {k: v for k, v in data.items() if not str(k).startswith("_")}
-    return Textile(input=CpropInput(**payload))
+def from_dict(data: dict) -> CoreCase:
+    """Validate a dict (e.g. loaded JSON) as a CoreCase."""
+    from b3_core.loaders import from_dict as _from_dict
+
+    return _from_dict(data)
 
 
-def from_path(path: str | Path) -> Textile:
-    """Load JSON/YAML file as a Textile (interchange → code)."""
-    from b3_core.core.cprop import load_case
+def from_path(path: str | Path) -> CoreCase:
+    """Load JSON/YAML file as a CoreCase (interchange → code)."""
+    from b3_core.loaders import from_path as _from_path
 
-    dct, dirname = load_case(str(path))
-    return Textile(
-        input=CpropInput(
-            **{k: v for k, v in dct.items() if not str(k).startswith("_")}
-        ),
-        workdir=dirname or None,
-    )
+    return _from_path(path)
 
 
 __all__ = [
+    "CoreCase",
     "Textile",
     "PVC_100",
     "H60_ORTHO",

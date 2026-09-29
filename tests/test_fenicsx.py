@@ -55,24 +55,21 @@ def test_properties_from_isotropic_stiffness():
 
 
 def test_cprop_fenicsx_validation_dispatch(monkeypatch, tmp_path):
-    calls = []
+    from tests.fakes import props, solver_double
 
-    def fake_fenicsx(mesh, dct, status=None):
-        calls.append("fenicsx")
-        return {"Exx": 100.0, "Gxy": 50.0}
+    calls: list[str] = []
+    backends = {
+        "fenicsx": solver_double("fenicsx", props(100.0, 50.0), calls),
+        "ccx": solver_double("ccx", props(101.0, 49.0), calls),
+    }
 
-    def fake_ccx(mesh, name, dct, status=None):
-        calls.append("ccx")
-        return {"Exx": 101.0, "Gxy": 49.0}
+    def get_backend(name):
+        backend = backends.get(name)
+        if backend is None:
+            raise KeyError(name)
+        return backend
 
-    monkeypatch.setattr(cprop_module, "create_grooved_mesh", lambda *a, **k: object())
-    monkeypatch.setattr(
-        cprop_module,
-        "geom_analysis",
-        lambda mesh: {"area_increase": 1.0, "resin_vf": 0.0},
-    )
-    monkeypatch.setattr(cprop_module, "_run_fenicsx_backend", fake_fenicsx)
-    monkeypatch.setattr(cprop_module, "_run_ccx_backend", fake_ccx)
+    monkeypatch.setattr("b3_core.solvers.get_backend", get_backend)
 
     cfg = tmp_path / "case.json"
     cfg.write_text(

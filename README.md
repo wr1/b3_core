@@ -88,21 +88,23 @@ density. Mould curvature (`kx`, `ky`) morphs kerf walls with **`hw(z)`**
 **resin halo** grades stiffness with distance to the cut surface
 (`core.cell_size`); see the [docs graphics](https://wr1.github.io/b3_core/docs/concepts/resin-halo/).
 
-**Default backend: MFEM.** Also CalculiX (`ccx`), FEniCSx, **numpy**. Orthotropic
-foam or halo auto-routes to **numpy**. Optional `validate_with_ccx`.
+**Default backend: `auto`.** Isotropic cases with no halo use MFEM. Orthotropic
+foam or a resin halo selects **numpy**. CalculiX (`ccx`) and FEniCSx are
+explicit backends. Optional `validate_with_ccx`.
 
 ## CLI (files still work)
 
 ```bash
 uv run b3_core run examples/simple.json
-uv run b3_core sweep homogenise --root examples/param_sweeps
+uv run b3_core sweep homogenize --root examples/param_sweeps
 uv run b3_core viz view examples/mfem_patterns/two_sided.json --what gallery -o board.png
 uv run b3_core viz halo examples/grid_scored_halo.json -o examples/img
 uv run b3_core skill --stdout
 ```
 
-`homogenize` / `cprop` accept a **path**, **dict**, **`CpropInput`**, or
-**`Textile`**. Runs write `run<HASH>.json` next to the case (or study root).
+`homogenize` / `cprop` accept a **path**, **dict**, **`CaseInput`**
+(`CpropInput`), or **`CoreCase`** (`Textile`). `homogenize` writes nothing
+unless `write=True`. `b3_core run` writes `run<hash12>.json` next to the case.
 
 ## Agent skill
 
@@ -156,22 +158,49 @@ Datasheet needs [`typst`](https://typst.app) on PATH. Halo figure bundle:
 | `examples/offline/` | GIFs, explainer MP4 (not mainline) |
 
 ```bash
-b3_core sweep homogenise --root examples/param_sweeps   # or: make sweep
+b3_core sweep homogenize --root examples/param_sweeps   # or: make sweep
 ```
+
+## Files and caching
+
+The library does not write unless asked. `homogenize(case, cache=DiskCache(".b3cache"))`
+reuses a solve; `cache=None` does not. `homogenize(case, write=True, workdir=...)`
+and `homogenize_to_disk` write one `run<hash12>.json`. Sweep caches live in
+`<study root>/.b3cache`. `b3_core run` caches only when `--cache DIR` is passed.
 
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM (`mfem`; default backend)
+- PyMFEM (`mfem`; a required dependency; `auto` selects it for isotropic cases)
 - CalculiX + `frd2vtu` only for `backend: ccx` / `validate_with_ccx`
 - `treeparse` (PyPI), `b3_mat` (git: `wr1/b3_mat`) via `pyproject.toml`
 - `typst` only for datasheets
 
 ```bash
 uv sync --extra dev          # package + pytest + ruff + pre-commit
-uv sync --extra mfem         # if mfem not already a hard dep on your machine
 uv sync --extra anim         # optional GIF/MP4 explainer
 ```
+
+### Python 3.12 and pip
+
+PyMFEM 4.8 declares `numba==0.53`. That release cannot build on Python 3.12.
+`uv sync` overrides the pin (`numba>=0.60` in `[tool.uv] override-dependencies`).
+pip has no equivalent override. On 3.12, install a current numba and PyMFEM
+without that pin, then the rest of the dependencies, and install this tree
+without letting pip re-resolve `numba`:
+
+```bash
+python -m pip install --upgrade pip
+pip install "numba>=0.60"
+pip install "mfem" --no-deps
+pip install "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
+  "pydantic>=2" "pyyaml" "treeparse" "rich>=13" \
+  "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
+  "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
+pip install --no-deps .
+```
+
+Prefer `uv sync` when you can. The CI job `pip-install-smoke` runs the recipe above.
 
 ## Development
 

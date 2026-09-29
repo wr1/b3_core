@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from b3_core.core.mesh import create_grooved_mesh
+from b3_core.pipeline import mesh_for
 from b3_core.sweep.context import (
     KX,
     PATTERNS,
@@ -19,7 +19,7 @@ from b3_core.sweep.context import (
     load_pattern,
 )
 from b3_core.viz import GroovedCoreView
-from b3_core.viz._deps import ensure_headless, require_pyvista
+from b3_core.viz.deps import ensure_headless, require_pyvista
 from b3_core.viz.theme import DEFAULT_THEME
 
 THEME = DEFAULT_THEME
@@ -35,18 +35,7 @@ def case_from_cache(
 
 
 def mesh_from_case(case: dict):
-    curv = case.get("curvature") or {}
-    return create_grooved_mesh(
-        thickness=case["thickness"],
-        dx=case["dx"],
-        dy=case["dy"],
-        xcuts=case.get("xgr", []),
-        ycuts=case.get("ygr", []),
-        madd=tuple(case.get("madd", [0])),
-        tface=(case.get("face") or {}).get("thickness", 0.0),
-        kx=curv.get("kx", 0.0),
-        ky=curv.get("ky", 0.0),
-    )
+    return mesh_for(case)
 
 
 def add_phases(

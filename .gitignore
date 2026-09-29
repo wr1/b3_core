@@ -118,8 +118,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# Prebuilt DocKB static export lives in site/ and is committed for GitHub Pages
-# (https://wr1.github.io/b3_core/). Rebuild with: make docs-build
+# DocKB static export. GitHub Pages builds it (`make docs-build`); do not commit.
+site/
 
 # mypy
 .mypy_cache/
@@ -131,12 +131,6 @@ dmypy.json
 
 # Private notes repo (separate inner git repo)
 notes/
-
-# uv lockfile: not committed. A committed lock previously tripped
-# Dependabot's uv dependency-graph job. Default deps are git/PyPI (no
-# machine-local path sources). CI runs `uv sync --extra dev` and writes
-# a runner-local lock.
-uv.lock
 
 # Large render artifacts (commit the GIF showcase, keep MP4s local)
 docs/*.mp4

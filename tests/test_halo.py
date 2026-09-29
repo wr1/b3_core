@@ -99,4 +99,5 @@ def test_pipeline_routes_and_reports_vf():
     g = m.geom
     assert "effective_resin_vf" in g and "halo_vf" in g
     assert g["effective_resin_vf"] > g["resin_vf"]  # halo adds resin
-    assert type(m.details).__name__ == "AnisoResult"  # numpy backend
+    assert type(m.details).__name__ == "SolveResult"
+    assert m.resolved_backend == "numpy"

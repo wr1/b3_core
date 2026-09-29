@@ -13,10 +13,10 @@ per-property comparison to the output JSON.
 
 ## Running
 
-Requires the optional MFEM stack and CalculiX on `PATH`:
+Requires PyMFEM (a package dependency) and CalculiX on `PATH`:
 
 ```bash
-uv sync --extra mfem          # installs PyMFEM (CPU-only, pip-installable)
+uv sync                       # PyMFEM is a required dependency
 uv run python examples/mfem_patterns/compare.py
 ```
 

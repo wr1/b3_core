@@ -5,8 +5,6 @@ from pathlib import Path
 from treeparse import argument, cli, command, group, option
 from treeparse.models.chain import chain
 
-from b3_core.core.cprop import cprop
-
 _CASE_ARG = argument(
     name="path",
     arg_type=str,
@@ -17,20 +15,35 @@ _SWEEP_ROOT_OPT = option(
     arg_type=str,
     default="",
     inherit=True,
-    help="Study root (default: examples/param_sweeps/).",
+    help=(
+        "Study root. With no value, the current directory is used when it "
+        "contains bases/ or mfem_patterns/; otherwise the command exits."
+    ),
 )
-_SWEEP_ROOT_STATE: list[str] = [""]
+_SWEEP_CACHE_OPT = option(
+    flags=["--cache"],
+    arg_type=str,
+    default="",
+    inherit=True,
+    help="Disk cache directory. Default: <study root>/.b3cache.",
+)
 
 
-def cmd_run(path: str, ccx_ortho: str = ""):
-    out = cprop(path)
+def cmd_run(path: str, ccx_ortho: str = "", backend: str = "", cache: str = ""):
+    from b3_core.api import homogenize_to_disk
+    from b3_core.cache import DiskCache
+
+    kwargs: dict = {}
+    if backend:
+        kwargs["backend"] = backend
+    if cache:
+        kwargs["cache"] = DiskCache(cache)
+    result, written = homogenize_to_disk(path, **kwargs)
+    print(f"Wrote {written}")
     if not ccx_ortho:
         return
-    from b3_core.result import CoreResult
-
-    card = CoreResult.from_cprop_output(out).ccx_ortho()
     dest = Path(ccx_ortho)
-    dest.write_text(card)
+    dest.write_text(result.ccx_ortho())
     print(f"Wrote {dest}")
 
 
@@ -43,11 +56,28 @@ def cmd_skill(stdout: bool):
         print(skill_path())
 
 
-def _sweep_context(root: str = ""):
-    from b3_core.sweep.context import SweepContext, default_root
+def resolve_sweep_root(root: str = "") -> Path:
+    """Directory a sweep reads bases and patterns from.
 
-    r = root or _SWEEP_ROOT_STATE[0]
-    return SweepContext(Path(r) if r else default_root())
+    An explicit ``--root`` is used as given. Otherwise the current directory
+    qualifies when it contains ``bases/`` or ``mfem_patterns/``.
+    """
+    import sys
+
+    if root:
+        return Path(root)
+    cwd = Path.cwd()
+    if (cwd / "bases").is_dir() or (cwd / "mfem_patterns").is_dir():
+        return cwd
+    print("no study root found; pass --root", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _sweep_context(root: str = "", cache: str = ""):
+    from b3_core.sweep.context import SweepContext
+
+    study = resolve_sweep_root(root)
+    return SweepContext(study, Path(cache) if cache else None)
 
 
 def _sweep_exit(code: int) -> None:
@@ -56,91 +86,120 @@ def _sweep_exit(code: int) -> None:
     sys.exit(code)
 
 
-def _bind_sweep_root(root: str) -> None:
-    _SWEEP_ROOT_STATE[0] = root
+def cmd_sweep_thickness(root: str, cache: str):
+    from b3_core.sweep import homogenize
+
+    _sweep_exit(homogenize.run_thickness(_sweep_context(root, cache)))
 
 
-def cmd_sweep_thickness(root: str):
-    from b3_core.sweep import homogenise
+def cmd_sweep_curvature(root: str, cache: str):
+    from b3_core.sweep import homogenize
 
-    _bind_sweep_root(root)
-    _sweep_exit(homogenise.run_thickness(_sweep_context(root)))
-
-
-def cmd_sweep_curvature(root: str):
-    from b3_core.sweep import homogenise
-
-    _bind_sweep_root(root)
-    _sweep_exit(homogenise.run_curvature(_sweep_context(root)))
+    _sweep_exit(homogenize.run_curvature(_sweep_context(root, cache)))
 
 
-def cmd_sweep_curvature_chained():
-    from b3_core.sweep import homogenise
+def cmd_sweep_patterns(root: str, cache: str):
+    from b3_core.sweep import homogenize
 
-    _sweep_exit(homogenise.run_curvature(_sweep_context()))
-
-
-def cmd_sweep_patterns(root: str):
-    from b3_core.sweep import homogenise
-
-    _bind_sweep_root(root)
-    _sweep_exit(homogenise.run_patterns(_sweep_context(root)))
-
-
-def cmd_sweep_patterns_chained():
-    from b3_core.sweep import homogenise
-
-    _sweep_exit(homogenise.run_patterns(_sweep_context()))
+    _sweep_exit(homogenize.run_patterns(_sweep_context(root, cache)))
 
 
 def _sweep_subgroup() -> group:
+    # treeparse validates each chained callback against that command's own
+    # options, and a chain rejects a repeated option dest. The first step
+    # owns --root and stores it here; later steps take no arguments.
+    # Steps must not sys.exit: chain_runner would stop after thickness.
+    shared: dict[str, str | int] = {"root": "", "cache": "", "code": 0}
+
+    def _thickness_chain(root: str, cache: str):
+        from b3_core.sweep import homogenize
+
+        shared["root"] = root
+        shared["cache"] = cache
+        shared["code"] = homogenize.run_thickness(_sweep_context(root, cache))
+
+    def _curvature_chain():
+        from b3_core.sweep import homogenize
+
+        if shared["code"]:
+            return
+        shared["code"] = homogenize.run_curvature(
+            _sweep_context(str(shared["root"]), str(shared["cache"]))
+        )
+
+    def _patterns_chain():
+        from b3_core.sweep import homogenize
+
+        code = int(shared["code"])
+        if not code:
+            code = homogenize.run_patterns(
+                _sweep_context(str(shared["root"]), str(shared["cache"]))
+            )
+        _sweep_exit(code)
+
+    leaf_options = [_SWEEP_ROOT_OPT, _SWEEP_CACHE_OPT]
     thickness = command(
         name="thickness",
         help="Homogenise thickness sweep (20–50 mm).",
         callback=cmd_sweep_thickness,
-        options=[_SWEEP_ROOT_OPT],
+        options=leaf_options,
         sort_key=0,
     )
     curvature = command(
         name="curvature",
         help="Homogenise curvature sweep (kx).",
         callback=cmd_sweep_curvature,
-        options=[_SWEEP_ROOT_OPT],
+        options=leaf_options,
         sort_key=1,
     )
     patterns = command(
         name="patterns",
         help="Homogenise groove-pattern sweep.",
         callback=cmd_sweep_patterns,
-        options=[_SWEEP_ROOT_OPT],
+        options=leaf_options,
         sort_key=2,
     )
-    curvature_chained = command(
-        name="curvature",
-        help="Homogenise curvature sweep (kx).",
-        callback=cmd_sweep_curvature_chained,
-        sort_key=1,
-    )
-    patterns_chained = command(
-        name="patterns",
-        help="Homogenise groove-pattern sweep.",
-        callback=cmd_sweep_patterns_chained,
-        sort_key=2,
-    )
+
+    def _chained(name: str, sort_key: int):
+        # Each chain needs its own command objects; a repeated dest across
+        # one chain is rejected, and one command object cannot sit in two.
+        return chain(
+            name=name,
+            help="thickness ➜ curvature ➜ patterns",
+            chained_commands=[
+                command(
+                    name="thickness",
+                    help="Homogenise thickness sweep (20–50 mm).",
+                    callback=_thickness_chain,
+                    options=leaf_options,
+                    sort_key=0,
+                ),
+                command(
+                    name="curvature",
+                    help="Homogenise curvature sweep (kx).",
+                    callback=_curvature_chain,
+                    sort_key=1,
+                ),
+                command(
+                    name="patterns",
+                    help="Homogenise groove-pattern sweep.",
+                    callback=_patterns_chain,
+                    sort_key=2,
+                ),
+            ],
+            sort_key=sort_key,
+        )
+
     return group(
         name="sweep",
         help="Parametric homogenisation studies.",
-        options=[_SWEEP_ROOT_OPT],
+        options=leaf_options,
         commands=[
             thickness,
             curvature,
             patterns,
-            chain(
-                name="homogenise",
-                help="thickness ➜ curvature ➜ patterns",
-                chained_commands=[thickness, curvature_chained, patterns_chained],
-                sort_key=3,
-            ),
+            _chained("homogenize", 3),
+            _chained("homogenise", 4),
         ],
     )
 
@@ -384,14 +443,18 @@ def _viz_subgroup() -> group:
 
 
 def cmd_surrogate_fit(output: str, cache: str):
-    """Fit physics surrogate on a κ × cell_size homogenization grid."""
+    """Fit physics surrogate on a κ × ky × cell_size homogenization grid."""
+    import sys
+
+    from b3_core.cache import DiskCache
     from b3_core.physics_surrogate import fit_from_homogenization
 
-    out = Path(output) if output else Path("examples/img/core_physics_surrogate.json")
-    cache_path = (
-        Path(cache) if cache else out.with_name("halo_curvature_param_grid.json")
-    )
-    surr = fit_from_homogenization(cache_path=cache_path)
+    if not output:
+        print("surrogate fit: --output is required", file=sys.stderr)
+        raise SystemExit(2)
+    out = Path(output)
+    store = DiskCache(cache) if cache else DiskCache(out.with_name(".b3cache"))
+    surr = fit_from_homogenization(cache=store)
     surr.to_json(out)
     print(f"Wrote {out}  targets={surr.targets}")
 
@@ -423,8 +486,8 @@ def _surrogate_subgroup() -> group:
                     option(
                         flags=["--output", "-o"],
                         arg_type=str,
-                        default="",
-                        help="JSON path (default: examples/img/core_physics_surrogate.json).",
+                        required=True,
+                        help="JSON path for the fitted surrogate.",
                     ),
                     option(
                         flags=["--cache"],
@@ -487,6 +550,18 @@ def main():
                         arg_type=str,
                         default="",
                         help="Write a CalculiX *elastic,type=ortho card to this path.",
+                    ),
+                    option(
+                        flags=["--backend"],
+                        arg_type=str,
+                        default="",
+                        help="Override the case backend (default: the case's own, usually auto).",
+                    ),
+                    option(
+                        flags=["--cache"],
+                        arg_type=str,
+                        default="",
+                        help="Disk cache directory. Omit to run without a cache.",
                     ),
                 ],
             ),

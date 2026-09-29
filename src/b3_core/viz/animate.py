@@ -19,9 +19,8 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 
-from b3_core.core.mesh import create_grooved_mesh
 from b3_core.viz import geometry
-from b3_core.viz._deps import ensure_headless, require_pyvista
+from b3_core.viz.deps import ensure_headless, require_pyvista
 from b3_core.viz.model import CoreModel
 from b3_core.viz.theme import CoreTheme
 
@@ -131,17 +130,14 @@ def _curved_grid(inp: dict, kappa: float):
     Same kinematics as the curved-panel viz: walls track ``hw(z)`` on the flat
     RVE, then material ``x`` is mapped onto a cylinder for the drape shot.
     """
-    mesh = create_grooved_mesh(
-        thickness=inp["thickness"],
-        dx=inp["dx"],
-        dy=inp["dy"],
-        xcuts=inp["xgr"],
-        ycuts=inp["ygr"],
-        madd=tuple(inp["madd"]),
-        tface=(inp.get("face") or {}).get("thickness", 0.0),
-        kx=kappa,
-        ky=0.0,
-    )
+    from b3_core.pipeline import mesh_for
+
+    curved = dict(inp)
+    curved["curvature"] = {
+        "kx": kappa,
+        "ky": (inp.get("curvature") or {}).get("ky", 0.0),
+    }
+    mesh = mesh_for(curved)
     grid = mesh.cast_to_unstructured_grid()
     grid.cell_data["__phase"] = geometry.cell_material(mesh)
     if abs(kappa) > 1e-9:

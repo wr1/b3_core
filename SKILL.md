@@ -9,7 +9,7 @@ description: >
   resin halo, or b3_core physics surrogate. Triggers on "homogenize core",
   "grooved core properties", "infused core stiffness", "resin halo",
   "curvature-dependent core", "core surrogate", "b3_core", "cprop". Load via
-  b3_core.skill_path() or `b3_core skill --stdout`.
+  `b3_core.skill_path()` (also `b3_core.skill.skill_path()`) or `b3_core skill --stdout`.
 ---
 
 # b3_core — homogenized properties for FEA
@@ -101,7 +101,9 @@ resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
 ```
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
-Negative depth = groove opens toward the mould face (curved panels).
+`z = 0` is the mould face. A negative depth in that legacy list is only an
+input alias for `mouth: top` (the groove opens at `z = thickness`).
+`mouth: bottom` opens at `z = 0`.
 
 | Field | Role |
 |-------|------|
@@ -112,7 +114,7 @@ Negative depth = groove opens toward the mould face (curved panels).
 | `scoring` | Halo tuning: `damage_cells`, `sampling` strategy |
 | `curvature` | `{"kx", "ky"}` groove taper for curved panels [1/mm] |
 | `face` | `{"thickness": mm}` optional stabilising layer |
-| `backend` | `"mfem"` (default), `"ccx"`, `"fenicsx"`, `"numpy"` |
+| `backend` | `"auto"` (default), `"mfem"`, `"ccx"`, `"fenicsx"`, `"numpy"` |
 | `validate_with_ccx` | `true` to cross-check against CalculiX |
 
 Example cases ship under `examples/` when developing from source
@@ -238,15 +240,16 @@ uv run b3_core run examples/with_grooves.json
 ```python
 from b3_core import homogenize, cprop
 
-result = homogenize("case.json")          # CoreResult
+result = homogenize("case.json")          # CoreResult; writes nothing
 mat = result.material                     # b3_mat.OrthotropicMaterial
 
-raw = cprop("case.json")                  # full dict + writes run*.json
+raw = cprop("case.json")                  # deprecated: flat dict, overwrites run*.json
 ```
 
-Default backend is **mfem** (`uv sync --extra mfem`). Use `backend: ccx` when
-you need CalculiX (`ccx` + `frd2vtu` on PATH). If `FileExistsError`, delete the
-cached `run*.json` or use a fresh output directory.
+Default backend is **`auto`**: MFEM for an isotropic case with no resin halo,
+numpy when a constituent is orthotropic or a halo is on. PyMFEM is a required
+dependency. Use `backend: ccx` when you need CalculiX (`ccx` + `frd2vtu` on PATH).
+Repeated solves do not raise. Pass a cache (see Files and caching).
 
 ## 3. Properties for FEA
 
@@ -345,29 +348,30 @@ Gyz,293
 ```
 
 Substitute SI values from `result.material`. Temperature line is placeholder
-(293 K); adjust for the target FEA deck. For full 6×6 `C` tensor use
-`CoreModel.from_json(path).stiffness` (Voigt order: xx, yy, zz, yz, xz, xy).
+(293 K); adjust for the target FEA deck. For the full 6×6 `C` tensor use
+`homogenize(case).stiffness` (Voigt order: xx, yy, zz, yz, xz, xy).
+`CoreModel` is for displacements and figures.
 
 ### 6×6 effective stiffness
 
 ```python
-from b3_core.viz import CoreModel
+from b3_core import homogenize
 
-model = CoreModel.from_json("case.json")
-C = model.stiffness          # Pa, 6×6
-C_GPa = C * 1e-9             # for tables
+C = homogenize(case).stiffness   # Pa, 6×6
+C_GPa = C * 1e-9                 # for tables
 ```
 
 Use when the downstream solver needs the full anisotropic tensor rather than
-engineering constants.
+engineering constants. `CoreModel.stiffness` is the same tensor when a figure
+or a displacement field is also required.
 
 ## 4. Reports
 
 ### Datasheet (PDF + PNG, publication-ready)
 
 One-page report: RVE/geometry table, materials table, analysis settings,
-groove figures, engineering constants, and 6×6 `C_eff` heatmap. Uses MFEM
-backend for figures (no ccx solve for the report itself).
+groove figures, engineering constants, and 6×6 `C_eff` heatmap. The report
+uses the case's backend through the same pipeline as `homogenize`.
 
 ```bash
 b3_core viz datasheet case.json -o report.pdf --png report.png
@@ -383,7 +387,8 @@ Needs `typst` on PATH.
 
 ### Terminal comparison table (parametric sweeps)
 
-When developing from source, use `b3_core sweep homogenise` or `make sweep`.
+When developing from source, use `b3_core sweep homogenize` or `make sweep`
+(`sweep homogenise` remains a 0.3 alias).
 Response curves / gallery / GIFs: `examples/offline/`.
 
 ### Viz board (figures only, no PDF)
@@ -405,11 +410,50 @@ The homogenized properties replace the **core layer** in a larger blade/panel
 FEA model. Groove geometry stays in the RVE; the global model sees a smeared
 orthotropic solid.
 
+## Files and caching
+
+`homogenize(case)` and `run_case(case)` write nothing. `write=True` and
+`homogenize_to_disk(case)` write `run<hash12>.json` into `workdir`, or into
+the case file's directory when `case` is a path. `CoreCase.with_workdir(path)`
+sets that directory and does nothing until a write is requested.
+
+```python
+from b3_core import homogenize
+from b3_core.cache import DiskCache
+
+result = homogenize(case, cache=DiskCache(".b3cache"))
+```
+
+`cache=None` is a null cache. `MemoryCache` is process-local. `DiskCache`
+writes `root/<key[:2]>/<key>.json` atomically. The key is `CACHE_SCHEMA`, the
+resolved backend, and the canonical case JSON. It does not include the package
+version. CalculiX scratch files go to a temporary directory unless the solve
+request names a workdir. `b3_core run` writes a run file and caches only when
+`--cache DIR` is set. `b3_core sweep` caches in `<study>/.b3cache`.
+
+## Surrogate sweeps
+
+```python
+from b3_core.cache import DiskCache
+from b3_core.physics_surrogate import fit_from_homogenization
+
+surrogate = fit_from_homogenization(
+    kx_values=[-0.01, 0.0, 0.01],
+    ky_values=[0.0, 0.005],
+    cell_sizes=[0.0, 0.6],
+    cache=DiskCache(".b3cache"),
+)
+surrogate.to_json("surrogate.json")
+```
+
+Features are `kx`, `ky`, and `cell_size` (schema 2). A 0.2 file with only
+`kx` and `cell_size` still loads.
+
 ## Quick reference
 
 ```bash
 b3_core run case.yaml
-b3_core sweep homogenise
+b3_core sweep homogenize
 b3_core viz datasheet case.json -o core.pdf --png core.png
 b3_core skill --stdout    # load this document
 ```

@@ -1,75 +1,81 @@
-"""CoreModel — one lazily-evaluated handle on a grooved-core case.
-
-Builds the RVE mesh, geometric metrics and (on demand) the MFEM homogenisation
-once, and caches them, so every renderer in :mod:`b3_core.viz` shares the same
-mesh and stiffness instead of each re-solving. This is the single place the
-mesh-build + MFEM-solve pipeline lives for visualization.
-"""
+"""CoreModel — a view over one prepared case and its homogenisation."""
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from b3_core.core.analysis import geom_analysis
-from b3_core.core.cprop import CpropInput
-from b3_core.core.mesh import create_grooved_mesh
-from b3_core.io import mfem_backend
+from b3_core.loaders import from_dict, from_path, normalize_case
+from b3_core.models import CaseInput
+from b3_core.pipeline import BackendCapabilityError
 from b3_core.viz import geometry, tensor
 
 logger = logging.getLogger(__name__)
 
 
 class CoreModel:
-    """A grooved-core case with lazy, cached mesh / geometry / homogenisation."""
+    """Grooved-core case with lazy mesh, geometry, and stiffness."""
 
-    def __init__(self, inp: dict, *, name: str | None = None, config_path: str = ""):
-        self.inp = CpropInput(**inp).model_dump()
+    def __init__(
+        self,
+        case: Any,
+        *,
+        name: str | None = None,
+        config_path: str = "",
+        backend: str | None = None,
+        cache: Any = None,
+    ) -> None:
+        model, _workdir = normalize_case(case)
+        self.case: CaseInput = model
+        self.inp = model.score_dict()
         self.name = name or "core"
         self.config_path = config_path
-        self._mesh = None
-        self._mat = None
-        self._geom = None
-        self._details = None
+        self.backend = backend
+        self.cache = cache
+        self.prepared = None
+        self.material_codes_cache = None
+        self.geometry_cache = None
+        self.solved = None
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "CoreModel":
+    def from_path(cls, path: str | Path, **kwargs: Any) -> CoreModel:
         path = Path(path)
-        return cls(json.loads(path.read_text()), name=path.stem, config_path=path.name)
+        textile = from_path(path)
+        return cls(
+            textile,
+            name=kwargs.pop("name", path.stem),
+            config_path=path.name,
+            **kwargs,
+        )
 
     @classmethod
-    def from_dict(cls, inp: dict, **kw) -> "CoreModel":
-        return cls(inp, **kw)
+    def from_json(cls, path: str | Path, **kwargs: Any) -> CoreModel:
+        """Alias of :meth:`from_path`. JSON and YAML both load."""
+        return cls.from_path(path, **kwargs)
 
-    # -- geometry -----------------------------------------------------------
+    @classmethod
+    def from_dict(cls, data: dict, **kwargs: Any) -> CoreModel:
+        return cls(from_dict(data), **kwargs)
+
+    def ensure_prepared(self):
+        if self.prepared is None:
+            from b3_core.pipeline import prepare
+
+            self.prepared = prepare(self.case)
+        return self.prepared
+
     @property
     def mesh(self):
-        if self._mesh is None:
-            from b3_core.core.cprop import halo_reach
-
-            i = self.inp
-            self._mesh = create_grooved_mesh(
-                thickness=i["thickness"],
-                dx=i["dx"],
-                dy=i["dy"],
-                xcuts=i["xgr"],
-                ycuts=i["ygr"],
-                madd=tuple(i["madd"]),
-                tface=(i.get("face") or {}).get("thickness", 0.0),
-                kx=(i.get("curvature") or {}).get("kx", 0.0),
-                ky=(i.get("curvature") or {}).get("ky", 0.0),
-                s_halo=halo_reach(i),
-            )
-        return self._mesh
+        return self.ensure_prepared().mesh
 
     @property
     def material_codes(self) -> np.ndarray:
-        if self._mat is None:
-            self._mat = geometry.cell_material(self.mesh)
-        return self._mat
+        if self.material_codes_cache is None:
+            self.material_codes_cache = geometry.cell_material(self.mesh)
+        return self.material_codes_cache
 
     @property
     def axis_vectors(self):
@@ -77,59 +83,26 @@ class CoreModel:
 
     @property
     def geom(self) -> dict:
-        if self._geom is None:
-            from b3_core.core.cprop import _score_field
-            from b3_core.core.scoring import effective_resin_vf
-
-            g = geom_analysis(self.mesh)
-            field = _score_field(self.inp)
-            eff, halo_vf = effective_resin_vf(self.mesh, field, g["resin_vf"])
-            if field is not None:
-                g["effective_resin_vf"] = eff
-                g["halo_vf"] = halo_vf
-            g["rho_infused"] = (
-                self.inp["core"]["rho"] * (1.0 - eff) + self.inp["resin"]["rho"] * eff
-            )
-            self._geom = g
-        return self._geom
-
-    # -- homogenisation -----------------------------------------------------
-    def _needs_numpy(self) -> bool:
-        from b3_core.core.cprop import _needs_numpy
-
-        return self.inp.get("backend") == "numpy" or _needs_numpy(self.inp)
+        if self.geometry_cache is None:
+            self.geometry_cache = self.ensure_prepared().geometry.as_dict()
+        return self.geometry_cache
 
     @property
     def details(self):
-        if self._details is None:
-            if self._needs_numpy():
-                from b3_core.core.cprop import _score_field
-                from b3_core.io import aniso
+        if self.solved is None:
+            from b3_core.api import run_case
+            from b3_core.pipeline import solve_result_from_record
 
-                logger.info("running numpy anisotropic backend for %s", self.name)
-                self._details = aniso.runnumpy(
-                    self.mesh,
-                    self.inp["resin"],
-                    self.inp["core"],
-                    self.inp.get("face"),
-                    score_field=_score_field(self.inp),
-                    scoring=self.inp.get("scoring"),
-                    return_details=True,
-                )
-            else:
-                logger.info("running MFEM backend for %s", self.name)
-                self._details = mfem_backend.runmfem(
-                    self.mesh,
-                    self.inp["resin"],
-                    self.inp["core"],
-                    self.inp.get("face"),
-                    return_details=True,
-                )
-        return self._details
+            record = run_case(self.case, backend=self.backend, cache=self.cache)
+            self.solved = solve_result_from_record(record)
+            self.resolved_backend = record.result.backend
+            self.displacement_fields = None
+            logger.info("solved %s with %s", self.name, self.resolved_backend)
+        return self.solved
 
     @property
     def stiffness(self) -> np.ndarray:
-        """Effective 6x6 stiffness C_eff (Pa, order xx,yy,zz,yz,xz,xy)."""
+        """Effective 6×6 stiffness (Pa, order xx, yy, zz, yz, xz, xy)."""
         return np.asarray(self.details.stiffness, dtype=float)
 
     def ccx_ortho(
@@ -138,8 +111,8 @@ class CoreModel:
         name: str | None = None,
         temperature: float | None = 293.0,
     ) -> str:
-        """CalculiX ``*elastic,type=ortho`` card from C_eff."""
-        from b3_core.io.ccx_card import ccx_ortho_card
+        """CalculiX ``*elastic,type=ortho`` card from the effective stiffness."""
+        from b3_core.export.ccx import ccx_ortho_card
 
         return ccx_ortho_card(
             self.stiffness,
@@ -154,9 +127,33 @@ class CoreModel:
 
     @property
     def engineering_constants(self) -> dict[str, float]:
-        """Orthotropic constants (E_x, E_y, E_z, G_*, nu_*) from the tensor."""
+        """Orthotropic constants from the stiffness tensor."""
         return tensor.engineering_constants(self.stiffness)
 
     def displacements(self, case: str) -> np.ndarray:
-        """Total periodic displacement u = E.x + w for one load case (metres)."""
-        return np.asarray(self.details.displacements[case])
+        """Total periodic displacement for one load case (metres)."""
+        from b3_core.pipeline import backend_capabilities, run_pipeline
+
+        name = getattr(self, "resolved_backend", None)
+        if name is None:
+            _ = self.details
+            name = self.resolved_backend
+        caps = backend_capabilities(name)
+        fields = getattr(self, "displacement_fields", None)
+        if fields is None:
+            if not caps.displacements:
+                raise BackendCapabilityError(
+                    f"backend {name!r} cannot return displacements"
+                )
+            _prep, solved, resolved = run_pipeline(
+                self.case, backend=name, details=True
+            )
+            self.displacement_fields = solved.displacements
+            self.resolved_backend = resolved
+            fields = solved.displacements
+        field = None if fields is None else fields.get(case)
+        if not caps.displacements or field is None:
+            raise BackendCapabilityError(
+                f"backend {name!r} cannot return displacements"
+            )
+        return np.asarray(field)

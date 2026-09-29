@@ -7,12 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-29
+
+### Changed (breaking behaviour)
+
+- `homogenize()` is now pure: it returns a `CoreResult` and writes no files.
+  Use `homogenize(case, write=True, workdir=...)` or `homogenize_to_disk()` for
+  the old file output. Repeated identical calls no longer raise `FileExistsError`.
+- Backend default is `"auto"`. An explicit backend that cannot handle the case
+  (orthotropic constituents or resin halo) now warns and falls back; this will
+  raise `BackendCapabilityError` in 1.0.
+- Run files are `run<sha256[:12]>.json` with a namespaced layout
+  (`input` / `geometry` / `result`).
+
 ### Added
 
-- CalculiX ``*elastic,type=ortho`` card from C_eff (`CoreResult.ccx_ortho()`,
+- `Cache` protocol with `MemoryCache` and `DiskCache`; `homogenize(case, cache=...)`.
+- `SolverBackend` protocol and registry (`b3_core.solvers`), entry-point group
+  `b3_core.solvers`.
+- `CoreResult.stiffness` (6×6) and `run_case()` → `RunRecord`.
+- Typed `Groove`, `Face`, `Curvature`, `Scoring` models.
+- `ky` support in surrogate training sweeps.
+- CalculiX `*elastic,type=ortho` card from C_eff (`CoreResult.ccx_ortho()`,
   `CoreModel.ccx_ortho()`, `b3_core run CASE --ccx-ortho out.inp`).
-- Git pre-commit hook (``.githooks/pre-commit``): ruff check + format on
-  staged ``src/`` / ``tests/`` Python (`make install` sets ``core.hooksPath``).
+- Git pre-commit hook (`.githooks/pre-commit`): ruff check + format on
+  staged `src/` / `tests/` Python (`make install` sets `core.hooksPath`).
+
+### Deprecated
+
+- `cprop` (use `run_case` or `homogenize`), `b3_core.io.*`
+  (use `b3_core.solvers.*`), `sweep homogenise` (use `sweep homogenize`),
+  `cache_path=` on curvature sweeps (use `cache=`).
+  `CpropInput` and `Textile` stay as aliases of `CaseInput` and `CoreCase`.
 
 ## [0.2.0] — 2026-09-14
 

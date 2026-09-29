@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from b3_core.viz._deps import require_pyvista
+from b3_core.viz.deps import require_pyvista
 
 # Voigt index -> tensor index pair, in the backend's (xx,yy,zz,yz,xz,xy) order.
 _VOIGT = ((0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1))
