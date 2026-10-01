@@ -350,7 +350,7 @@ def grid_scored(
 ) -> CoreCase:
     """Grid-scored foam (``examples/grid_scored_halo``).
 
-    Orthotropic 60 kg/m³ PVC + epoxy; numpy backend when halo is on.
+    Orthotropic 60 kg/m³ PVC + epoxy; mfem handles the halo via per-GP stiffness.
     Pass ``cell_size=None`` and ``with_halo=False`` for sharp kerfs only
     (``examples/grid_scored``).
     """

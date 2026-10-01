@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 import b3_core.core.cprop as cprop_module
+from b3_core.api import homogenize
+from b3_core.cases import grid_scored
 from b3_core.core.mesh import create_grooved_mesh
 from b3_core.io import mfem_backend
 
@@ -53,6 +55,32 @@ def test_cprop_mfem_validation_dispatch(monkeypatch, tmp_path):
     # the comparison labels the alternate backend by name
     assert "mfem" in out["ccx_validation"]["properties"]["Exx"]
     assert isinstance(out["stiffness"], list)
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_matches_numpy_for_orthotropic_kerfs():
+    """Orthotropic core, sharp kerfs: the per-GP stiffness path reproduces numpy."""
+    ref = np.asarray(
+        homogenize(
+            grid_scored(cell_size=None, with_halo=False), backend="numpy"
+        ).stiffness,
+        dtype=float,
+    )
+    got = np.asarray(
+        homogenize(
+            grid_scored(cell_size=None, with_halo=False), backend="mfem"
+        ).stiffness,
+        dtype=float,
+    )
+    assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_matches_numpy_for_orthotropic_halo():
+    """Graded resin halo: the per-GP stiffness path reproduces numpy."""
+    ref = np.asarray(homogenize(grid_scored(), backend="numpy").stiffness, dtype=float)
+    got = np.asarray(homogenize(grid_scored(), backend="mfem").stiffness, dtype=float)
+    assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
 
 
 @pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")

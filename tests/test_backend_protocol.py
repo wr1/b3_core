@@ -38,15 +38,15 @@ def test_unknown_backend_raises():
 def test_incapable_backend_warns_and_falls_back(caplog):
     with pytest.warns(DeprecationWarning, match="orthotropic"):
         with caplog.at_level(logging.WARNING, logger="b3_core.pipeline"):
-            result = homogenize(grid_scored(), backend="mfem")
+            result = homogenize(grid_scored(), backend="ccx")
     assert "halo" in caplog.text
     assert result.stiffness.shape == (6, 6)
 
 
-def test_auto_selects_numpy_for_orthotropic_halo(caplog):
+def test_auto_prefers_mfem_for_orthotropic_halo(caplog):
     with caplog.at_level(logging.INFO, logger="b3_core.pipeline"):
         homogenize(grid_scored())
-    assert "backend auto → numpy (orthotropic, halo)" in caplog.text
+    assert "backend auto → mfem (orthotropic, halo)" in caplog.text
 
 
 def test_datasheet_uses_registered_ccx(monkeypatch, tmp_path):

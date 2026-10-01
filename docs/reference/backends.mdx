@@ -7,10 +7,10 @@ description: MFEM (default), CalculiX, FEniCSx, and numpy — when each runs and
 
 | Backend | Strengths | Limits |
 |---------|-----------|--------|
-| **`mfem`** (**default**) | Fast in-process; datasheet / deformed / viz | Isotropic two-phase; needs PyMFEM |
+| **`mfem`** (**default**) | Fast in-process; isotropic **and** orthotropic + per-GP resin halo; datasheet / deformed / viz | Needs PyMFEM |
 | **`ccx`** | CalculiX `.inp` + VTU post; validation twin | Isotropic two-phase; needs `ccx` + `frd2vtu` |
 | **`fenicsx`** | Optional high-order FEM research path | Extra install; isotropic two-phase |
-| **`numpy`** | Orthotropic constituents; per-GP resin halo | Analytical / semi-analytical RVE path |
+| **`numpy`** | Fallback RVE path; always available | Analytical / semi-analytical |
 
 ```yaml
 # omit backend → mfem
@@ -20,20 +20,25 @@ validate_with_ccx: true   # optional cross-check vs CalculiX
 
 ## Auto-routing
 
-The pipeline forces **`numpy`** when:
+`auto` prefers **`mfem`**, which now covers every constitutive map:
 
-1. `core` or `resin` is **orthotropic**, or
-2. `core.cell_size` is set (resin halo needs graded Gauss-point stiffness).
-   Halo + curvature still use this path — open/close morphs the mesh, then
-   ScoreField grades off `hw(z)` ([composition](/docs/concepts/halo-curvature)).
+1. **orthotropic** `core` / `resin` → per-Gauss-point 6×6 stiffness and a
+   rotated/mixed `Bᵀ C B` element matrix, or
+2. `core.cell_size` set (resin halo) → graded Gauss-point stiffness
+   `P·C_resin + (1−P)·C_foam` sampled from the ScoreField. Halo + curvature
+   still work — open/close morphs the mesh, then ScoreField grades off `hw(z)`
+   ([composition](/docs/concepts/halo-curvature)).
 
-mfem and ccx integrators are two-phase isotropic: they assign each cell fully to
-core or resin. Halo and orthotropy need a richer constitutive map → numpy.
+If mfem is not installed the pipeline falls back to the next capable backend,
+then `numpy`. ccx and fenicsx integrators remain isotropic two-phase.
 
 ## MFEM path (default)
 
-Solves the six periodic unit-strain problems **in-process** (PyMFEM). Used when
-`backend` is omitted or set to `mfem`. Also preferred for:
+Solves the six periodic unit-strain problems **in-process** (PyMFEM). Isotropic
+constituents use MFEM's native `ElasticityIntegrator`; orthotropic constituents
+and the graded halo use a per-Gauss-point stiffness with a custom integrator
+(same constitutive map as numpy, matching to ~1e-6). Used when `backend` is
+omitted or set to `mfem`. Also preferred for:
 
 - `b3_core viz datasheet`
 - `b3_core viz deformed`

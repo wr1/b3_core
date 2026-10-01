@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- MFEM now handles orthotropic constituents and the graded resin halo via a
+  per-Gauss-point 6×6 stiffness and a custom integrator (the same constitutive
+  map as numpy, matching to ~1e-6). `auto` therefore prefers `mfem` for every
+  case and only falls back when mfem is unavailable or unable.
+- The halo constitutive map (`P(resin)`, `local_cloud` averaging, phase
+  attributes and rule-of-mixtures blending) now lives in one solver-neutral
+  module, `b3_core.solvers.sampling`; the numpy and MFEM backends both call it
+  instead of each carrying a copy.
+
 ## [0.3.0] — 2026-09-29
 
 ### Changed (breaking behaviour)

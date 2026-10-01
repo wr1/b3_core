@@ -1,5 +1,5 @@
 {
-    "_comment": "Grid-scored core with per-surface stochastic resin halo (notes/novel.md, notes/refs/laustsen2014_grid_scored_rve.md). Saw-cut walls+root: opened cells, full halo from core.cell_size. Unsawn faces: thinner closed-cell halo (face.scale x saw_cut reach). P(resin)=max over active surfaces; local stiffness is P*C_resin+(1-P)*C_foam at Gauss points. Requires numpy backend.",
+    "_comment": "Grid-scored core with per-surface stochastic resin halo (notes/novel.md, notes/refs/laustsen2014_grid_scored_rve.md). Saw-cut walls+root: opened cells, full halo from core.cell_size. Unsawn faces: thinner closed-cell halo (face.scale x saw_cut reach). P(resin)=max over active surfaces; local stiffness is P*C_resin+(1-P)*C_foam at Gauss points. mfem and numpy both handle the graded halo.",
     "dx": 30.6,
     "dy": 30.6,
     "thickness": 20.4,
@@ -22,6 +22,6 @@
         "sampling": { "strategy": "local_cloud", "resolution": 3 }
     },
     "madd": [-0.15, 0, 0.15],
-    "backend": "numpy",
+    "backend": "auto",
     "validate_with_ccx": false
 }

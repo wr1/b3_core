@@ -87,18 +87,43 @@ def _needs(case: CaseInput) -> _Needs:
     )
 
 
+# Preference order for ``auto`` and capability fallback. MFEM leads and handles
+# every constitutive map; numpy is the always-available last resort.
+_PREFERENCE = ("mfem", "fenicsx", "ccx", "numpy")
+
+
+def _first_capable(needs: _Needs, *, require_available: bool) -> str:
+    """First backend in :data:`_PREFERENCE` that can represent ``needs``."""
+    from b3_core.solvers import get_backend
+
+    for name in _PREFERENCE:
+        try:
+            backend = get_backend(name)
+            caps = backend.capabilities
+            if needs.unmet_by(caps):
+                continue
+            if require_available and not backend.is_available():
+                continue
+        except Exception:
+            continue
+        return name
+    return "numpy"
+
+
 def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
     """Pick a backend name. ``auto`` logs the choice.
 
-    An explicit backend that cannot do the job warns and falls back to numpy
-    in 0.3. That fallback becomes :class:`BackendCapabilityError` in 1.0.
+    ``auto`` prefers mfem, falling to the next capable + installed backend, then
+    numpy. An explicit backend that cannot do the job warns and falls back to
+    the preferred capable backend in 0.3; that fallback becomes
+    :class:`BackendCapabilityError` in 1.0.
     """
     from b3_core.solvers import get_backend
 
     name = requested or case.backend
     needs = _needs(case)
     if name == "auto":
-        choice = "numpy" if (needs.orthotropic or needs.halo) else "mfem"
+        choice = _first_capable(needs, require_available=True)
         logger.info("backend auto → %s (%s)", choice, needs.reason())
         return choice
     try:
@@ -107,18 +132,20 @@ def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
         raise
     missing = needs.unmet_by(caps)
     if missing:
+        fallback = _first_capable(needs, require_available=True)
         warnings.warn(
             f"backend {name!r} cannot handle {', '.join(missing)}; "
-            "falling back to numpy (BackendCapabilityError in 1.0)",
+            f"falling back to {fallback} (BackendCapabilityError in 1.0)",
             DeprecationWarning,
             stacklevel=2,
         )
         logger.warning(
-            "backend %s cannot handle %s; falling back to numpy",
+            "backend %s cannot handle %s; falling back to %s",
             name,
             ", ".join(missing),
+            fallback,
         )
-        return "numpy"
+        return fallback
     return name
 
 

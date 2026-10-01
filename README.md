@@ -88,9 +88,10 @@ density. Mould curvature (`kx`, `ky`) morphs kerf walls with **`hw(z)`**
 **resin halo** grades stiffness with distance to the cut surface
 (`core.cell_size`); see the [docs graphics](https://wr1.github.io/b3_core/docs/concepts/resin-halo/).
 
-**Default backend: `auto`.** Isotropic cases with no halo use MFEM. Orthotropic
-foam or a resin halo selects **numpy**. CalculiX (`ccx`) and FEniCSx are
-explicit backends. Optional `validate_with_ccx`.
+**Default backend: `auto`.** MFEM handles isotropic, orthotropic and graded
+resin-halo cases; it falls back to the next capable backend, then **numpy**.
+CalculiX (`ccx`) and FEniCSx are explicit, isotropic-only backends. Optional
+`validate_with_ccx`.
 
 ## CLI (files still work)
 

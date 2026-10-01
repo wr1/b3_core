@@ -10,18 +10,22 @@ from b3_core.solvers.elasticity import (
     LOAD_CASES,
     constituent_dict,
     face_material_dict,
-    material_C,
     properties_from_stiffness,
     scoring_payload,
 )
-from b3_core.solvers.numpy_fe.assembly import UNIT, canonicalize, homogenize_aniso
-from b3_core.solvers.numpy_fe.halo_sampling import gauss_point_resin_P
+from b3_core.solvers.numpy_fe.assembly import (
+    SHAPE_N,
+    UNIT,
+    canonicalize,
+    homogenize_aniso,
+)
 from b3_core.solvers.protocol import (
     Capabilities,
     SolveRequest,
     SolveResult,
     as_solve_result,
 )
+from b3_core.solvers.sampling import per_gp_stiffness, phase_attributes
 
 
 @dataclass(frozen=True)
@@ -65,40 +69,21 @@ def runnumpy(
     points = np.asarray(grid.points, dtype=np.float64)
     cells = canonicalize(points, np.asarray(cell_block[:, 1:], dtype=np.int64))
 
-    resin_cells = np.asarray(grid.cell_data["resin"], dtype=bool)
-    face_cells = np.asarray(grid.cell_data["face"], dtype=bool)
-    attr = np.ones(grid.n_cells, dtype=np.int64)
-    attr[resin_cells] = 2
-    if face is not None and face_cells.any():
-        attr[face_cells] = 3
-
-    C_core, C_resin = material_C(core), material_C(resin)
-    C_face = None
-    if (attr == 3).any():
-        face_mat = dict(face) if face else {}
-        face_mat.setdefault("E", 12_000_000_000.0)
-        face_mat.setdefault("nu", 0.3)
-        C_face = material_C(face_mat)
-
-    # Neat per-Gauss-point stiffness, then the graded resin halo on foam cells.
-    gp_C = np.broadcast_to(C_core, (grid.n_cells, 8, 6, 6)).copy()
-    gp_C[attr == 2] = C_resin
-    if C_face is not None:
-        gp_C[attr == 3] = C_face
-    if score_field is not None and getattr(score_field, "active", False):
-        foam = np.flatnonzero(attr == 1)
-        if len(foam):
-            sampling = (scoring or {}).get("sampling") or {}
-            P = gauss_point_resin_P(
-                points,
-                cells[foam],
-                score_field,
-                strategy=sampling.get("strategy", "exact"),
-                resolution=int(sampling.get("resolution", 3)),
-                idw_power=float(sampling.get("idw_power", 2.0)),
-            )  # (n_foam, 8)
-            p = P[:, :, None, None]
-            gp_C[foam] = p * C_resin + (1.0 - p) * C_core
+    attr = phase_attributes(grid, face)
+    # Shared constitutive map: neat phases, then the graded resin halo on foam
+    # cells (identical to the MFEM backend via b3_core.solvers.sampling).
+    gp_mm = np.einsum("gn,enj->egj", SHAPE_N, points[cells]) * 1000.0
+    gp_C = per_gp_stiffness(
+        attr,
+        gp_mm,
+        core=core,
+        resin=resin,
+        face=face,
+        score_field=score_field,
+        scoring=scoring,
+        points_m=points,
+        cells=cells,
+    )
 
     stiffness, info = homogenize_aniso(points, cells, gp_C)
     properties, compliance = properties_from_stiffness(stiffness)

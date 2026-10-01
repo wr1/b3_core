@@ -64,8 +64,10 @@ Requires `core.cell_size`. Auto-routes backend to `numpy`.
 | `backend` | `"mfem"` \| `"ccx"` \| `"fenicsx"` \| `"numpy"` | Default `mfem` |
 | `validate_with_ccx` | bool | Cross-check against CalculiX |
 
-**Auto-routing:** orthotropic constituents or `core.cell_size` force `numpy`
-(ccx/mfem integrators are isotropic two-phase).
+**Auto-routing:** the pipeline prefers `mfem`, which handles isotropy,
+orthotropic constituents and the graded `core.cell_size` halo. It falls back to
+the next capable + installed backend, then `numpy`; ccx/fenicsx remain
+isotropic two-phase.
 
 ## Minimal complete example
 

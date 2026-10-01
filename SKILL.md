@@ -211,9 +211,9 @@ Disable the thinner face halo (saw-cut only): `"face": { "enabled": false }`.
 | `sampling.resolution` | Sub-points per direction for `local_cloud` (default `3`) |
 | `sampling.idw_power` | Inverse-distance weight exponent for `local_cloud` (default `2`) |
 
-**Backend and outputs.** Halo requires per-Gauss-point stiffness, so cases with
-`core.cell_size` set auto-route to the **`numpy`** backend (ccx/mfem are
-two-phase, isotropic integrators). Results include:
+**Backend and outputs.** Halo needs per-Gauss-point stiffness; `mfem` provides
+this with a custom integrator, so `core.cell_size` cases stay on the default
+**`mfem`** backend (`numpy` also supports it). Results include:
 
 - `resin_vf` — neat kerf resin volume fraction
 - `halo_vf` — extra resin from opened cells in the foam band
@@ -246,9 +246,10 @@ mat = result.material                     # b3_mat.OrthotropicMaterial
 raw = cprop("case.json")                  # deprecated: flat dict, overwrites run*.json
 ```
 
-Default backend is **`auto`**: MFEM for an isotropic case with no resin halo,
-numpy when a constituent is orthotropic or a halo is on. PyMFEM is a required
-dependency. Use `backend: ccx` when you need CalculiX (`ccx` + `frd2vtu` on PATH).
+Default backend is **`auto`**: MFEM for every case — isotropic, orthotropic and
+graded resin halo. If mfem is unavailable it falls back to the next capable
+backend, then numpy. PyMFEM is a required dependency. Use `backend: ccx` when you
+need CalculiX (`ccx` + `frd2vtu` on PATH).
 Repeated solves do not raise. Pass a cache (see Files and caching).
 
 ## 3. Properties for FEA
@@ -459,5 +460,5 @@ b3_core skill --stdout    # load this document
 ```
 
 **Units:** input geometry mm; output moduli Pa; present moduli as GPa in tables.
-**Backends:** orthotropic constituents or `core.cell_size` (resin halo) auto-route
-to `numpy`.
+**Backends:** `auto` prefers `mfem`, which handles isotropic, orthotropic and
+`core.cell_size` (resin halo) cases; numpy is the fallback.
