@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-07
+
 ### Changed
 
 - MFEM and FEniCSx handle orthotropic constituents and the graded resin halo

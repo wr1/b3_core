@@ -1,6 +1,6 @@
 [project]
 name = "b3_core"
-version = "0.3.0"
+version = "0.3.1"
 description = "Homogenized elastic properties for sandwich-panel cores with sawcuts and machined grooves, via periodic-BC FEA (CalculiX / FEniCSx / MFEM)."
 readme = "README.md"
 requires-python = ">=3.11"
