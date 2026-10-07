@@ -106,7 +106,7 @@ jobs:
             "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
             "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
           pip install --no-deps .
-          python -c "import b3_core, numba; assert tuple(int(x) for x in numba.__version__.split('.')[:2]) >= (0, 60); assert b3_core.__version__ == '0.3.0'; print(b3_core.__version__)"
+          python -c "import tomllib; from importlib.metadata import version; import b3_core, numba; declared = tomllib.load(open('pyproject.toml', 'rb'))['project']['version']; assert tuple(int(x) for x in numba.__version__.split('.')[:2]) >= (0, 60); assert b3_core.__version__ == declared == version('b3_core'); print(declared)"
 
   test-ccx:
     name: test (calculix)
