@@ -149,8 +149,10 @@ Response curves and GIFs live under `examples/offline/` (offline demos, not main
 
 ## Halo cases
 
-If `core.cell_size` is set (or constituents are orthotropic), the run auto-routes to the
-**numpy** backend. Results then also include `halo_vf` and `effective_resin_vf`. See
-[Resin halo](/docs/concepts/resin-halo). With curvature too:
+`auto` keeps a resin halo (`core.cell_size`) and orthotropic constituents on
+**mfem**. Results include `halo_vf` and `effective_resin_vf`. Curvature on the
+same call is a flat-RVE kerf taper: `homogenize(case, kx=, ky=)` or
+`.with_curvature`, reported on `result.kerfs` (root and mouth half-width). See
+[Resin halo](/docs/concepts/resin-halo) and
 [Halo + curvature](/docs/concepts/halo-curvature)
 ([Eyy / Vf vs κ × cell_size](/docs/concepts/halo-curvature#stiffness-vs-curvature-and-halo-width)).

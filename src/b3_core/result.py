@@ -32,6 +32,13 @@ class CoreResult(BaseModel):
         description="Canonical Ex/Ey/Ez constants",
     )
     stiffness: Any = None
+    kerfs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Kerf half-widths after curvature is applied as hw(z). "
+            "Each row has axis, mouth, pitch_mm, hw_root_mm, hw_mouth_mm."
+        ),
+    )
 
     @classmethod
     def from_engineering_constants(
@@ -141,7 +148,11 @@ class CoreResult(BaseModel):
                 canonical[key] = float(props[key])
         stiffness = np.asarray(record.result.stiffness, dtype=float)
         return built.model_copy(
-            update={"properties": canonical, "stiffness": stiffness}
+            update={
+                "properties": canonical,
+                "stiffness": stiffness,
+                "kerfs": [dict(row) for row in geom.get("kerfs") or []],
+            }
         )
 
     def ccx_ortho(
@@ -180,7 +191,7 @@ class RunRecord(BaseModel):
     case_hash: str
     b3_core_version: str
     input: dict[str, Any]
-    geometry: dict[str, float]
+    geometry: dict[str, Any]
     result: ResultBlock
     validation: dict[str, Any] | None = None
 

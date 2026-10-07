@@ -41,7 +41,7 @@ flowchart TB
   end
   subgraph solve[Six unit strains]
     direction LR
-    bc[periodic BC] ~~~ be[mfem / ccx / fenicsx / numpy]
+    bc[periodic BC] ~~~ be[fenicsx / mfem / ccx / numpy]
   end
   subgraph out[Handoff]
     direction LR
@@ -79,7 +79,7 @@ by 1e-3 for solvers that need SI lengths.
 
 - [Input schema](/docs/reference/input-schema) — every `CpropInput` field.
 - [Outputs](/docs/reference/outputs) — `CoreResult`, run JSON, stiffness tensor.
-- [Backends](/docs/reference/backends) — mfem (default), ccx, fenicsx, numpy and auto-routing.
+- [Backends](/docs/reference/backends) — fenicsx when installed, otherwise mfem, plus ccx, numpy, and auto-routing.
 - [CLI](/docs/reference/cli) — `run`, `sweep`, `viz`, `skill`.
 
 ## Agent skill
@@ -102,7 +102,9 @@ from b3_core.skill import read_skill, skill_path
 from b3_core import grid_scored, homogenize, plain
 
 result = homogenize(plain())
-result = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.0))
+# Bottom mouth: negative kx opens the kerf. result.kerfs lists the half-widths.
+result = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
+print(result.kerfs)
 print(result.material)  # b3_mat.OrthotropicMaterial
 ```
 

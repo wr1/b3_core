@@ -14,6 +14,7 @@ from b3_core.solvers.elasticity import (
     properties_from_stiffness,
     scoring_payload,
 )
+from b3_core.solvers.periodic import face_tol, z_face_ties
 from b3_core.solvers.protocol import (
     Capabilities,
     SolveRequest,
@@ -265,7 +266,133 @@ def _precomputed_rhs(mfem, sigma_gp, dshapes, weights, n_elem, nq, nd):
     return _PrecomputedRHS()
 
 
-def _solve_general(mfem, fes, pinned, c_gp, dshapes, weights, n_elem, nq, nd):
+def _bilinear_csr(bilinear):
+    """Full stiffness as a SciPy CSR matrix, with a one-sided pattern filled in."""
+    from scipy.sparse import csr_matrix
+
+    bilinear.Finalize()
+    mat = bilinear.SpMat()
+    indptr = np.asarray(mat.GetIArray(), dtype=np.int64).copy()
+    indices = np.asarray(mat.GetJArray(), dtype=np.int64).copy()
+    data = np.asarray(mat.GetDataArray(), dtype=np.float64).copy()
+    n = int(mat.Height())
+    K = csr_matrix((data, indices, indptr), shape=(n, n))
+    transposed = K.transpose().tocsr()
+    if transposed.nnz == 0:
+        return K
+    gap = (K - transposed).tocsr()
+    scale = max(float(np.max(np.abs(K.data))) if K.nnz else 1.0, 1.0)
+    if gap.nnz == 0 or float(np.max(np.abs(gap.data))) <= 1e-12 * scale:
+        return K
+    return (K + transposed).tocsr()
+
+
+def _solve_reduced(bilinear, rhs_list, prolongation):
+    """Solve ``K w = rhs`` after eliminating interpolated z-face dofs."""
+    from scipy.sparse.linalg import factorized
+
+    K = _bilinear_csr(bilinear)
+    if K.shape[0] != prolongation.shape[0]:
+        raise RuntimeError(
+            f"stiffness size {K.shape[0]} does not match the periodic space "
+            f"{prolongation.shape[0]}"
+        )
+    reduced = (prolongation.T @ K @ prolongation).tocsc()
+    solve = factorized(reduced)
+    fluctuations = []
+    for rhs in rhs_list:
+        load = np.asarray(rhs, dtype=float).ravel()
+        fluctuations.append(
+            np.asarray(prolongation @ solve(prolongation.T @ load)).ravel()
+        )
+    return fluctuations
+
+
+def _periodic_vertex_index(base, periodic, points, translations):
+    """Base-vertex → vertex of the periodic mesh, via the representative's coordinates."""
+    vmap = base.CreatePeriodicVertexMapping(translations)
+    v2v = np.array([vmap[i] for i in range(len(points))], dtype=np.int64)
+    pverts = np.array([periodic.GetVertexArray(i) for i in range(periodic.GetNV())])
+    pindex = {
+        (round(float(p[0]), 9), round(float(p[1]), 9), round(float(p[2]), 9)): j
+        for j, p in enumerate(pverts)
+    }
+    peridx = np.empty(len(points), dtype=np.int64)
+    for i, rep in enumerate(v2v):
+        q = points[int(rep)]
+        key = (round(float(q[0]), 9), round(float(q[1]), 9), round(float(q[2]), 9))
+        try:
+            peridx[i] = pindex[key]
+        except KeyError as exc:
+            raise RuntimeError(f"no periodic vertex for base node {i}") from exc
+    return peridx
+
+
+def _z_prolongation(fes, peridx, ties, corner_vertex):
+    """``u_full = T u_free`` with bilinear z-face rows and a pinned corner removed."""
+    from scipy.sparse import csr_matrix
+
+    n = int(fes.GetVSize())
+    seen: dict[int, dict[int, float]] = {}
+    for s, slave in enumerate(ties.slave):
+        periodic_slave = int(peridx[int(slave)])
+        acc: dict[int, float] = {}
+        for master, weight in zip(ties.masters[s], ties.weights[s], strict=True):
+            if abs(float(weight)) < 1e-15:
+                continue
+            periodic_master = int(peridx[int(master)])
+            acc[periodic_master] = acc.get(periodic_master, 0.0) + float(weight)
+        previous = seen.get(periodic_slave)
+        if previous is not None:
+            if set(previous) != set(acc) or any(
+                abs(previous[k] - acc[k]) > 1e-8 for k in previous
+            ):
+                raise RuntimeError(
+                    "x/y-identified z-face nodes disagree on the interpolated tie"
+                )
+            continue
+        seen[periodic_slave] = acc
+
+    pinned = [int(fes.DofToVDof(int(corner_vertex), comp)) for comp in range(3)]
+    is_pinned = np.zeros(n, dtype=bool)
+    is_pinned[pinned] = True
+    slave_terms: dict[int, list[tuple[int, float]]] = {}
+    for periodic_slave, acc in seen.items():
+        for comp in range(3):
+            slave_dof = int(fes.DofToVDof(int(periodic_slave), comp))
+            slave_terms[slave_dof] = [
+                (int(fes.DofToVDof(int(master), comp)), weight)
+                for master, weight in acc.items()
+            ]
+
+    is_slave = np.zeros(n, dtype=bool)
+    if slave_terms:
+        is_slave[np.fromiter(slave_terms, dtype=np.int64, count=len(slave_terms))] = (
+            True
+        )
+    free = np.flatnonzero(~is_slave & ~is_pinned)
+    column = -np.ones(n, dtype=np.int64)
+    column[free] = np.arange(len(free))
+    rows = [free]
+    cols = [np.arange(len(free), dtype=np.int64)]
+    data = [np.ones(len(free))]
+    for slave_dof, terms in slave_terms.items():
+        for master_dof, weight in terms:
+            col = int(column[master_dof])
+            if col < 0:
+                continue
+            rows.append(np.array([slave_dof], dtype=np.int64))
+            cols.append(np.array([col], dtype=np.int64))
+            data.append(np.array([weight]))
+    return csr_matrix(
+        (np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))),
+        shape=(n, len(free)),
+    )
+
+
+def _solve_general(
+    mfem, fes, pinned, c_gp, dshapes, weights, n_elem, nq, nd, prolongation=None
+):
     """Assemble and solve the six periodic cases with per-GP stiffness.
 
     Returns ``(stiffness, correctors)`` where ``correctors[k]`` is the periodic
@@ -282,7 +409,8 @@ def _solve_general(mfem, fes, pinned, c_gp, dshapes, weights, n_elem, nq, nd):
     t1 = np.einsum("n,nij->ij", weights, c_flat)  # integral of C(x) dV
 
     load = np.zeros((fes.GetVSize(), len(LOAD_CASES)))
-    correctors: list[np.ndarray] = []
+    rhs_list = []
+    forms = []
     for k, case in enumerate(LOAD_CASES):
         eps0 = _strain_voigt(_macro_strain(case))
         sigma = np.einsum("nij,j->ni", c_flat, eps0)
@@ -291,19 +419,27 @@ def _solve_general(mfem, fes, pinned, c_gp, dshapes, weights, n_elem, nq, nd):
             _precomputed_rhs(mfem, sigma, dshapes, weights, n_elem, nq, nd)
         )
         lform.Assemble()
-        load[:, k] = -lform.GetDataArray()  # positive macro load L_k
+        forms.append(lform)
+        # The integrator already returns -L. Keep +L for the energy reduction.
+        load[:, k] = -lform.GetDataArray()
+        rhs_list.append(lform.GetDataArray().copy())
 
-        corrector = mfem.GridFunction(fes)
-        corrector.Assign(0.0)
-        operator = mfem.OperatorPtr()
-        rhs = mfem.Vector()
-        sol = mfem.Vector()
-        bilinear.FormLinearSystem(pinned, corrector, lform, operator, sol, rhs)
-        matrix = mfem.OperatorHandle2SparseMatrix(operator)
-        smoother = mfem.GSSmoother(matrix)
-        mfem.PCG(matrix, smoother, rhs, sol, 0, 5000, 1e-12, 0.0)
-        bilinear.RecoverFEMSolution(sol, lform, corrector)
-        correctors.append(corrector.GetDataArray().copy())
+    if prolongation is None:
+        correctors: list[np.ndarray] = []
+        for lform in forms:
+            corrector = mfem.GridFunction(fes)
+            corrector.Assign(0.0)
+            operator = mfem.OperatorPtr()
+            rhs = mfem.Vector()
+            sol = mfem.Vector()
+            bilinear.FormLinearSystem(pinned, corrector, lform, operator, sol, rhs)
+            matrix = mfem.OperatorHandle2SparseMatrix(operator)
+            smoother = mfem.GSSmoother(matrix)
+            mfem.PCG(matrix, smoother, rhs, sol, 0, 5000, 1e-12, 0.0)
+            bilinear.RecoverFEMSolution(sol, lform, corrector)
+            correctors.append(corrector.GetDataArray().copy())
+    else:
+        correctors = _solve_reduced(bilinear, rhs_list, prolongation)
 
     w = np.column_stack(correctors)
     stiffness = (t1 + load.T @ w) / total_volume
@@ -355,10 +491,13 @@ def runmfem(
         base.AddHex(*[int(v) for v in cell], int(cell_attr))
     base.FinalizeHexMesh(1, 0, False)
 
-    translations = (
-        mfem.Vector([float(lengths[0]), 0.0, 0.0]),
-        mfem.Vector([0.0, float(lengths[1]), 0.0]),
-        mfem.Vector([0.0, 0.0, float(lengths[2])]),
+    ties = z_face_ties(points)
+    # x and y stay node-to-node. A tapered z face is interpolated, so it is
+    # not passed to MakePeriodic (that merge requires coincident vertices).
+    axes = (0, 1, 2) if ties.identity else (0, 1)
+    translations = tuple(
+        mfem.Vector([float(lengths[ax]) if i == ax else 0.0 for i in range(3)])
+        for ax in axes
     )
     periodic = mfem.Mesh.MakePeriodic(
         base, base.CreatePeriodicVertexMapping(translations)
@@ -371,36 +510,31 @@ def runmfem(
     # its periodic image, so the periodic fluctuation w can be read back onto the
     # full grid. MakePeriodic merges identified vertices, and H1 DOF order is not
     # vertex order, hence the CreatePeriodicVertexMapping + DofToVDof round-trip.
+    peridx = None
+    if return_details or not ties.identity:
+        peridx = _periodic_vertex_index(base, periodic, points, translations)
     base_to_vdof = None
     if return_details:
-        vmap = base.CreatePeriodicVertexMapping(translations)
-        v2v = np.array([vmap[i] for i in range(len(points))], dtype=np.int64)
-        pverts = np.array([periodic.GetVertexArray(i) for i in range(periodic.GetNV())])
-        pindex = {
-            (round(float(p[0]), 9), round(float(p[1]), 9), round(float(p[2]), 9)): j
-            for j, p in enumerate(pverts)
-        }
-        peridx = np.array(
-            [
-                pindex[
-                    (
-                        round(float(points[v2v[i], 0]), 9),
-                        round(float(points[v2v[i], 1]), 9),
-                        round(float(points[v2v[i], 2]), 9),
-                    )
-                ]
-                for i in range(len(points))
-            ],
-            dtype=np.int64,
-        )
         base_to_vdof = np.array(
             [[fes.DofToVDof(int(pv), comp) for comp in range(3)] for pv in peridx],
             dtype=np.int64,
         )
 
-    # Pin the three DOFs of one node to remove the rigid-body translations of
-    # the fully periodic cell (a 3-torus has no periodic rotation modes).
+    # Pin one corner to remove rigid translation. On a matching z face the
+    # periodic mesh's vertex 0 is that corner, and PCG eliminates it. On a
+    # tapered z face the prolongation drops the low corner and the z slaves.
     pinned = mfem.intArray([fes.DofToVDof(0, comp) for comp in range(3)])
+    prolongation = None
+    if not ties.identity:
+        origin = points.min(axis=0)
+        at_corner = np.flatnonzero(
+            np.max(np.abs(points - origin), axis=1) < face_tol(points)
+        )
+        if len(at_corner) != 1:
+            raise RuntimeError("expected one node at the low corner")
+        prolongation = _z_prolongation(
+            fes, peridx, ties, int(peridx[int(at_corner[0])])
+        )
 
     general = _needs_general_path(core, resin, face, score_field)
     if general:
@@ -420,7 +554,16 @@ def runmfem(
             cells=cells,
         )
         stiffness, correctors = _solve_general(
-            mfem, fes, pinned, c_gp, dshapes, weights, n_elem, nq, nd
+            mfem,
+            fes,
+            pinned,
+            c_gp,
+            dshapes,
+            weights,
+            n_elem,
+            nq,
+            nd,
+            prolongation,
         )
     else:
         max_attr = periodic.attributes.Max()
@@ -441,11 +584,12 @@ def runmfem(
         lame_by_attr = {p: (lam_by_attr[p - 1], mu_by_attr[p - 1]) for p in present}
 
         load_vectors = []
-        correctors = []
+        rhs_list = []
+        forms = []
+        keep_alive = []  # PyMFEM holds raw pointers; keep Python refs alive
         for case in LOAD_CASES:
             strain = _macro_strain(case)
             lform = mfem.LinearForm(fes)
-            keep_alive = []  # PyMFEM holds raw pointers; keep Python refs alive
             for p in present:
                 lam_p, mu_p = lame_by_attr[p]
                 stress = _iso_stress(strain, lam_p, mu_p).flatten()
@@ -459,22 +603,32 @@ def runmfem(
                 keep_alive.extend((marker, coeff, integrator))
             lform.Assemble()
             load = lform.GetDataArray().copy()
-
-            # Solve K w = -L for the periodic fluctuation w.
-            lform *= -1.0
-            corrector = mfem.GridFunction(fes)
-            corrector.Assign(0.0)
-            operator = mfem.OperatorPtr()
-            rhs = mfem.Vector()
-            sol = mfem.Vector()
-            bilinear.FormLinearSystem(pinned, corrector, lform, operator, sol, rhs)
-            matrix = mfem.OperatorHandle2SparseMatrix(operator)
-            smoother = mfem.GSSmoother(matrix)
-            mfem.PCG(matrix, smoother, rhs, sol, 0, 5000, 1e-12, 0.0)
-            bilinear.RecoverFEMSolution(sol, lform, corrector)
-
             load_vectors.append(load)
-            correctors.append(corrector.GetDataArray().copy())
+            # Solve K w = -L. The reduced path takes the numpy RHS; PCG
+            # consumes the negated linear form.
+            if prolongation is None:
+                lform *= -1.0
+                forms.append(lform)
+            else:
+                rhs_list.append(-load)
+
+        if prolongation is None:
+            correctors = []
+            for lform in forms:
+                corrector = mfem.GridFunction(fes)
+                corrector.Assign(0.0)
+                operator = mfem.OperatorPtr()
+                rhs = mfem.Vector()
+                sol = mfem.Vector()
+                bilinear.FormLinearSystem(pinned, corrector, lform, operator, sol, rhs)
+                matrix = mfem.OperatorHandle2SparseMatrix(operator)
+                smoother = mfem.GSSmoother(matrix)
+                mfem.PCG(matrix, smoother, rhs, sol, 0, 5000, 1e-12, 0.0)
+                bilinear.RecoverFEMSolution(sol, lform, corrector)
+                correctors.append(corrector.GetDataArray().copy())
+        else:
+            correctors = _solve_reduced(bilinear, rhs_list, prolongation)
+        del keep_alive
 
         stiffness = np.zeros((6, 6), dtype=np.float64)
         for k, case_k in enumerate(LOAD_CASES):

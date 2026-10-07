@@ -2,10 +2,13 @@ import numpy as np
 import pytest
 
 import b3_core.core.cprop as cprop_module
-from b3_core.api import homogenize
-from b3_core.cases import grid_scored
+from b3_core.api import homogenize, run_case
+from b3_core.cache import MemoryCache
+from b3_core.cases import grid_scored, uniaxial
 from b3_core.core.mesh import create_grooved_mesh
 from b3_core.io import mfem_backend
+from b3_core.pipeline import resolve_backend
+from b3_core.solvers import get_backend
 
 
 def test_mfem_reports_missing_dependency():
@@ -81,6 +84,50 @@ def test_mfem_matches_numpy_for_orthotropic_halo():
     ref = np.asarray(homogenize(grid_scored(), backend="numpy").stiffness, dtype=float)
     got = np.asarray(homogenize(grid_scored(), backend="mfem").stiffness, dtype=float)
     assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
+
+
+def _halo_uniaxial():
+    """Small bottom-mouth groove with a saw-cut halo and no face halo."""
+    return uniaxial(
+        dx=20.0,
+        dy=12.0,
+        thickness=10.0,
+        pitch=10.0,
+        depth=8.0,
+        width=2.0,
+        offset=5.0,
+    ).with_halo(0.4, face_enabled=False, sampling={"strategy": "exact"})
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_halo_curvature_opens_kerf_and_matches_numpy():
+    """auto selects fenicsx when it is installed, otherwise mfem.
+
+    Negative kx opens a bottom-mouth kerf. The stiffness check below is an
+    explicit MFEM solve.
+    """
+    base = _halo_uniaxial()
+    expected = "fenicsx" if get_backend("fenicsx").is_available() else "mfem"
+    assert resolve_backend(base.input) == expected
+    cache = MemoryCache()
+    flat = homogenize(base, backend="mfem", cache=cache)
+    opened = homogenize(base, kx=-0.008, backend="mfem", cache=cache)
+    numpy_opened = homogenize(base, kx=-0.008, backend="numpy")
+    record = run_case(base, kx=-0.008, cache=cache)
+
+    assert flat.kerfs[0]["hw_mouth_mm"] == pytest.approx(flat.kerfs[0]["hw_root_mm"])
+    assert opened.kerfs[0]["mouth"] == "bottom"
+    assert opened.kerfs[0]["hw_mouth_mm"] > opened.kerfs[0]["hw_root_mm"]
+    assert opened.resin_volume_fraction > flat.resin_volume_fraction
+    scale = np.abs(numpy_opened.stiffness).max()
+    # Tapered hexes, z face interpolated. The two integrators differ by
+    # O(kappa^2) on the distorted elements (about 3e-3 here). An untied z
+    # face moves Ezz by tens of percent.
+    assert np.abs(opened.stiffness - numpy_opened.stiffness).max() / scale < 5e-3
+    assert record.result.backend == expected
+    assert record.geometry["kerfs"][0]["hw_mouth_mm"] == pytest.approx(
+        opened.kerfs[0]["hw_mouth_mm"]
+    )
 
 
 @pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")

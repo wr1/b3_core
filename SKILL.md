@@ -77,10 +77,11 @@ from b3_core import (
 
 case = plain()
 case = uniaxial(depth=8, pitch=10)
-case = grid_scored(cell_size=0.6).with_curvature(kx=0.008)
-case = curved_panel(thickness=30, ligament=3, kx=0.012)
+case = grid_scored(cell_size=0.6).with_curvature(kx=-0.008)  # bottom mouth: −kx opens
+case = curved_panel(thickness=30, ligament=3, kx=0.012)       # top mouth: +kx opens
 
-result = homogenize(case)
+result = homogenize(case)  # same taper: homogenize(grid_scored(), kx=-0.008)
+# result.kerfs: root vs mouth half-width after kx/ky → hw(z)
 ```
 
 Or build `CpropInput` / `Material` directly when no factory fits.
@@ -112,7 +113,7 @@ input alias for `mouth: top` (the groove opens at `z = thickness`).
 | `core`, `resin` | Constituent materials (Pa, kg/m³) |
 | `core.cell_size` | Foam cell size [mm] — enables resin halo (see below) |
 | `scoring` | Halo tuning: `damage_cells`, `sampling` strategy |
-| `curvature` | `{"kx", "ky"}` groove taper for curved panels [1/mm] |
+| `curvature` | `{"kx", "ky"}` [1/mm]. Flat-RVE kerf taper `hw(z)`, not a curved mesh. Positive `kx` opens a top-mouth x-groove and pinches a bottom-mouth one |
 | `face` | `{"thickness": mm}` optional stabilising layer |
 | `backend` | `"auto"` (default), `"mfem"`, `"ccx"`, `"fenicsx"`, `"numpy"` |
 | `validate_with_ccx` | `true` to cross-check against CalculiX |
@@ -211,9 +212,9 @@ Disable the thinner face halo (saw-cut only): `"face": { "enabled": false }`.
 | `sampling.resolution` | Sub-points per direction for `local_cloud` (default `3`) |
 | `sampling.idw_power` | Inverse-distance weight exponent for `local_cloud` (default `2`) |
 
-**Backend and outputs.** Halo needs per-Gauss-point stiffness; `mfem` provides
-this with a custom integrator, so `core.cell_size` cases stay on the default
-**`mfem`** backend (`numpy` also supports it). Results include:
+**Backend and outputs.** Halo needs per-Gauss-point stiffness. FEniCSx and MFEM
+both evaluate it, so `core.cell_size` stays on **`auto`** (FEniCSx when
+installed, otherwise MFEM; `numpy` also supports it). Results include:
 
 - `resin_vf` — neat kerf resin volume fraction
 - `halo_vf` — extra resin from opened cells in the foam band
@@ -246,10 +247,12 @@ mat = result.material                     # b3_mat.OrthotropicMaterial
 raw = cprop("case.json")                  # deprecated: flat dict, overwrites run*.json
 ```
 
-Default backend is **`auto`**: MFEM for every case — isotropic, orthotropic and
-graded resin halo. If mfem is unavailable it falls back to the next capable
-backend, then numpy. PyMFEM is a required dependency. Use `backend: ccx` when you
-need CalculiX (`ccx` + `frd2vtu` on PATH).
+Default backend is **`auto`**: FEniCSx when installed, otherwise MFEM, for
+isotropic, orthotropic, and graded resin halo. FEniCSx projects a periodic image
+onto the master cell when the face is not a tensor grid, and it returns
+displacements for datasheet and deformed views. Numpy is the last resort.
+PyMFEM is a required dependency. Use `backend: ccx` when you need CalculiX
+(`ccx` + `frd2vtu` on PATH).
 Repeated solves do not raise. Pass a cache (see Files and caching).
 
 ## 3. Properties for FEA
@@ -460,5 +463,6 @@ b3_core skill --stdout    # load this document
 ```
 
 **Units:** input geometry mm; output moduli Pa; present moduli as GPa in tables.
-**Backends:** `auto` prefers `mfem`, which handles isotropic, orthotropic and
-`core.cell_size` (resin halo) cases; numpy is the fallback.
+**Backends:** `auto` prefers `fenicsx` when installed, otherwise `mfem`. Both
+handle isotropic, orthotropic, and `core.cell_size` (resin halo). FEniCSx
+projects the periodic image onto the master cell. Numpy is the fallback.

@@ -92,7 +92,9 @@ def runnumpy(
         return AnisoResult(properties, stiffness, compliance)
 
     displacements = {}
-    master_of, W = info["master_of"], info["W"]
+    W = info["W"]
+    w_nodal = info.get("w_nodal")
+    master_of = info["master_of"]
     for k, case in enumerate(LOAD_CASES):
         e0 = np.zeros((3, 3))
         v = UNIT[k]
@@ -100,7 +102,10 @@ def runnumpy(
         e0[1, 2] = e0[2, 1] = 0.5 * v[3]
         e0[0, 2] = e0[2, 0] = 0.5 * v[4]
         e0[0, 1] = e0[1, 0] = 0.5 * v[5]
-        w_node = W[3 * master_of[:, None] + np.array([0, 1, 2]), k]
+        if w_nodal is not None:
+            w_node = w_nodal[:, :, k]
+        else:
+            w_node = W[3 * master_of[:, None] + np.array([0, 1, 2]), k]
         displacements[case] = points @ e0 + w_node
     return AnisoResult(
         properties,

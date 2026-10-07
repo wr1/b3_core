@@ -6,7 +6,7 @@ description: Install b3_core, write a case file, and run a first homogenization.
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM (`mfem` is a required dependency; it is the default backend)
+- PyMFEM (`mfem` is a required dependency; `auto` uses it when FEniCSx is not installed)
 - CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
 - `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
 - `typst` on PATH only if you generate datasheets
@@ -30,7 +30,9 @@ from b3_core import homogenize, plain, uniaxial, grid_scored
 
 r = homogenize(plain())
 r = homogenize(uniaxial(depth=8, pitch=10))
-r = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.008))
+# grid_scored mouths at z = 0. Negative kx opens that kerf (hw(z)).
+r = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
+print(r.kerfs)     # root and mouth half-widths
 print(r.material)  # b3_mat.OrthotropicMaterial
 ```
 
@@ -51,9 +53,12 @@ uv run python examples/textile_grid_scored.py
 ```
 
 Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
-Negative depth opens toward the mould face (useful with curvature).
-Default solver is **MFEM** (installed with the package); halo / orthotropic foam
-auto-route to **numpy**.
+`z = 0` is the mould face. A positive depth mouths there; a negative depth
+mouths at `z = thickness`. Positive `kx` opens a top mouth and pinches a
+bottom mouth. The same setting is `homogenize(case, kx=, ky=)` or
+`.with_curvature`. `result.kerfs` is the half-width after that taper.
+Default solver is **MFEM**, including halo and orthotropic foam. Numpy is the
+fallback.
 
 Shipped examples (JSON is interchange; factories are the source of truth):
 

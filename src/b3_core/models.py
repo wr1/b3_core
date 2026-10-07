@@ -289,8 +289,21 @@ class CaseInput(BaseModel):
     def is_orthotropic(self) -> bool:
         return self.core.is_orthotropic or self.resin.is_orthotropic
 
+    def kerf_openings(self) -> list[dict[str, Any]]:
+        """Root and mouth half-widths produced by :attr:`curvature`.
+
+        Curvature is not a curved mesh. It is applied as the root-hinged kerf
+        taper ``hw(z)`` on a flat RVE. See :func:`b3_core.core.mesh.kerf_openings`.
+        """
+        from b3_core.core.mesh import kerf_openings
+
+        return kerf_openings(self)
+
     def mesh_kwargs(self) -> dict[str, Any]:
-        """Arguments for :func:`b3_core.core.mesh.create_grooved_mesh`."""
+        """Arguments for :func:`b3_core.core.mesh.create_grooved_mesh`.
+
+        ``curvature.kx`` / ``ky`` are passed through as the kerf-taper slopes.
+        """
         face_thickness = 0.0 if self.face is None else float(self.face.thickness)
         curvature = self.curvature
         if isinstance(curvature, dict):

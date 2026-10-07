@@ -1,8 +1,9 @@
 """κ × cell_size (× ky) homogenisation grid for surrogate training.
 
 The parametric base case is the compact top-mouth RVE previously built inside
-``viz.halo``. Solves go through :func:`b3_core.api.run_case` with the numpy
-backend, which is the only built-in that grades a resin halo.
+``viz.halo``. Solves go through :func:`b3_core.api.run_case` with ``auto``:
+FEniCSx when that environment is installed, otherwise MFEM. Both grade a
+resin halo. Numpy remains the last resort.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ _PARAM_RESIN = {"E": 3e9, "nu": 0.3, "rho": 1100}
 
 
 def parametric_base_case() -> dict[str, Any]:
-    """Compact top-mouth RVE for κ × cell_size sweeps (numpy).
+    """Compact top-mouth RVE for κ × cell_size sweeps.
 
     Same sign convention as curved_panel: ``depth < 0``, ``kx > 0`` opens.
     """
@@ -58,10 +59,10 @@ def homogenize_halo_curvature(
     ky: float = 0.0,
     cache: Cache | None = None,
 ) -> dict[str, Any]:
-    """One numpy homogenization at ``kx``, ``ky`` and halo width ``cell_size``.
+    """One homogenization at ``kx``, ``ky`` and halo width ``cell_size``.
 
-    ``cell_size is None`` or ``<= 0`` is a sharp kerf. Face thickness comes
-    from ``base`` (the parametric case has none).
+    The backend is ``auto``. ``cell_size is None`` or ``<= 0`` is a sharp
+    kerf. Face thickness comes from ``base`` (the parametric case has none).
     """
     inp = dict(base or parametric_base_case())
     core = dict(inp.get("core") or {})
@@ -74,7 +75,7 @@ def homogenize_halo_curvature(
     inp["resin"] = resin
     curvature = {"kx": float(kx), "ky": float(ky)}
     inp["curvature"] = curvature
-    record = run_case(inp, backend="numpy", cache=cache)
+    record = run_case(inp, cache=cache)
     flat = record.flat()
     exx, eyy, ezz = float(flat["Exx"]), float(flat["Eyy"]), float(flat["Ezz"])
     return {

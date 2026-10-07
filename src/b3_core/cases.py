@@ -64,6 +64,15 @@ class CoreCase:
 
     # -- fluent copy helpers -------------------------------------------------
     def with_curvature(self, kx: float = 0.0, ky: float = 0.0) -> Textile:
+        """Set mould curvature [1/mm].
+
+        The solve stays a flat RVE. ``kx`` and ``ky`` are translated into a
+        root-hinged kerf taper ``hw(z)``: positive ``kx`` opens a top-mouth
+        x-groove and pinches a bottom-mouth one (``ky`` acts on y-grooves).
+        The resulting half-widths are ``input.kerf_openings()`` before a
+        solve and ``CoreResult.kerfs`` after one. ``homogenize(case, kx=, ky=)``
+        is the same setting at the call.
+        """
         return replace(
             self,
             input=self.input.model_copy(

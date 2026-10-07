@@ -14,7 +14,7 @@ from b3_core import _version as _version_mod
 from b3_core.cache import Cache, NullCache
 from b3_core.hashing import case_hash
 from b3_core.loaders import normalize_case
-from b3_core.models import CaseInput
+from b3_core.models import CaseInput, Curvature
 from b3_core.result import CoreResult, ResultBlock, RunRecord
 from b3_core.solvers.validation import validate_against
 
@@ -87,15 +87,50 @@ def _maybe_validate(
     return validate_against(reference.properties, solved.properties, label=resolved)
 
 
+def _with_curvature(case: Any, kx: float | None, ky: float | None) -> Any:
+    """Replace mould curvature. ``None`` keeps the value already on the case.
+
+    The numbers are curvatures in 1/mm. The mesh turns them into kerf taper.
+    """
+    if kx is None and ky is None:
+        return case
+    from b3_core.cases import CoreCase
+
+    case_in, workdir = normalize_case(case)
+    current = case_in.curvature
+    updated = case_in.model_copy(
+        update={
+            "curvature": Curvature(
+                kx=float(current.kx if kx is None else kx),
+                ky=float(current.ky if ky is None else ky),
+            )
+        }
+    )
+    if isinstance(case, CoreCase):
+        return case.__class__(input=updated, workdir=case.workdir)
+    if isinstance(case, (str, Path)):
+        return CoreCase(input=updated, workdir=workdir)
+    return updated
+
+
 def run_case(
     case: Any,
     *,
     backend: str | None = None,
     cache: Cache | None = None,
+    kx: float | None = None,
+    ky: float | None = None,
 ) -> RunRecord:
-    """Solve a case and return a namespaced record. Does not write a run file."""
+    """Solve a case and return a namespaced record. Does not write a run file.
+
+    ``kx`` and ``ky`` [1/mm] set mould curvature for this solve. They are
+    applied under the hood as a root-hinged kerf taper on a flat RVE
+    (positive ``kx`` opens a top-mouth x-groove and pinches a bottom-mouth
+    one). The record's ``geometry["kerfs"]`` lists root and mouth half-widths.
+    """
     from b3_core.pipeline import resolve_backend, run_pipeline
 
+    case = _with_curvature(case, kx, ky)
     case_in, _workdir = normalize_case(case)
     resolved = resolve_backend(case_in, backend)
     key = case_hash(case_in, backend=resolved)
@@ -144,13 +179,26 @@ def homogenize(
     cache: Cache | None = None,
     write: bool = False,
     workdir: str | Path | None = None,
+    kx: float | None = None,
+    ky: float | None = None,
 ) -> CoreResult:
     """Homogenise one case.
 
     The default call writes no files. Pass ``write=True`` (and ``workdir``
     when ``case`` is not a path) to also store ``run<hash12>.json``.
+
+    ``kx`` and ``ky`` [1/mm] are mould curvature. They replace the curvature
+    on ``case`` and are translated into kerf opening (``hw(z)``) before the
+    solve. Positive ``kx`` opens a top-mouth x-groove and pinches a
+    bottom-mouth one. ``result.kerfs`` reports each groove's root and mouth
+    half-width. Omit both to keep ``case.with_curvature(...)``.
+
+    ``backend="auto"`` (the default) uses FEniCSx when it is installed, otherwise
+    MFEM. Both cover isotropic, orthotropic, and resin-halo cases, including a
+    kerf opened by curvature. FEniCSx projects the periodic image onto the
+    master cell.
     """
-    record = run_case(case, backend=backend, cache=cache)
+    record = run_case(case, backend=backend, cache=cache, kx=kx, ky=ky)
     if write:
         _write_record(case, record, workdir)
     return CoreResult.from_record(record, name=name)
@@ -168,6 +216,8 @@ def homogenize_to_disk(
         case,
         backend=kwargs.get("backend"),
         cache=kwargs.get("cache"),
+        kx=kwargs.get("kx"),
+        ky=kwargs.get("ky"),
     )
     result = CoreResult.from_record(record, name=kwargs.get("name"))
     folder = _write_dir(case, workdir)

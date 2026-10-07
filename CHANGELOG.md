@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- MFEM now handles orthotropic constituents and the graded resin halo via a
-  per-Gauss-point 6×6 stiffness and a custom integrator (the same constitutive
-  map as numpy, matching to ~1e-6). `auto` therefore prefers `mfem` for every
-  case and only falls back when mfem is unavailable or unable.
+- MFEM and FEniCSx handle orthotropic constituents and the graded resin halo
+  via the shared per-Gauss-point 6×6 stiffness (the same constitutive map as
+  numpy; MFEM matches it to ~1e-6).
+- `auto` prefers FEniCSx when that environment is installed. Its periodic
+  constraint is the finite-element projection of the image, including a face
+  that is not a tensor grid. Otherwise `auto` prefers MFEM. Both return nodal
+  displacements for datasheet, deformed view, and `CoreModel`. Numpy remains
+  the last resort and the only source of element strains.
+- FEniCSx factors the periodic system once per RVE (MUMPS LU) and reuses that
+  factor for the six unit-strain loads.
+- Curvature × cell-size sweeps resolve `auto` instead of forcing numpy.
 - The halo constitutive map (`P(resin)`, `local_cloud` averaging, phase
   attributes and rule-of-mixtures blending) now lives in one solver-neutral
   module, `b3_core.solvers.sampling`; the numpy and MFEM backends both call it

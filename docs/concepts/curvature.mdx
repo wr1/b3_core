@@ -126,6 +126,19 @@ render rolls **that exact mesh** onto a cylinder (no second geometry builder).
 A **single** `κ` opens grooves that mouth on one face and closes those that mouth
 on the other — the sign of `depth` sets which way the taper goes.
 
+```python
+from b3_core import curved_panel, grid_scored, homogenize
+
+# Top mouth (negative depth): positive kx opens.
+opened = curved_panel(kx=0.012)
+# Bottom mouth (grid score): negative kx opens. Same call as .with_curvature.
+result = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
+# Before a solve: case.input.kerf_openings(). After: result.kerfs.
+# Each row is axis, mouth, pitch_mm, hw_root_mm, hw_mouth_mm.
+```
+
+`auto` solves that tapered halo case with MFEM.
+
 ```json
 {
   "xgr": [[10, 10, -27, 3]],

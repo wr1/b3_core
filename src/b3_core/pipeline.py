@@ -30,14 +30,16 @@ class GeometryReport:
     halo_vf: float
     effective_resin_vf: float
     rho_infused: float
+    kerfs: tuple[dict[str, Any], ...] = ()
 
-    def as_dict(self) -> dict[str, float]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "resin_vf": float(self.resin_vf),
             "area_increase": float(self.area_increase),
             "halo_vf": float(self.halo_vf),
             "effective_resin_vf": float(self.effective_resin_vf),
             "rho_infused": float(self.rho_infused),
+            "kerfs": [dict(row) for row in self.kerfs],
         }
 
 
@@ -87,9 +89,11 @@ def _needs(case: CaseInput) -> _Needs:
     )
 
 
-# Preference order for ``auto`` and capability fallback. MFEM leads and handles
-# every constitutive map; numpy is the always-available last resort.
-_PREFERENCE = ("mfem", "fenicsx", "ccx", "numpy")
+# Preference order for ``auto`` and capability fallback. FEniCSx leads when it
+# is installed: its periodic constraint is the finite-element projection of the
+# image, including a face that is not a tensor grid. MFEM is next and covers
+# the same constitutive maps. Numpy is the always-available last resort.
+_PREFERENCE = ("fenicsx", "mfem", "ccx", "numpy")
 
 
 def _first_capable(needs: _Needs, *, require_available: bool) -> str:
@@ -113,10 +117,10 @@ def _first_capable(needs: _Needs, *, require_available: bool) -> str:
 def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
     """Pick a backend name. ``auto`` logs the choice.
 
-    ``auto`` prefers mfem, falling to the next capable + installed backend, then
-    numpy. An explicit backend that cannot do the job warns and falls back to
-    the preferred capable backend in 0.3; that fallback becomes
-    :class:`BackendCapabilityError` in 1.0.
+    ``auto`` prefers fenicsx when that environment is installed, then mfem, then
+    the next capable backend, then numpy. An explicit backend that cannot do the
+    job warns and falls back to the preferred capable backend in 0.3; that
+    fallback becomes :class:`BackendCapabilityError` in 1.0.
     """
     from b3_core.solvers import get_backend
 
@@ -152,7 +156,7 @@ def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
 def prepare(case: CaseInput) -> PreparedCase:
     """Mesh, geometric report, and the resin-halo field."""
     from b3_core.core.analysis import geom_analysis
-    from b3_core.core.mesh import create_grooved_mesh
+    from b3_core.core.mesh import create_grooved_mesh, kerf_openings
     from b3_core.core.scoring import ScoreField, effective_resin_vf, halo_reach
 
     reach = halo_reach(case)
@@ -169,6 +173,7 @@ def prepare(case: CaseInput) -> PreparedCase:
         halo_vf=float(halo_vf),
         effective_resin_vf=float(eff),
         rho_infused=float(rho),
+        kerfs=tuple(kerf_openings(case)),
     )
     return PreparedCase(case=case, mesh=mesh, geometry=report, score_field=field)
 

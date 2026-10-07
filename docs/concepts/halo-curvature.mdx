@@ -238,12 +238,13 @@ flowchart TB
 3. Compute **geometric halo** cell tags on **post-morph** centres (optional viz / band).
 4. At integration points, **ScoreField** evaluates `P(resin)` from distance to the
    **tapered** wall (and optional face halo).
-5. `numpy` integrates rule-of-mixtures stiffness; outputs include `resin_vf`,
-   `halo_vf`, `effective_resin_vf`.
+5. The solver integrates rule-of-mixtures stiffness at Gauss points. Outputs
+   include `resin_vf`, `halo_vf`, `effective_resin_vf`.
 
-Backend: `core.cell_size` (halo) **auto-routes to `numpy`**. Curvature alone can
-stay on `mfem` / `ccx`; with both, you still get open/close ranking on the
-morphed mesh under the halo integrator.
+Backend: `auto` prefers **mfem** for a halo and for a halo plus curvature. The
+mesh stays the flat `hw(z)` morph; ScoreField grades off those walls. `numpy`
+is the fallback and uses the same constitutive map. Open/close still ranks
+resin volume and channel stiffness on that morphed mesh.
 
 ## What open / close does to the halo
 
@@ -356,5 +357,5 @@ halo shell or curvature kerf solid is required in the global model.
 - [Periodic homogenization](/docs/concepts/method) — RVE tags and six load cases
 - [Visualization & reports](/docs/guides/visualization) — figure CLI and gallery
 - [Input schema](/docs/reference/input-schema) — `curvature`, `core.cell_size`, `scoring`
-- [Backends](/docs/reference/backends) — halo → `numpy` auto-route
+- [Backends](/docs/reference/backends) — `auto` prefers FEniCSx when installed, otherwise MFEM, for halo and for halo plus curvature
 - [CLI](/docs/reference/cli) — `surrogate fit` / `surrogate lookup`

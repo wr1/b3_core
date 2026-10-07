@@ -43,10 +43,19 @@ def test_incapable_backend_warns_and_falls_back(caplog):
     assert result.stiffness.shape == (6, 6)
 
 
-def test_auto_prefers_mfem_for_orthotropic_halo(caplog):
+def test_fenicsx_capability_includes_displacements():
+    caps = get_backend("fenicsx").capabilities
+    assert caps.displacements
+    assert caps.orthotropic
+    assert caps.halo
+    assert caps.face_layer
+
+
+def test_auto_prefers_fenicsx_then_mfem(caplog):
+    expected = "fenicsx" if get_backend("fenicsx").is_available() else "mfem"
     with caplog.at_level(logging.INFO, logger="b3_core.pipeline"):
         homogenize(grid_scored())
-    assert "backend auto → mfem (orthotropic, halo)" in caplog.text
+    assert f"backend auto → {expected} (orthotropic, halo)" in caplog.text
 
 
 def test_datasheet_uses_registered_ccx(monkeypatch, tmp_path):

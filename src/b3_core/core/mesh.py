@@ -10,6 +10,7 @@ taper ``hw(z)`` — open/close is geometry motion, not voxel property painting.
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 import numpy as np
 import pyvista as pv
@@ -208,6 +209,41 @@ def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
 def hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
     """Public name for the root-hinged half-width law."""
     return _hw_at(hw0, depth, slope, z, thickness)
+
+
+def kerf_openings(case: Any) -> list[dict[str, Any]]:
+    """Mouth and root half-widths after mould curvature is applied as ``hw(z)``.
+
+    One row per groove family. ``hw_root_mm`` is the cut half-width (the hinge).
+    ``hw_mouth_mm`` is the half-width at the open face. Positive ``kx`` opens a
+    top-mouth x-groove and pinches a bottom-mouth one; ``ky`` does the same
+    for y-grooves. At zero curvature the two widths match.
+    """
+    thickness = float(case.thickness)
+    curvature = case.curvature
+    kx = float(curvature.kx)
+    ky = float(curvature.ky)
+    rows: list[dict[str, Any]] = []
+    for axis, grooves, kappa in (
+        ("x", case.xgr, kx),
+        ("y", case.ygr, ky),
+    ):
+        for groove in grooves:
+            depth = float(groove.signed_depth)
+            hw0 = 0.5 * float(groove.width)
+            slope = -float(np.sign(depth)) * float(kappa) * float(groove.pitch) / 2.0
+            z_mouth = 0.0 if groove.mouth == "bottom" else thickness
+            z_root = depth if depth > 0.0 else thickness + depth
+            rows.append(
+                {
+                    "axis": axis,
+                    "mouth": groove.mouth,
+                    "pitch_mm": float(groove.pitch),
+                    "hw_root_mm": hw_at(hw0, depth, slope, z_root, thickness),
+                    "hw_mouth_mm": hw_at(hw0, depth, slope, z_mouth, thickness),
+                }
+            )
+    return rows
 
 
 def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:

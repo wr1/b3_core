@@ -108,6 +108,14 @@ def collect_spec(
                 f"kx {cur.get('kx', 0):.4g}, ky {cur.get('ky', 0):.4g}",
             )
         )
+    for kerf in geom.get("kerfs") or []:
+        rve_rows.append(
+            (
+                f"{kerf['axis']}-kerf half-width [mm]",
+                f"root {kerf['hw_root_mm']:.3g} → mouth {kerf['hw_mouth_mm']:.3g}"
+                f" ({kerf['mouth']})",
+            )
+        )
     face = inp.get("face") or {}
     rve_rows.append(("face thickness [mm]", f"{face.get('thickness', 0.0):.3g}"))
     rve_rows.append(("mesh refine (madd)", ", ".join(f"{m:.2g}" for m in inp["madd"])))

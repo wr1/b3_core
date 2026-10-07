@@ -71,15 +71,17 @@ flowchart TB
 | One-page report | `b3_core viz datasheet case.json -o card.pdf --png card.png` |
 | Skill text | `b3_core skill --stdout` |
 
-From a dev checkout, prefix with `uv run`. Default backend is **mfem**. Cases with
-orthotropic foam or `core.cell_size` (resin halo) auto-route to **numpy**.
+From a dev checkout, prefix with `uv run`. Default backend is **auto**: FEniCSx
+when that environment is installed, otherwise MFEM, including orthotropic foam
+and a resin halo (`core.cell_size`). Numpy is the last resort.
 
 ## Minimal agent script
 
 ```python
-from b3_core import grid_scored, homogenize, plain
+from b3_core import grid_scored, homogenize
 
-r = homogenize(plain())  # or grid_scored(cell_size=0.6).with_curvature(kx=0.0)
+# Bottom mouth: negative kx opens the kerf. r.kerfs lists root and mouth widths.
+r = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
 # r = homogenize("examples/simple.json")  # file still works (interchange)
 m = r.material
 

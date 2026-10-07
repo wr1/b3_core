@@ -1,26 +1,27 @@
 ---
 title: Backends
-description: MFEM (default), CalculiX, FEniCSx, and numpy — when each runs and how validation works.
+description: FEniCSx when installed, otherwise MFEM, plus CalculiX and numpy.
 ---
 
 ## Choice table
 
 | Backend | Strengths | Limits |
 |---------|-----------|--------|
-| **`mfem`** (**default**) | Fast in-process; isotropic **and** orthotropic + per-GP resin halo; datasheet / deformed / viz | Needs PyMFEM |
+| **`fenicsx`** (leads `auto` when installed) | Projected periodicity: the image is the master cell's interpolant; same 6×6 map; displacements | Conda-forge stack; linear hex |
+| **`mfem`** (default install) | Fast in-process; orthotropic + per-GP halo; tensor-grid z interpolant; datasheet / deformed / viz | Needs PyMFEM |
 | **`ccx`** | CalculiX `.inp` + VTU post; validation twin | Isotropic two-phase; needs `ccx` + `frd2vtu` |
-| **`fenicsx`** | Optional high-order FEM research path | Extra install; isotropic two-phase |
-| **`numpy`** | Fallback RVE path; always available | Analytical / semi-analytical |
+| **`numpy`** | Always-available `BᵀCB` assembly; resin-grid failure strains | Slower reference path |
 
 ```yaml
-# omit backend → mfem
-backend: mfem
+# omit backend → fenicsx if installed, otherwise mfem
+backend: auto
 validate_with_ccx: true   # optional cross-check vs CalculiX
 ```
 
 ## Auto-routing
 
-`auto` prefers **`mfem`**, which now covers every constitutive map:
+`auto` prefers **FEniCSx** when that environment is installed, then **MFEM**.
+Both cover every constitutive map:
 
 1. **orthotropic** `core` / `resin` → per-Gauss-point 6×6 stiffness and a
    rotated/mixed `Bᵀ C B` element matrix, or
@@ -29,20 +30,34 @@ validate_with_ccx: true   # optional cross-check vs CalculiX
    still work — open/close morphs the mesh, then ScoreField grades off `hw(z)`
    ([composition](/docs/concepts/halo-curvature)).
 
-If mfem is not installed the pipeline falls back to the next capable backend,
-then `numpy`. ccx and fenicsx integrators remain isotropic two-phase.
+FEniCSx is the periodic projection: a high-face degree of freedom equals the
+finite-element interpolant of its image, so a face that is not a tensor grid
+still ties. MFEM and numpy interpolate the z face only when that face is a
+cartesian grid. Without FEniCSx, `auto` uses MFEM, then CalculiX for an
+isotropic case, then numpy. CalculiX stays isotropic two-phase.
 
-## MFEM path (default)
+## FEniCSx path (leads `auto` when installed)
+
+Serial linear hexahedra. The periodic constraint is the finite-element
+interpolant of the image in the master cell, so a face that is not a tensor
+grid still ties. Isotropic phases use `λ` and `μ`. Orthotropic constituents and
+the graded halo use the same per-Gauss-point 6×6 stiffness as numpy and MFEM.
+Detailed results include nodal displacements, so datasheet, deformed view, and
+`CoreModel` fields work on this path.
+
+Needs the conda-forge stack (`dolfinx`, `dolfinx_mpc`, and their PETSc/MPI
+dependencies). It is not installed by `uv sync`.
+
+## MFEM path
 
 Solves the six periodic unit-strain problems **in-process** (PyMFEM). Isotropic
 constituents use MFEM's native `ElasticityIntegrator`; orthotropic constituents
 and the graded halo use a per-Gauss-point stiffness with a custom integrator
-(same constitutive map as numpy, matching to ~1e-6). Used when `backend` is
-omitted or set to `mfem`. Also preferred for:
+(same constitutive map as numpy, matching to ~1e-6). `auto` uses this path when
+FEniCSx is not installed. Set `backend: mfem` to force it.
 
-- `b3_core viz datasheet`
-- `b3_core viz deformed`
-- interactive `CoreModel` stiffness / displacement fields
+The z-face tie is a bilinear interpolant on a cartesian tensor grid. Datasheet,
+deformed view, and `CoreModel` displacement fields work here as well.
 
 No external solver binary. PyMFEM is a required dependency (`uv sync`).
 

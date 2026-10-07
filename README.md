@@ -59,8 +59,9 @@ from b3_core import (
 
 r = homogenize(plain())
 r = homogenize(uniaxial(depth=8, pitch=10))
-r = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.008))
+r = homogenize(grid_scored(cell_size=0.6), kx=-0.008)  # bottom mouth opens
 r = homogenize(curved_panel(thickness=30, ligament=3, kx=0.012).with_halo(0.6))
+# r.kerfs: curvature applied as kerf taper (root vs mouth half-width)
 
 print(r.material)  # b3_mat.OrthotropicMaterial (Ex, Ey, Ez, Gij, ν, ρ)
 print(r.resin_volume_fraction, r.surface_area_factor)
@@ -83,15 +84,19 @@ GPa in tables. Axes: **x** machine, **y** transverse, **z** thickness.
 
 Structured 3D RVE (PyVista): core vs resin (and optional face / halo). Six
 periodic-BC unit strains → Ex/Ey/Ez, Gxy/Gxz/Gyz, Poisson ratios, infused
-density. Mould curvature (`kx`, `ky`) morphs kerf walls with **`hw(z)`**
-(trapezoidal foam bays on a flat FEA RVE — not voxel painting). Optional
+density. Mould curvature (`kx`, `ky`, via `.with_curvature` or
+`homogenize(..., kx=, ky=)`) morphs kerf walls with **`hw(z)`**
+(trapezoidal foam bays on a flat FEA RVE — not voxel painting). The solved
+`result.kerfs` lists each groove's root and mouth half-width. Optional
 **resin halo** grades stiffness with distance to the cut surface
 (`core.cell_size`); see the [docs graphics](https://wr1.github.io/b3_core/docs/concepts/resin-halo/).
 
-**Default backend: `auto`.** MFEM handles isotropic, orthotropic and graded
-resin-halo cases; it falls back to the next capable backend, then **numpy**.
-CalculiX (`ccx`) and FEniCSx are explicit, isotropic-only backends. Optional
-`validate_with_ccx`.
+**Default backend: `auto`.** FEniCSx leads when that environment is installed.
+Its periodic constraint is the finite-element projection of the image, including
+a face that is not a tensor grid, and it covers the same maps as MFEM
+(isotropic, orthotropic, graded halo) and returns displacements. Without
+FEniCSx, MFEM is next, then **numpy**. CalculiX (`ccx`) is the isotropic
+validation twin. Optional `validate_with_ccx`.
 
 ## CLI (files still work)
 
