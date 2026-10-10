@@ -88,4 +88,6 @@ def test_mesh_and_solver_entrypoints_stay_in_place():
         "src/b3_core/solvers/numpy_fe/backend.py",
         "src/b3_core/solvers/mfem.py",
         "src/b3_core/solvers/fenicsx.py",
+        "src/b3_core/doctor.py",
+        "src/b3_core/checks/bisect.py",
     }

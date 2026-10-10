@@ -53,6 +53,8 @@ class Material(BaseModel):
     nuxz: float | None = Field(None, validation_alias=AliasChoices("nuxz", "nu13"))
     nuyz: float | None = Field(None, validation_alias=AliasChoices("nuyz", "nu23"))
     cell_size: float | CellSizeDist | None = None
+    source: Literal["neat", "infused", "estimated", "calibrated"] = "neat"
+    reference: str = ""
 
     @field_validator("cell_size", mode="before")
     @classmethod
@@ -247,6 +249,8 @@ class CaseInput(BaseModel):
     element_type: str = "C3D8"
     backend: str = "auto"
     validate_with_ccx: bool = False
+    allow_pair_periodicity: bool = False
+    allow_non_periodic: bool = False
 
     @field_validator("element_type")
     @classmethod
@@ -283,6 +287,30 @@ class CaseInput(BaseModel):
                 raise ValueError(
                     f"groove depth {groove.depth} exceeds thickness {self.thickness}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _pitch_tiles_rve(self) -> CaseInput:
+        """Each family pitch must tile its span, unless the case opts out.
+
+        A non-integer count of pitches makes the periodic halo depend on
+        ``offset``. ``allow_non_periodic`` keeps the case and is part of the
+        canonical JSON, so it splits the cache.
+        """
+        if self.allow_non_periodic:
+            return self
+        for axis, span, grooves in (
+            ("x", self.dx, self.xgr),
+            ("y", self.dy, self.ygr),
+        ):
+            for groove in grooves:
+                ratio = float(span) / float(groove.pitch)
+                if abs(ratio - round(ratio)) > 1e-6:
+                    raise ValueError(
+                        f"{axis} pitch {groove.pitch} does not tile {axis}-span "
+                        f"{span} ({ratio:.6f} pitches). Set "
+                        "allow_non_periodic=true to keep this case."
+                    )
         return self
 
     @property

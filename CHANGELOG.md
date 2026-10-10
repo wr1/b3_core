@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Cache keys now include `CACHE_SCHEMA` 2 and a per-backend solver stamp.
+  Entries written before this change are misses. `b3_core cache stats`,
+  `cache inspect` (`ls`), and `cache purge --stale` list them and delete the
+  stale ones. The package version stays out of the key.
+- Run records use schema `b3_core.run/2` and carry a `b3_core` provenance
+  block (commit, dirty flag, solver stamp, backend versions). A cache hit
+  keeps `solved_with` and refreshes `served_by`. CalculiX ortho cards append
+  a `**` comment with that block and do not change the `*ELASTIC` body.
+- A curved case (`kx` or `ky` nonzero) no longer falls through to MFEM or
+  CalculiX. `auto` requires FEniCSx. `numpy` is an explicit opt-in and
+  warns. `mfem` requires `allow_pair_periodicity`. The CalculiX writer
+  rejects a z face whose nodes are not transverse pairs.
+- `b3_core run --json` prints an agent payload. `--units GPa` scales moduli
+  and stiffness. `--no-write` skips the run file. Failures print
+  `{"error": {"type", "message", "hint"}}` and exit 1.
+- Saw-cut halo distance uses the pitch minimum image, so an offset is a phase
+  shift. A pitch that does not tile `dx` or `dy` is rejected unless
+  `allow_non_periodic` is set. The physics surrogate kerf floor is
+  `mesh.MIN_HW` (`1e-3` mm).
+- The κ × cell-size training grid uses MFEM with `allow_pair_periodicity`
+  on curved rows when FEniCSx is not installed.
+- A run record stores `diagnostics`: raw stiffness asymmetry, positive
+  definiteness, Voigt/Reuss bounds, unmatched high-face nodes, periodic
+  mismatch, kerf pinch, and per-face ties. `b3_core run --json` prints that
+  block. `b3_core run --strict` exits 1 on a warn or a fail.
+  `b3_core report ties` prints the coordinate ties without a solve.
+  Published stiffness is unchanged. Numpy, MFEM, and CalculiX still
+  symmetrise; the raw matrix is kept beside it. FEniCSx does not symmetrise
+  and reports its MPC map.
+- Through-thickness stations for a kerf taper are added only on an axis
+  whose curvature is nonzero. `ky` on a pattern with no y-grooves leaves the
+  mesh and the stiffness unchanged.
+- The z-face periodic master is the more uniform face, not always `z = 0`.
+  A bottom-mouth pinch and its top-mouth mirror then share one discrete
+  space. Flat meshes are unchanged. Numpy, MFEM, and CalculiX stamps are
+  `*/2026-10-10-uniform-master`. FEniCSx is `fenicsx/2026-10-10-energy`:
+  the published matrix is the energy inner product, and a z-face tie whose
+  master is still an x or y slave is back-substituted until the chain
+  settles. Earlier cache entries miss.
+- `b3_core check backends` compares stiffness across backends on a
+  curvature list. The flat anchor fails above 0.01 % relative difference.
+  Curved growth is flagged and does not fail. `check cross` is the flat
+  point. `--refine` densifies `madd` by inserting midpoints.
+- Curvature commands accept `--unit 1/mm|1/m|R-mm|R-m` and store 1/mm.
+  `kerf_openings` rows include `opens_for` (`k>0` or `k<0`). The datasheet
+  and `viz sign` read that row. Signed radius is `1/(1000·k)` metres.
+- `b3_core run --json` after a subcommand is the agent payload. A leading
+  `--json` still prints the treeparse command schema.
+- `b3_core doctor --json` imports the FEniCSx stack and solves a 2×2×2
+  cube. `is_fenicsx_available()` does that import, cached.
+  `environment-fenicsx.yml` pins the known-good stack. `make env-fenicsx`
+  prints the create line and does not touch `~/envs/b3`. CI jobs have
+  timeouts, and the FEniCSx job installs from that file in separate pytest
+  processes.
+- `b3_core sweep grid` writes a curvature grid (`grid.csv`,
+  `manifest.json`, and parquet when pyarrow imports). The default backend
+  is `fenicsx`. `--workers` above 1 is a process pool with
+  `OMP_NUM_THREADS=1` in each child. An inert axis errors unless
+  `--allow-inert-axis`.
+- `Material.source` and `Material.reference` record neat, infused,
+  estimated, or calibrated constituents. Both are stripped from the
+  canonical cache JSON.
+- The curvature tolerance table in the backends reference is the halo
+  mesh. FEniCSx and MFEM agree to better than 6×10⁻⁵ %. Numpy is
+  flat-matched and 0.035 % to 0.053 % away at `|k| = 10⁻³` on refine 0.
+  One madd refinement widens that to 0.044 % and 0.058 %. The offset is
+  in the formulation, so FEniCSx stays the curved reference.
+- `b3_core fit` calibrates a case: bounds, residuals, estimate-halo,
+  sensitivity, refine, design, a quadratic surface, and `fit run`.
+  Exit status is 0 only for `converged`, `rsm_only`, or `no_free_params`.
+- `viz datasheet --full` builds the curvature sheet from `data.json`.
+  The agent writes `prose.json` only. A missing acceptance stamp needs
+  `--draft`. `viz figs` writes the percent-change, heatmap, and density
+  figures. Engineering-constant names are `Ex` and `Gxy`, with the
+  underscored aliases equal to them.
+- `check reproduce`, `check accept`, and `check convergence` score stored
+  artifacts. `check accept` fails closed and does not solve. A named
+  profile is loaded only when `--profile` is passed.
+- `cache export` and `cache import` move a zip of JSON entries plus a
+  stamp manifest. Import skips keys that already exist unless
+  `--overwrite`.
+- `report build` writes a markdown and Typst skeleton from a project
+  file. `kerfs map` is a 3×3 open/flat/closed grid. `diagnose bisect`
+  separates mesh, field, and wall morph.
+- `treeparse` is pinned to `>=0.3.4,<0.4`. The report extra is
+  `typst>=0.12`. CI installs with `uv sync --locked`.
+
 ## [0.3.1] — 2026-10-07
 
 ### Changed

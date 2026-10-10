@@ -238,6 +238,8 @@ def kerf_openings(case: Any) -> list[dict[str, Any]]:
                 {
                     "axis": axis,
                     "mouth": groove.mouth,
+                    # Positive k opens a top mouth and pinches a bottom mouth.
+                    "opens_for": "k>0" if groove.mouth == "top" else "k<0",
                     "pitch_mm": float(groove.pitch),
                     "hw_root_mm": hw_at(hw0, depth, slope, z_root, thickness),
                     "hw_mouth_mm": hw_at(hw0, depth, slope, z_mouth, thickness),
@@ -246,18 +248,29 @@ def kerf_openings(case: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
-    """Half-width at height z; flat nominal outside the groove z-band."""
+def hw_unclamped(
+    hw0: float, depth: float, slope: float, z: float, thickness: float
+) -> float:
+    """Half-width at height z before the ``MIN_HW`` floor.
+
+    Flat nominal outside the groove z-band. A negative value means the walls
+    crossed; the mesher still builds with ``max(MIN_HW, this)``.
+    """
     if depth > 0:
         if z < 0.0 or z > depth:
-            return hw0
+            return float(hw0)
         zeta = depth - z
     else:
         z_root = thickness + depth
         if z < z_root or z > thickness:
-            return hw0
+            return float(hw0)
         zeta = z - z_root
-    return float(max(_MIN_HW, hw0 + slope * zeta))
+    return float(hw0 + slope * zeta)
+
+
+def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
+    """Half-width at height z; flat nominal outside the groove z-band."""
+    return float(max(_MIN_HW, hw_unclamped(hw0, depth, slope, z, thickness)))
 
 
 def _ordered_breaks(grooves, length: float, hw_of) -> np.ndarray:
@@ -379,6 +392,8 @@ def create_grooved_mesh(
     kx=0.0,
     ky=0.0,
     s_halo=0.0,
+    *,
+    wall_morph: bool = True,
 ):
     """Build a structured RVE; open/close via wall-aligned morph when κ ≠ 0.
 
@@ -407,11 +422,15 @@ def create_grooved_mesh(
         if roots:
             fz = np.append(fz, np.clip(np.concatenate(roots), 0.0, thickness + tface))
 
-    # Through-thickness stations so morphed walls are piecewise-linear.
-    if abs(kx) > 0.0 or abs(ky) > 0.0:
-        n_z_taper = 9
-        taper_z = []
-        for cut in list(xcuts) + list(ycuts):
+    # Through-thickness stations so a morphed wall is piecewise-linear.
+    # An axis with κ = 0, or with no grooves, adds none: ky does not refine
+    # an x-only pattern, and the flat mesh stays the flat mesh.
+    n_z_taper = 9
+    taper_z = []
+    for cuts, kappa in ((xcuts, kx), (ycuts, ky)):
+        if abs(float(kappa)) == 0.0:
+            continue
+        for cut in cuts:
             d = float(cut[2])
             if d == 0.0:
                 continue
@@ -420,8 +439,8 @@ def create_grooved_mesh(
             else:
                 z0, z1 = thickness + d, thickness
             taper_z.append(np.linspace(z0, z1, n_z_taper))
-        if taper_z:
-            fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
+    if taper_z:
+        fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
 
     xc, xhw = 0.5 * (bx + tx), 0.5 * (tx - bx)
     yc, yhw = 0.5 * (by + ty), 0.5 * (ty - by)
@@ -493,7 +512,8 @@ def create_grooved_mesh(
     grd.point_data["z_mat"] = np.ascontiguousarray(grd.points[:, 2])
 
     # Flattened-for-FEA morph: walls track hw(z); foam bays become trapezoidal.
-    if abs(kx) > 0.0 or abs(ky) > 0.0:
+    # ``wall_morph=False`` keeps the curved z stations and leaves the walls square.
+    if wall_morph and (abs(kx) > 0.0 or abs(ky) > 0.0):
         morph_kerf_walls(grd, xcuts, ycuts, thickness, dx, dy, kx=kx, ky=ky, madd=madd)
 
     # Halo after morph so the band sits outside the *physical* tapered walls

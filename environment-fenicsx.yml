@@ -1,0 +1,16 @@
+# Pinned FEniCSx stack for curved homogenisation.
+# Create with: make env-fenicsx
+# That target only prints the micromamba line. It does not touch ~/envs/b3.
+name: fenicsx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.11.0
+  - dolfinx_mpc=0.11.0
+  - fenics-ufl=2026.1.0
+  - fenics-basix=0.11.0
+  - mpi4py=4.1.2
+  - petsc=3.25.6
+  - petsc4py=3.25.6
+  - pip

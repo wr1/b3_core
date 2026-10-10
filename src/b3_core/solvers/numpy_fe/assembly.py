@@ -167,11 +167,12 @@ def _z_prolongation(points: np.ndarray, ties):
     x and y stay node-to-node. A ``z = H`` representative is the bilinear
     combination from ``ties``, reduced through the x/y ties.
     """
-    rep, tol, lo, hi = _xy_representatives(points)
+    rep, tol, lo, _hi = _xy_representatives(points)
     n = len(points)
-    on_top = np.abs(points[:, 2] - hi[2]) < tol
+    slave_ids = {int(node) for node in ties.slave}
+    is_slave = np.fromiter((i in slave_ids for i in range(n)), dtype=bool, count=n)
     is_rep = rep == np.arange(n)
-    indep = np.flatnonzero(is_rep & ~on_top)
+    indep = np.flatnonzero(is_rep & ~is_slave)
     compact = -np.ones(n, dtype=np.int64)
     compact[indep] = np.arange(len(indep))
     slave_row = {int(node): i for i, node in enumerate(ties.slave)}
@@ -179,7 +180,7 @@ def _z_prolongation(points: np.ndarray, ties):
     rep_terms: dict[int, list[tuple[int, float]]] = {
         int(node): [(int(compact[node]), 1.0)] for node in indep
     }
-    for node in np.flatnonzero(is_rep & on_top):
+    for node in np.flatnonzero(is_rep & is_slave):
         acc: dict[int, float] = {}
         row = slave_row[int(node)]
         for master, weight in zip(ties.masters[row], ties.weights[row], strict=True):
@@ -204,11 +205,15 @@ def _z_prolongation(points: np.ndarray, ties):
         raise RuntimeError("periodic weights do not sum to 1")
 
     at_corner = np.flatnonzero(np.max(np.abs(points - lo), axis=1) < tol)
-    if len(at_corner) != 1:
-        raise RuntimeError("expected one node at the low corner")
-    pin = int(compact[rep[int(at_corner[0])]])
+    pin = -1
+    if len(at_corner) == 1:
+        pin = int(compact[rep[int(at_corner[0])]])
     if pin < 0:
-        raise RuntimeError("low corner is not an independent node")
+        # The low corner is a z-slave when the top face is the master.
+        # Any independent node removes the rigid mode.
+        if len(indep) == 0:
+            raise RuntimeError("periodic tie left no independent node")
+        pin = 0
     return masters, weights, pin
 
 
@@ -374,14 +379,15 @@ def homogenize_aniso(points_m, cells, gp_C, *, _force_z_interp=False):
     # constituent stiffness (T1, accumulated over Gauss points above) plus the
     # corrector coupling L^T W. Element-centre strains feed the failure check.
     total_vol = vol.sum()
-    stiffness = (T1 + L.T @ W) / total_vol
-    stiffness = 0.5 * (stiffness + stiffness.T)
+    raw = (T1 + L.T @ W) / total_vol
+    stiffness = 0.5 * (raw + raw.T)
 
     info = {
         "master_of": master_of,
         "W": W,
         "vol": vol,
         "elem_strain": elem_strain,
+        "raw_stiffness": raw,
     }
     if w_nodal is not None:
         info["w_nodal"] = w_nodal

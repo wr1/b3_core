@@ -32,6 +32,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from b3_core.core.mesh import MIN_HW
+
 # Targets with a defensible closed-form base + multiplicative log correction.
 TARGETS = (
     "Ex",
@@ -107,7 +109,7 @@ class GeometrySpec:
     G_resin: float = 3e9 / (2.0 * (1.0 + 0.3))
     rho_core: float = 60.0
     rho_resin: float = 1100.0
-    min_hw: float = 0.05  # matches mesh _MIN_HW order
+    min_hw: float = MIN_HW
 
     @classmethod
     def from_case(cls, case: dict) -> GeometrySpec:
@@ -285,6 +287,9 @@ def _ridge_lstsq(Phi: np.ndarray, r: np.ndarray, lam: float = 1e-2) -> np.ndarra
     k = AtA.shape[0]
     scale = float(np.trace(AtA) / max(k, 1))
     return np.linalg.solve(AtA + (lam * scale) * np.eye(k), Phi.T @ r)
+
+
+ridge_lstsq = _ridge_lstsq
 
 
 @dataclass

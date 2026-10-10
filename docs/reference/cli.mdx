@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: b3_core run, sweep, viz, and skill commands.
+description: b3_core run, sweep, fit, viz, cache, and skill commands.
 ---
 
 ```bash
@@ -21,9 +21,77 @@ Writes `run<HASH>.json` with engineering constants and metrics.
 
 ```bash
 b3_core run examples/simple.yaml --ccx-ortho core.inp
+b3_core run examples/simple.yaml --json --units GPa --no-write
 ```
 
 `--ccx-ortho` writes a CalculiX `*elastic,type=ortho` + `*density` card.
+
+`--json` prints one object: `case_hash`, `backend`, `provenance`, `properties`
+(each `{value, unit}`), `stiffness`, `stiffness_unit`, `geometry`,
+`diagnostics`, `cache_hit`, `elapsed_s`, and `written`. `--units GPa` scales
+moduli and stiffness only. `--no-write` skips the run file and sets `written`
+to null. A failure prints `{"error": {"type", "message", "hint"}}` and exits 1.
+
+`diagnostics.checks` is a list of `{id, status, value}` with `status` one of
+`ok`, `warn`, `fail`. The ids are `raw_asymmetry`, `positive_definite`,
+`voigt_reuss`, `unmatched_nodes`, `periodic_mismatch`, and `kerf_pinch`.
+`diagnostics.ties` is one row per high face: `{face, top_nodes, slaves,
+identity, multi_node_rows, ok}`. `--strict` exits 1 when a check is `warn` or
+`fail`, or a tie is not ok. The JSON is still printed.
+
+## `report`
+
+```bash
+b3_core report ties examples/simple.yaml --kx 5e-5 --json
+b3_core report ties examples/simple.yaml --kx 2 --unit 1/m
+b3_core viz sign -o sign.png --kx 0.5 --unit R-m
+```
+
+Coordinate ties for the numpy and MFEM constraints. This builds the mesh and
+does not solve. A FEniCSx run stores the MPC map on `diagnostics.ties` instead.
+`--unit` is `1/mm` (default), `1/m`, `R-mm`, or `R-m`. The command prints the
+stored 1/mm value and the signed radius. `viz sign` draws the two mouths at
+one positive `k`; each title is that mouth's `opens_for`.
+
+```bash
+b3_core report build project.yaml --out report/
+```
+
+`report build` writes `report.md`, `report.typ`, and `version.json` from the
+project file. Grid rows with `ok: false` are skipped. An optional
+`--template` file is copied beside the skeleton. The agent's prose stays in
+`prose.json` on the datasheet path.
+
+## `check`
+
+```bash
+b3_core check backends examples/simple.yaml --points "0,0 5e-5,0 1e-3,1e-3" --json
+b3_core check backends examples/simple.yaml --points "0,0 2,0" --unit 1/m
+b3_core check cross examples/simple.yaml --backends fenicsx,mfem,numpy
+```
+
+`check backends` solves each point on the requested backends. A flat pair whose
+stiffness differs by more than `--rtol` (default `1e-4`, which is 0.01 %)
+exits 1. A curved pair above that bar is flagged `curved_growth` and does not
+fail. `mfem` on a curved point runs with `allow_pair_periodicity`. `ccx` is
+skipped on a taper, on orthotropic constituents, and on a resin halo, and the
+row says why. `--refine 2` inserts madd midpoints twice. `check cross` is the
+same command forced onto `(0, 0)`.
+
+```bash
+b3_core check reproduce values.json --cache .b3cache --json
+b3_core check accept project.yaml --json
+b3_core check accept project.yaml --profile profile.yaml --json
+b3_core check convergence examples/simple.yaml --backend numpy --json
+```
+
+`check reproduce` re-solves the stored points. The same solver stamp must
+agree within `--rtol-pct` (default `1e-6` percent). A different stamp is
+drift and does not pass. `check accept` scores the project file and fails
+closed when an artifact is missing. It does not launch a solve. `--profile`
+adds the checks in that YAML. The library default does not load one.
+`check convergence` compares two `madd` refinements. A one-station `madd`
+cannot be refined and the check is not ok.
 
 ## `sweep`
 
@@ -38,6 +106,44 @@ b3_core sweep patterns --root …
 
 Also available as `make sweep` from the repo root.
 
+```bash
+b3_core sweep grid examples/simple.yaml --kx -0.001:0.001:3 --ky 0 --dry-run
+b3_core sweep grid examples/simple.yaml --backend fenicsx --out grid/ --workers 1
+b3_core sweep grid examples/simple.yaml --fit-result fit_result.json --json
+```
+
+`sweep grid` samples one case. `--kx` and `--ky` are `start:stop:count` in
+`--unit`, stored as 1/mm. The flat point and both zero lines are always
+included. The default backend is `fenicsx`, not `auto`. `--dry-run` prints
+the solve count. A failed point is a row with `ok: false` and does not stop
+the grid. `--allow-inert-axis` keeps a curvature on an axis that has no
+grooves. `--fit-result` stores that file's hash and status on the manifest.
+`--workers` above 1 is a process pool. Each child sets
+`OMP_NUM_THREADS=1`. `--out` writes `grid.csv`, `manifest.json`, and
+`grid.parquet` when pyarrow imports.
+
+## `fit`
+
+Calibration. Every command takes `--json` and exits 1 unless the status is
+`converged`, `rsm_only`, or `no_free_params`. The pinned backend defaults
+to `fenicsx`.
+
+```bash
+b3_core fit bounds case.json --json
+b3_core fit estimate-halo case.json --rho-infused 150 --json
+b3_core fit residuals case.json --targets targets.yaml --json
+b3_core fit sensitivity case.json --params params.yaml --targets targets.yaml --json
+b3_core fit refine case.json --params params.yaml --targets targets.yaml --json
+b3_core fit design case.json --params params.yaml --method ccd --out design.json --json
+b3_core fit rsm design.json --targets targets.yaml --out rsm.json --json
+b3_core fit run fitspec.yaml --out calib/ --json
+```
+
+`bounds` lists the catalogue with every parameter fixed. `estimate-halo`
+matches density or uptake and does not solve. `design` supports `ccd`,
+`sobol`, and `lhs`. `run` writes `fit_result.json` and
+`calibrated_case.json`. The skill's decision table chooses the free set.
+
 ## `viz`
 
 Figures and reports (optional for FEA handoff):
@@ -46,13 +152,64 @@ Figures and reports (optional for FEA handoff):
 |---------|---------|
 | `viz view PATH --what gallery -o board.png` | Geometry, slices, modulus, polar, heatmap, gallery, all |
 | `viz datasheet PATH -o card.pdf --png card.png` | One-page Typst report |
+| `viz datasheet PATH --full --draft --prose prose.json --sweep grid.json` | Curvature sheet. Refuses without a stamp unless `--draft` |
+| `viz datasheet-sweep GRID.json --draft` | Alias of `--full --sweep` |
+| `viz figs MANIFEST --out DIR --json` | `props_curvature`, `sweep_heatmap`, `rho_curvature` |
 | `viz deformed PATH -o deformed.png --warp 0.3` | Six periodic deformation modes |
 | `viz halo PATH -o dir/ [--sharp sharp.json]` | Resin-halo figure bundle |
 | `viz halo-curvature [-o dir/] [--kx-open …]` | Halo + open/close cuts **and** stiffness vs κ × `cell_size` |
 | `surrogate fit --output json [--cache grid.json]` | Fit physics surrogate on κ × halo grid (`--output` required) |
-| `surrogate lookup SURR.json --kx a,b,c [--cell-size mm]` | Mass property lookup for a curvature vector |
+| `viz sign [-o sign.png] [--kx …] [--unit 1/mm]` | Sign card. Titles are each mouth's `opens_for` |
+| `surrogate lookup SURR.json --kx a,b,c [--unit 1/mm] [--cell-size mm]` | Mass property lookup for a curvature vector |
 
 `view --serve core.html` needs the `[interactive]` extra (trame).
+
+## `doctor`
+
+```bash
+b3_core doctor
+b3_core doctor --json
+```
+
+Imports the FEniCSx stack, reports MPI size and the MUMPS factorisation, and
+solves a 2×2×2 periodic cube. `--json` prints one object. Exit code 1 when
+the import or the solve fails. `make env-fenicsx` prints how to create the
+pinned environment.
+
+## `cache`
+
+Disk-cache inventory. The key includes the solver stamp, so a numerics change
+leaves old JSON files unreadable as hits.
+
+```bash
+b3_core cache stats --dir .b3cache --json
+b3_core cache inspect --dir .b3cache --backend fenicsx
+b3_core cache ls --dir .b3cache          # alias of inspect
+b3_core cache purge --dir .b3cache --stale
+```
+
+`purge` refuses to run unless `--stale` or `--backend` is set.
+
+```bash
+b3_core cache export cache.zip --dir .b3cache
+b3_core cache import cache.zip --dir .b3cache
+b3_core cache import cache.zip --dir .b3cache --overwrite
+```
+
+`export` zips each JSON entry and `manifest.json` (count, stale count,
+stamp). `import` skips a key that is already present unless `--overwrite`.
+
+## `kerfs` and `diagnose`
+
+```bash
+b3_core kerfs map case.json --magnitude 0.001 --unit 1/mm --json
+b3_core diagnose bisect case.json --kx 5e-5 --backend numpy --json
+```
+
+`kerfs map` is a 3×3 sign grid. Geometry comes from `prepare` at all nine
+points. Solves run only at the four corners. `diagnose bisect` compares a
+flat mesh and field, a curved field, a curved mesh, and the same mesh with
+wall morph turned off. It is not on the default accept list.
 
 ## `skill`
 

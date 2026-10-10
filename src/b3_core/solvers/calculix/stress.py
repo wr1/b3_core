@@ -110,15 +110,24 @@ def macro_strain_from_displacement(mesh, disp: np.ndarray) -> np.ndarray:
     return eps
 
 
+def split_stiffness_from_responses(
+    strains: list[np.ndarray] | np.ndarray,
+    stresses: list[np.ndarray] | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Published ``0.5(C+Cᵀ)`` and the matrix from ``C = σ ε^{-1}`` before that."""
+    strain = np.column_stack([np.asarray(s, dtype=float).reshape(6) for s in strains])
+    stress = np.column_stack([np.asarray(s, dtype=float).reshape(6) for s in stresses])
+    raw = stress @ np.linalg.inv(strain)
+    return 0.5 * (raw + raw.T), raw
+
+
 def stiffness_from_responses(
     strains: list[np.ndarray] | np.ndarray,
     stresses: list[np.ndarray] | np.ndarray,
 ) -> np.ndarray:
     """``C = S E^{-1}`` from six (strain, stress) pairs, then symmetrised."""
-    strain = np.column_stack([np.asarray(s, dtype=float).reshape(6) for s in strains])
-    stress = np.column_stack([np.asarray(s, dtype=float).reshape(6) for s in stresses])
-    stiffness = stress @ np.linalg.inv(strain)
-    return 0.5 * (stiffness + stiffness.T)
+    published, _raw = split_stiffness_from_responses(strains, stresses)
+    return published
 
 
 def case_tag(path: str | Path) -> str:

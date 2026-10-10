@@ -1,0 +1,26 @@
+# Named profile for the KD200 handoff. Absolute moduli are NOT in this file.
+# Pass them as project.reference when you run `b3_core check accept --profile`.
+# The library default does not load this profile.
+name: kd200
+checks:
+  - id: flat_card
+    rtol_pct: 0.001
+    quantities: [Ex, Ey, Ez, Gxy, Gxz, Gyz]
+  - id: anchor_drift
+    quantity: Ez
+    k_per_mm: 5.0e-5
+    rtol_pct: 0.06
+  - id: ties
+    note: slaves equal top nodes; flat rows are identity
+  - id: geometry
+    rho_tol_kg_m3: 0.01
+  - id: cross_backend
+    flat_rtol_pct: 0.01
+  - id: bisect
+    max_node_displacement_mm: 0.01
+  - id: surrogate
+    max_residual_pct: 5
+  - id: reproduce
+    rtol_pct: 1.0e-6
+  - id: tests
+    note: fenicsx suite is CI, not this process

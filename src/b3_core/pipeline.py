@@ -56,6 +56,7 @@ class _Needs:
     orthotropic: bool
     halo: bool
     face_layer: bool
+    curved: bool = False
 
     def reason(self) -> str:
         parts: list[str] = []
@@ -63,6 +64,8 @@ class _Needs:
             parts.append("orthotropic")
         if self.halo:
             parts.append("halo")
+        if self.curved:
+            parts.append("curved")
         if not parts and self.face_layer:
             parts.append("face")
         return ", ".join(parts) if parts else "isotropic"
@@ -82,11 +85,67 @@ def _needs(case: CaseInput) -> _Needs:
     from b3_core.core.scoring import halo_reach
 
     face = case.face is not None and float(case.face.thickness) > 0.0
+    curved = float(case.curvature.kx) != 0.0 or float(case.curvature.ky) != 0.0
     return _Needs(
         orthotropic=bool(case.is_orthotropic),
         halo=halo_reach(case) > 0.0,
         face_layer=face,
+        curved=curved,
     )
+
+
+def _curved_choice(case: CaseInput, name: str) -> str:
+    """Route a case with kx or ky. Pair-based solvers do not run silently."""
+    from b3_core.solvers import get_backend
+
+    if name == "auto":
+        fenicsx = get_backend("fenicsx")
+        if fenicsx.is_available():
+            logger.info("backend auto → fenicsx (curved)")
+            return "fenicsx"
+        raise BackendCapabilityError(
+            "a curved case needs FEniCSx interpolated periodicity, and "
+            "fenicsx is not installed. Run `b3_core doctor`. Pass "
+            "backend='numpy' only to accept the documented O(k^2) offset."
+        )
+    if name == "numpy":
+        warnings.warn(
+            "backend 'numpy' on a curved case has a documented O(k^2) offset; "
+            "see the curvature tolerance table in the backends reference. "
+            "fenicsx is the curved reference",
+            UserWarning,
+            stacklevel=3,
+        )
+        return "numpy"
+    if name == "mfem":
+        if not case.allow_pair_periodicity:
+            raise BackendCapabilityError(
+                "backend 'mfem' has no native interpolated z periodicity. "
+                "Use fenicsx, or set allow_pair_periodicity=True for the "
+                "z-prolongation cross-check."
+            )
+        warnings.warn(
+            "backend 'mfem' is running with allow_pair_periodicity; "
+            "the z face uses the tensor-grid prolongation",
+            UserWarning,
+            stacklevel=3,
+        )
+        return "mfem"
+    if name == "ccx":
+        raise BackendCapabilityError(
+            "backend 'ccx' supports node-pair periodicity only. "
+            "A tapered z face is not a CalculiX case."
+        )
+    try:
+        caps = get_backend(name).capabilities
+    except UnknownBackendError:
+        raise
+    if not caps.interpolated_periodicity:
+        raise BackendCapabilityError(
+            f"backend {name!r} cannot tie a tapered z face "
+            "(interpolated_periodicity is false)"
+        )
+    return name
 
 
 # Preference order for ``auto`` and capability fallback. FEniCSx leads when it
@@ -126,6 +185,8 @@ def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
 
     name = requested or case.backend
     needs = _needs(case)
+    if needs.curved:
+        return _curved_choice(case, name)
     if name == "auto":
         choice = _first_capable(needs, require_available=True)
         logger.info("backend auto → %s (%s)", choice, needs.reason())
@@ -153,8 +214,20 @@ def resolve_backend(case: CaseInput, requested: str | None = None) -> str:
     return name
 
 
-def prepare(case: CaseInput) -> PreparedCase:
-    """Mesh, geometric report, and the resin-halo field."""
+def fenicsx_installed() -> bool:
+    """True when dolfinx imports. Sweep uses this so it does not import solvers."""
+    from b3_core.solvers.fenicsx import is_fenicsx_available
+
+    return bool(is_fenicsx_available())
+
+
+def prepare(case: CaseInput, *, wall_morph: bool = True) -> PreparedCase:
+    """Mesh, geometric report, and the resin-halo field.
+
+    ``wall_morph=False`` builds the curved through-thickness stations and
+    skips the interval-affine wall warp. That is the morph-off mesh used by
+    ``diagnose bisect``.
+    """
     from b3_core.core.analysis import geom_analysis
     from b3_core.core.mesh import create_grooved_mesh, kerf_openings
     from b3_core.core.scoring import ScoreField, effective_resin_vf, halo_reach
@@ -162,6 +235,7 @@ def prepare(case: CaseInput) -> PreparedCase:
     reach = halo_reach(case)
     kwargs = case.mesh_kwargs()
     kwargs["s_halo"] = reach
+    kwargs["wall_morph"] = wall_morph
     mesh = create_grooved_mesh(**kwargs)
     geom = geom_analysis(mesh)
     field = ScoreField(case.score_dict()) if reach > 0.0 else None

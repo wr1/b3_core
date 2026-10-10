@@ -19,6 +19,7 @@ All geometry fields are **mm**. Material moduli are **Pa**, densities **kg/m³**
 | `face` | `{"thickness": mm}` | Optional stabilising face layer (default off) |
 | `curvature` | `{"kx": 1/mm, "ky": 1/mm}` | Optional groove taper for curved panels |
 | `madd` | list[float] | Extra mesh-density knob (default `[0]`) |
+| `allow_non_periodic` | bool | Keep a pitch that does not divide `dx` (x-grooves) or `dy` (y-grooves). Default rejects it. The flag is part of the cache key |
 
 ## Materials
 

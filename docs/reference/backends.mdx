@@ -36,6 +36,41 @@ still ties. MFEM and numpy interpolate the z face only when that face is a
 cartesian grid. Without FEniCSx, `auto` uses MFEM, then CalculiX for an
 isotropic case, then numpy. CalculiX stays isotropic two-phase.
 
+A curved case (`kx` or `ky` nonzero) is different. `auto` uses FEniCSx only.
+If FEniCSx does not import, `auto` raises and points at `b3_core doctor`.
+`backend: numpy` is the explicit opt-in and warns about the O(k²) offset.
+The warning cites the tolerance table below. `mfem` raises unless
+`allow_pair_periodicity: true` (the z-prolongation cross-check). `ccx`
+raises: its writer only pairs nodes that share transverse coordinates.
+Curved datasheets use FEniCSx. Footnote until `check accept` passes:
+"cross-checked on flat; curved values FEniCSx".
+
+## Curvature tolerance
+
+Relative difference is `max |C_a − C_b| / max(|C_a|, |C_b|)`, in percent.
+Flat rows fail above 0.01 %. Curved rows above that bar are flagged
+`curved_growth` and do not fail. MFEM on a curved row uses
+`allow_pair_periodicity`. No absolute moduli are published here.
+
+`examples/grid_scored_halo.json`, madd `−0.15, 0, 0.15`, refine 0
+(400 s for the twelve solves):
+
+| kx [1/mm] | ky [1/mm] | fenicsx–mfem | fenicsx–numpy | mfem–numpy | flag |
+|-----------|-----------|--------------|---------------|------------|------|
+| 0 | 0 | 4.8×10⁻⁵ % | 3.2×10⁻⁶ % | 4.8×10⁻⁵ % | ok |
+| 10⁻³ | 0 | 5.5×10⁻⁶ % | 0.035 % | 0.035 % | curved_growth |
+| 0 | 10⁻³ | 5.5×10⁻⁶ % | 0.035 % | 0.035 % | curved_growth |
+| 10⁻³ | 10⁻³ | 1.1×10⁻⁵ % | 0.053 % | 0.053 % | curved_growth |
+
+FEniCSx and MFEM agree to better than 6×10⁻⁵ % on this mesh, including the
+biaxial point, so the solvers are not splitting on periodicity. Numpy
+matches both when the panel is flat and sits 0.035 % to 0.053 % away at
+`|k| = 10⁻³` on refine 0. One madd refinement of the same mesh does not
+close that gap: uniaxial numpy difference rises to 0.044 %, and biaxial to
+0.058 %, while FEniCSx and MFEM stay under 6×10⁻⁵ %. That is a formulation
+offset, not a quadrature residual. FEniCSx stays the curved reference.
+Curved datasheets quote this table.
+
 ## FEniCSx path (leads `auto` when installed)
 
 Serial linear hexahedra. The periodic constraint is the finite-element
@@ -46,7 +81,18 @@ Detailed results include nodal displacements, so datasheet, deformed view, and
 `CoreModel` fields work on this path.
 
 Needs the conda-forge stack (`dolfinx`, `dolfinx_mpc`, and their PETSc/MPI
-dependencies). It is not installed by `uv sync`.
+dependencies). It is not installed by `uv sync`. The known-good pin is
+`environment-fenicsx.yml` (Python 3.12, dolfinx 0.11.0, dolfinx_mpc 0.11.0,
+PETSc 3.25.6). `make env-fenicsx` prints the micromamba create line and does
+not modify `~/envs/b3`.
+
+```bash
+b3_core doctor --json
+```
+
+`doctor` imports dolfinx, dolfinx_mpc, petsc4py, mpi4py, ufl, and basix,
+reports versions, MPI size, and whether MUMPS is the factorisation, then
+solves one 2×2×2 periodic cube. Exit code 1 means the stack is not usable.
 
 ## MFEM path
 

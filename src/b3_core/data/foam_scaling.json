@@ -1,0 +1,20 @@
+{
+  "PVC": {
+    "solid_E_Pa": 3.0e9,
+    "solid_G_Pa": 1.15e9,
+    "solid_rho": 1400.0,
+    "E_exponent": 2.0,
+    "nu": 0.3,
+    "band": 0.2,
+    "reference": "Gibson-Ashby open-cell, C=1, n=2. Solid stand-in 3 GPa, 1400 kg/m3."
+  },
+  "balsa": {
+    "solid_E_Pa": 1.0e10,
+    "solid_G_Pa": 6.0e8,
+    "solid_rho": 1500.0,
+    "E_exponent": 1.0,
+    "nu": 0.3,
+    "band": 0.3,
+    "reference": "Gibson-Ashby wood-like placeholder, n=1."
+  }
+}

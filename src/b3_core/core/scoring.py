@@ -154,6 +154,25 @@ class ScoreField:
                     self.grooves.append(
                         (axis, float(c0), float(hw), float(sl), float(d))
                     )
+        # One lattice per input row. Centres are ``offset + m·pitch`` (the same
+        # lattice as create_grooves before the domain clamp). Distance uses the
+        # pitch minimum image so a boundary kerf matches an interior offset.
+        self.families: list[tuple[float, ...]] = []
+        for axis, cuts, kappa in (
+            (0, inp.get("xgr") or [], kx),
+            (1, inp.get("ygr") or [], ky),
+        ):
+            for row in cuts:
+                offset, pitch, depth, width = (
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                    float(row[3]),
+                )
+                if depth == 0.0 or width <= 0.0 or pitch <= 0.0:
+                    continue
+                slope = -float(np.sign(depth)) * float(kappa) * pitch / 2.0
+                self.families.append((axis, offset, 0.5 * width, slope, depth, pitch))
         self.thickness = thk
         self.surfaces = parse_surface_halo(inp)
         # Legacy aliases (saw-cut only).
@@ -178,8 +197,11 @@ class ScoreField:
 
         Wall half-width uses the same root-hinged ``hw(z)`` law as the mesh
         morph (incl. pinch clamp), so the halo grades off the *open/closed*
-        kerf surface. Evaluate at **physical** post-morph coordinates — after
-        the interval-affine morph, walls sit at ``c0 ± hw(z)``.
+        kerf surface. In the groove's transverse direction the distance is the
+        minimum image on that family's pitch, so the field is periodic and a
+        pure offset is only a phase shift. Evaluate at **physical** post-morph
+        coordinates — after the interval-affine morph, walls sit at
+        ``c0 ± hw(z)``.
         """
         from b3_core.core.mesh import MIN_HW as _MIN_HW
 
@@ -187,7 +209,7 @@ class ScoreField:
         z = pts[:, 2]
         d_min = np.full(len(pts), np.inf)
         th = self.thickness
-        for axis, c0, hw0, slope, depth in self.grooves:
+        for axis, c_ref, hw0, slope, depth, pitch in self.families:
             if depth > 0:
                 z0, z1 = 0.0, depth
                 inside = (z >= z0) & (z <= z1)
@@ -202,7 +224,10 @@ class ScoreField:
                 np.maximum(_MIN_HW, hw0 + slope * zeta),
                 hw0,
             )
-            du = np.maximum(0.0, np.abs(pts[:, axis] - c0) - hw)
+            # Nearest centre on offset + m·pitch, including the image across 0.
+            delta = np.mod(pts[:, axis] - c_ref, pitch)
+            delta = np.minimum(delta, pitch - delta)
+            du = np.maximum(0.0, delta - hw)
             dz = np.maximum(0.0, np.maximum(z0 - z, z - z1))
             d_min = np.minimum(d_min, np.hypot(du, dz))
         return d_min

@@ -38,6 +38,7 @@ def ccx_ortho_card(
     name: str = "core_hom",
     rho: float | None = None,
     temperature: float | None = 293.0,
+    provenance_comment: str | None = None,
 ) -> str:
     """CalculiX ``*elastic,type=ortho`` block from C_eff (Pa).
 
@@ -59,4 +60,9 @@ def ccx_ortho_card(
     ]
     if rho is not None:
         lines.extend(["*density", _fmt(rho)])
-    return "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n"
+    if provenance_comment:
+        text += provenance_comment
+        if not provenance_comment.endswith("\n"):
+            text += "\n"
+    return text

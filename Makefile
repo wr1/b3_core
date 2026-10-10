@@ -19,6 +19,7 @@ CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
 .PHONY: help install test cov lint format pre-commit skill-sync run sweep \
+	env-fenicsx \
 	selfdoc tree docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
@@ -42,8 +43,8 @@ help: ## List targets (default goal)
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
 
-install: ## uv sync (+ dev extras) and enable .githooks (ruff lint + format)
-	$(UV) sync --extra dev
+install: ## uv sync --locked (+ dev extras) and enable .githooks (ruff lint + format)
+	$(UV) sync --locked --extra dev
 	git config core.hooksPath .githooks
 
 test: ## pytest (+ coverage; fail under pyproject threshold)
@@ -73,6 +74,12 @@ run: ## b3_core run — homogenise one case
 
 sweep: ## b3_core sweep homogenise
 	$(B3) sweep homogenize --root $(SWEEP_ROOT)
+
+env-fenicsx: ## Print the micromamba line for environment-fenicsx.yml
+	@printf '%s\n' \
+		'micromamba create -n fenicsx -f environment-fenicsx.yml' \
+		'PYTHONNOUSERSITE=1 micromamba run -n fenicsx python -c "import dolfinx"' \
+		'This does not modify ~/envs/b3.'
 
 # ---------------------------------------------------------------------------
 # DocKB (fumano) — docs/*.mdx (+ optional kb/) via shared dockb runtime

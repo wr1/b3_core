@@ -23,7 +23,6 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 
-from b3_core import __version__
 from b3_core.viz import slices
 from b3_core.viz.model import CoreModel
 from b3_core.viz.scene import CoreScene
@@ -32,6 +31,17 @@ from b3_core.viz.scene import CoreScene
 matplotlib.use("Agg")
 
 logger = logging.getLogger(__name__)
+
+
+def _datasheet_version() -> str:
+    """Footer: package version, commit, and a dirty mark when the tree is dirty."""
+    from b3_core.provenance import identity
+
+    current = identity(solver_stamp="")
+    commit = current.commit or "unknown"
+    dirty = " dirty" if current.dirty else ""
+    return f"b3_core {current.version} {commit}{dirty}"
+
 
 _FIG_DPI = 150
 
@@ -90,6 +100,8 @@ def collect_spec(
     """Build the three header-table row lists + the result block from a run."""
     import numpy as np
 
+    from b3_core.units import curvature_tick
+
     rve_rows: list[tuple[str, str]] = [
         (
             "RVE size [mm]",
@@ -104,16 +116,21 @@ def collect_spec(
     if cur.get("kx") or cur.get("ky"):
         rve_rows.append(
             (
-                "curvature [1/mm]",
-                f"kx {cur.get('kx', 0):.4g}, ky {cur.get('ky', 0):.4g}",
+                "curvature",
+                "kx "
+                + curvature_tick(float(cur.get("kx") or 0))
+                + ", ky "
+                + curvature_tick(float(cur.get("ky") or 0)),
             )
         )
     for kerf in geom.get("kerfs") or []:
+        opens = kerf.get("opens_for")
+        family = f", opens for {opens}" if opens else ""
         rve_rows.append(
             (
                 f"{kerf['axis']}-kerf half-width [mm]",
                 f"root {kerf['hw_root_mm']:.3g} → mouth {kerf['hw_mouth_mm']:.3g}"
-                f" ({kerf['mouth']})",
+                f" ({kerf['mouth']}{family})",
             )
         )
     face = inp.get("face") or {}
@@ -154,7 +171,7 @@ def collect_spec(
     return DatasheetSpec(
         title=f"Grooved core — {name}",
         config_path=config_name,
-        version=f"b3_core {__version__}",
+        version=_datasheet_version(),
         rve_rows=rve_rows,
         material_rows=material_rows,
         analysis_rows=analysis_rows,
@@ -175,6 +192,8 @@ def _typst_escape(text: str) -> str:
         .replace("[", "\\[")
         .replace("]", "\\]")
         .replace("_", "\\_")
+        .replace("@", "\\@")
+        .replace("<", "\\<")
     )
 
 

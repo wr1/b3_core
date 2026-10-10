@@ -13,6 +13,7 @@ jobs:
   lint:
     name: lint (pre-commit / ruff)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -31,6 +32,7 @@ jobs:
   test:
     name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +69,7 @@ jobs:
       # numba>=0.60 is a [tool.uv] override (mfem 4.8 still pins numba==0.53,
       # which cannot build on Python 3.12).
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       # CalculiX / typst not installed — related tests self-skip.
       # Coverage: pytest-cov via pyproject addopts (--cov-fail-under=90).
@@ -85,6 +87,7 @@ jobs:
   pip-install-smoke:
     name: pip install smoke (3.12)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -111,6 +114,7 @@ jobs:
   test-ccx:
     name: test (calculix)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -123,7 +127,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       # Subset of the suite: drop the coverage gate in addopts.
       - name: Compare ccx with MFEM
@@ -134,23 +138,15 @@ jobs:
   test-fenicsx:
     name: test (fenicsx)
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
 
       - uses: mamba-org/setup-micromamba@v3
         with:
-          environment-name: fenicsx
-          create-args: >-
-            python=3.12
-            fenics-dolfinx
-            dolfinx_mpc
-            mpi4py
-            petsc4py
-            pip
-          condarc: |
-            channels:
-              - conda-forge
-            channel_priority: strict
+          environment-file: environment-fenicsx.yml
+          cache-environment: true
+          init-shell: bash
 
       - name: Install b3_core
         shell: bash -l {0}
@@ -159,14 +155,31 @@ jobs:
           python -m pip install "numba>=0.60"
           python -m pip install \
             "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
-            "pydantic>=2" "pyyaml" "treeparse" "rich>=13" "pytest>=8" \
+            "pydantic>=2" "pyyaml" "treeparse>=0.3.4,<0.4" "rich>=13" "pytest>=8" \
             "mfem" \
             "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
             "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
           python -m pip install --no-deps .
 
       # Collecting the whole suite loads VTK beside dolfinx and the runner
-      # is SIGTERM'd (exit 143) before pytest prints anything.
+      # is SIGTERM'd (exit 143) before pytest prints anything. Each file
+      # below is its own process. The biaxial file joins this list in A8.
       - name: Compare fenicsx with MFEM
         shell: bash -l {0}
         run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_optional_solvers.py
+
+      - name: Periodic z faces
+        shell: bash -l {0}
+        run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_periodic_z.py
+
+      - name: Curvature meshes
+        shell: bash -l {0}
+        run: pytest -o addopts= -q --tb=short tests/test_curvature.py tests/test_halo_curvature.py
+
+      - name: Doctor
+        shell: bash -l {0}
+        run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_doctor.py
+
+      - name: Biaxial periodicity
+        shell: bash -l {0}
+        run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_periodic_invariance.py

@@ -54,8 +54,10 @@ flowchart TB
    Dump JSON only if the CLI or a frozen fixture is required.
 2. **Run yourself** — `homogenize(textile)` (or CLI on a path). Do not ask the user
    to run commands.
-3. **Extract** — engineering constants from `CoreResult` / `run*.json`.
-4. **Present** — markdown table with moduli in **GPa** (divide Pa by `1e9`).
+3. **Extract** — `b3_core run case.json --json --units GPa`. Each property is
+   `{value, unit}`. Do not divide pascals by `1e9`.
+4. **Present** — the payload's `properties` and `stiffness` (`stiffness_unit`
+   is `GPa`). Poisson ratios keep unit `-`.
 5. **Hand off** — `result.material` (`b3_mat.OrthotropicMaterial`), JSON card, or
    CalculiX engineering-constants block.
 6. **Optional** — datasheet, gallery, sweep, or physics surrogate for κ-fields.
@@ -69,42 +71,44 @@ flowchart TB
 | Parametric study | `b3_core sweep homogenise --root <dir>` |
 | Publication board | `b3_core viz view case.json --what gallery -o board.png` |
 | One-page report | `b3_core viz datasheet case.json -o card.pdf --png card.png` |
+| Curvature sheet | `b3_core viz datasheet case.json --full --draft --prose prose.json` |
+| Calibrate | `b3_core fit bounds` then `fit run` (see the skill) |
+| Accept a project | `b3_core check accept project.yaml --json` |
 | Skill text | `b3_core skill --stdout` |
 
 From a dev checkout, prefix with `uv run`. Default backend is **auto**: FEniCSx
 when that environment is installed, otherwise MFEM, including orthotropic foam
-and a resin halo (`core.cell_size`). Numpy is the last resort.
+and a resin halo (`core.cell_size`) on a flat case. A curved case uses FEniCSx
+only. Numpy is an explicit opt-in on a curve and warns about the offset in the
+backends table.
 
 ## Minimal agent script
 
-```python
-from b3_core import grid_scored, homogenize
-
-# Bottom mouth: negative kx opens the kerf. r.kerfs lists root and mouth widths.
-r = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
-# r = homogenize("examples/simple.json")  # file still works (interchange)
-m = r.material
-
-# Always show a table (moduli as GPa for humans / FEA decks)
-for label, value in [
-    ("Ex", f"{m.Ex/1e9:.4f} GPa"),
-    ("Ey", f"{m.Ey/1e9:.4f} GPa"),
-    ("Ez", f"{m.Ez/1e9:.4f} GPa"),
-    ("Gxy", f"{m.Gxy/1e9:.4f} GPa"),
-    ("Gxz", f"{m.Gxz/1e9:.4f} GPa"),
-    ("Gyz", f"{m.Gyz/1e9:.4f} GPa"),
-    ("νxy", f"{m.nuxy:.4f}"),
-    ("νxz", f"{m.nuxz:.4f}"),
-    ("νyz", f"{m.nuyz:.4f}"),
-    ("ρ infused", f"{m.rho:.1f} kg/m³"),
-    ("resin Vf", f"{r.resin_volume_fraction:.3f}"),
-]:
-    print(f"| {label} | {value} |")
+```bash
+# Bottom mouth: negative kx opens the kerf. geometry.kerfs lists root and mouth.
+b3_core run case.json --json --units GPa --no-write
 ```
 
-JSON card for matdb / scripts:
+```python
+import json, subprocess
+
+payload = json.loads(subprocess.check_output(
+    ["b3_core", "run", "case.json", "--json", "--units", "GPa", "--no-write"],
+    text=True,
+))
+# properties["Ex"]["value"] is already GPa. properties["nuxy"]["unit"] is "-".
+# stiffness matches stiffness_unit. geometry.rho_infused is {value, unit}.
+```
+
+`homogenize(grid_scored(cell_size=0.6), kx=-0.008)` still returns SI pascals
+on `CoreResult` for a Python caller that needs the material object.
+
+JSON card for matdb / scripts (SI pascals, from the Python result):
 
 ```python
+from b3_core import homogenize
+
+m = homogenize("case.json").material
 card = {
     "name": "grooved_core_homogenized",
     "Ex": m.Ex, "Ey": m.Ey, "Ez": m.Ez,
@@ -134,12 +138,61 @@ Shipped fixtures agents can copy:
 | `examples/grid_scored_halo.json` | Grid-scored + halo |
 | `examples/curved_panel/` | Curvature / open-close demos |
 
+## Calibrate to a sparse datasheet
+
+Follow the decision table in the skill. The short form:
+
+1. `fit.split_basis` splits neat rows (fixed) from infused rows (targets).
+   Map each tested axis onto `Ex` / `Ey` / `Ez` / `Gxy` / `Gxz` / `Gyz`
+   with `Target.axis_map`. One measured in-plane direction does not fill
+   the other.
+2. `b3_core fit bounds CASE --json` starts every parameter fixed.
+3. Density or resin uptake goes through `fit estimate-halo` before any solve.
+4. Free only the parameters the table names. `n_free` stays at or below the
+   number of targets in use. Collinear pairs (`|corr| > 0.95`) keep the
+   earlier name in `halo_cell_size`, `foam_Ez_scale`, `foam_G_scale`,
+   `foam_E_scale`, `kerf_width`, `resin_E`.
+5. `n_free < 3` calls `fit refine`. Three or more free parameters call
+   `fit run` (design, quadratic surface, then refine).
+6. A result is usable when `status` is `converged` and every `|z| ≤ 2`,
+   or when nothing was free (`no_free_params`, labelled predicted).
+   Anything else stops. Do not loosen bounds.
+7. `sweep grid --fit-result calibrated_case.json` carries that case.
+
+`Material.source` (`neat`, `infused`, `estimated`, `calibrated`) and
+`Material.reference` stay off the cache key.
+
+## Report a datasheet
+
+Write `prose.json` and nothing else in the sheet. Do not edit the Typst
+templates or type a modulus into a table. Run `b3_core check accept` first.
+A check with `ok: false`, or a missing artifact, stops the task.
+
+`prose.json` fields: `title`, `summary` (400 characters), `intended_use`
+and `limitations` (160 each), optional `notes`.
+
+```bash
+b3_core sweep grid case.json --backend fenicsx --out grid/ --json
+b3_core viz figs grid/manifest.json --out grid/
+b3_core check accept project.yaml --json
+b3_core viz datasheet case.json --full --draft --prose prose.json --sweep grid/manifest.json
+```
+
+Drop `--draft` only when accept returns `ok`. A curved sheet that is not
+accepted prints "cross-checked on flat; curved values FEniCSx". Labels use
+the signed radius `1/(1000·k)` metres. Each kerf row has its own
+`opens_for`. Confirm the PDF with `pdftotext -layout`. The figures still
+need a human look.
+
+`b3_core report build project.yaml --out report/` writes the markdown and
+Typst skeleton from the project JSON. It is not the prose.
+
 ## Operating rules
 
 - **Run commands yourself.** The skill is written for agent execution, not for
   handing shell snippets back to the user.
-- **Units:** geometry **mm**; moduli and density **SI** (Pa, kg/m³). Present
-  moduli as **GPa** in tables.
+- **Units:** geometry **mm**; Python moduli and density **SI** (Pa, kg/m³).
+  A table comes from `b3_core run --json --units GPa`. Do not scale by `1e9`.
 - **Axes:** x = machine, y = transverse, z = through-thickness.
 - **Cache:** if `FileExistsError` on `run*.json`, delete the stale run file or use
   a fresh directory.
