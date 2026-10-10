@@ -89,49 +89,164 @@ def test_main_builds_and_runs_cli(monkeypatch):
     assert seen.get("subgroups")
 
 
-def test_cmd_run_delegates_to_homogenize_to_disk(monkeypatch, tmp_path):
-    calls: list[str] = []
+def test_cmd_run_writes_ccx_ortho(tmp_path, capsys):
+    from tests.fakes import fake_backend, unregister
 
-    def fake(path, **kwargs):
-        calls.append(path)
-        return object(), tmp_path / "run.json"
+    from b3_core.cases import plain
 
-    monkeypatch.setattr("b3_core.api.homogenize_to_disk", fake)
-    run_mod.cmd_run("case.json")
-    assert calls == ["case.json"]
-
-
-def test_cmd_run_writes_ccx_ortho(monkeypatch, tmp_path, capsys):
-    from b3_core.result import CoreResult
-
-    result = CoreResult.from_engineering_constants(
-        {
-            "Exx": 1e9,
-            "Eyy": 2e9,
-            "Ezz": 3e9,
-            "Gxy": 0.5e9,
-            "Gxz": 0.4e9,
-            "Gyz": 0.3e9,
-            "nuxy": 0.3,
-            "nuxz": 0.25,
-            "nuyz": 0.2,
-        },
-        rho=150.0,
-        resin_volume_fraction=0.05,
-        surface_area_factor=1.1,
-        name="core",
-    )
-
-    def fake(path, **kwargs):
-        return result, tmp_path / "run.json"
-
-    monkeypatch.setattr("b3_core.api.homogenize_to_disk", fake)
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = tmp_path / "case.json"
     dest = tmp_path / "core.inp"
-    run_mod.cmd_run("case.json", ccx_ortho=str(dest))
+    try:
+        plain(backend="fake").to_json(case)
+        run_mod.cmd_run(str(case), backend="fake", ccx_ortho=str(dest))
+    finally:
+        unregister("fake")
     text = dest.read_text()
     assert "*elastic,type=ortho" in text
     assert "*density" in text
     assert "Wrote" in capsys.readouterr().out
+
+
+def test_cmd_run_json_scales_moduli_and_skips_disk(tmp_path, capsys):
+    import json
+
+    from tests.fakes import fake_backend, unregister
+
+    from b3_core.cases import plain
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = tmp_path / "case.json"
+    try:
+        plain(backend="fake").to_json(case)
+        run_mod.cmd_run(
+            str(case),
+            backend="fake",
+            as_json=True,
+            units="GPa",
+            no_write=True,
+        )
+    finally:
+        unregister("fake")
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["properties"]["Ex"]["value"] == pytest.approx(1.0)
+    assert payload["properties"]["Ex"]["unit"] == "GPa"
+    assert payload["properties"]["nuxy"]["value"] == pytest.approx(0.3)
+    assert payload["properties"]["nuxy"]["unit"] == "-"
+    assert payload["stiffness_unit"] == "GPa"
+    assert payload["written"] is None
+    assert payload["cache_hit"] is False
+    checks = {row["id"]: row["status"] for row in payload["diagnostics"]["checks"]}
+    assert "raw_asymmetry" in checks
+    assert "positive_definite" in checks
+    assert "voigt_reuss" in checks
+    assert "kerf_pinch" in checks
+    assert {row["face"] for row in payload["diagnostics"]["ties"]} == {"x", "y", "z"}
+    assert payload["geometry"]["rho_infused"]["unit"] == "kg/m^3"
+    assert "provenance" in payload
+    assert list(tmp_path.glob("run*.json")) == []
+
+
+def test_cmd_run_json_error_on_curved_auto(monkeypatch, tmp_path, capsys):
+    import json
+
+    from b3_core.cases import plain
+
+    monkeypatch.setattr(
+        "b3_core.solvers.fenicsx.FenicsxBackend.is_available",
+        lambda self: False,
+    )
+    case = tmp_path / "case.json"
+    plain().with_curvature(kx=1e-3).to_json(case)
+    with pytest.raises(SystemExit) as ei:
+        run_mod.cmd_run(str(case), as_json=True, no_write=True)
+    assert ei.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"]["type"] == "BackendCapabilityError"
+    assert "doctor" in payload["error"]["hint"] or "numpy" in payload["error"]["hint"]
+
+
+def test_report_ties_unit_is_stored_as_per_mm(tmp_path, capsys):
+    from b3_core.cases import uniaxial
+
+    case = tmp_path / "case.json"
+    uniaxial().to_json(case)
+    run_mod.cmd_report_ties(str(case), kx="2", unit="1/m", as_json=True)
+    payload = __import__("json").loads(capsys.readouterr().out)
+    assert payload["unit"] == "1/m"
+    assert payload["kx"] == pytest.approx(0.002)
+    assert "R = 0.5 m" in payload["kx_tick"]
+
+
+def test_check_points_honor_the_curvature_unit(tmp_path, capsys, monkeypatch):
+    case = tmp_path / "case.json"
+    case.write_text("{}", encoding="utf-8")
+    seen = {}
+
+    def fake_check(path, **kwargs):
+        seen["points"] = kwargs["points"]
+        return {
+            "ok": True,
+            "rtol": 1e-4,
+            "worst_rel_pct": 0.0,
+            "wall_s": 0.0,
+            "rows": [],
+        }
+
+    monkeypatch.setattr("b3_core.checks.backends.check_backends", fake_check)
+    run_mod.cmd_check_backends(str(case), points="2,0", unit="1/m", as_json=True)
+    assert seen["points"] == [(pytest.approx(0.002), 0.0)]
+    assert __import__("json").loads(capsys.readouterr().out)["unit"] == "1/m"
+
+
+def test_payload_json_is_not_rewritten_when_it_asks_for_the_schema():
+    from b3_core.core.run import _rewrite_payload_json
+
+    assert _rewrite_payload_json(["--json"]) == ["--json"]
+    assert _rewrite_payload_json(["run", "case.json", "--json", "--no-write"]) == [
+        "run",
+        "case.json",
+        "--agent-json",
+        "--no-write",
+    ]
+
+
+def test_run_json_flag_reaches_the_command(tmp_path):
+    case = tmp_path / "missing.json"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "b3_core.core.run",
+            "run",
+            str(case),
+            "--json",
+            "--no-write",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert '"type": "cli"' not in combined
+    assert proc.returncode != 0
+
+
+def test_run_help_lists_agent_json_flags():
+    proc = subprocess.run(
+        [sys.executable, "-m", "b3_core.core.run", "run", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert proc.returncode in (0, 1)
+    assert "--json" in combined
+    assert "--units" in combined
+    assert "--no-write" in combined
+    assert "--strict" in combined
 
 
 def test_cmd_run_writes_run_json(tmp_path, capsys):

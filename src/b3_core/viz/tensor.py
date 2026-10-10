@@ -78,19 +78,37 @@ def poisson_ratio(C: np.ndarray, n: np.ndarray, m: np.ndarray) -> float:
 
 
 def engineering_constants(C: np.ndarray) -> dict[str, float]:
-    """Orthotropic engineering constants from the 6x6 stiffness (Pa / -)."""
+    """Orthotropic engineering constants from the 6x6 stiffness (Pa / -).
+
+    Canonical names match the FEA handoff (``Ex``, ``Gxy``, ``nuxy``).
+    The underscored names are the same numbers.
+    """
     S = compliance(C)
-    return {
-        "E_x": 1.0 / S[0, 0],
-        "E_y": 1.0 / S[1, 1],
-        "E_z": 1.0 / S[2, 2],
-        "G_yz": 1.0 / S[3, 3],
-        "G_xz": 1.0 / S[4, 4],
-        "G_xy": 1.0 / S[5, 5],
-        "nu_xy": -S[1, 0] / S[0, 0],
-        "nu_xz": -S[2, 0] / S[0, 0],
-        "nu_yz": -S[2, 1] / S[1, 1],
+    values = {
+        "Ex": 1.0 / S[0, 0],
+        "Ey": 1.0 / S[1, 1],
+        "Ez": 1.0 / S[2, 2],
+        "Gyz": 1.0 / S[3, 3],
+        "Gxz": 1.0 / S[4, 4],
+        "Gxy": 1.0 / S[5, 5],
+        "nuxy": -S[1, 0] / S[0, 0],
+        "nuxz": -S[2, 0] / S[0, 0],
+        "nuyz": -S[2, 1] / S[1, 1],
     }
+    values.update(
+        {
+            "E_x": values["Ex"],
+            "E_y": values["Ey"],
+            "E_z": values["Ez"],
+            "G_yz": values["Gyz"],
+            "G_xz": values["Gxz"],
+            "G_xy": values["Gxy"],
+            "nu_xy": values["nuxy"],
+            "nu_xz": values["nuxz"],
+            "nu_yz": values["nuyz"],
+        }
+    )
+    return values
 
 
 _PLANE_AXES = {"xy": (0, 1), "xz": (0, 2), "yz": (1, 2)}

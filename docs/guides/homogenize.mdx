@@ -40,30 +40,20 @@ From `result.engineering_constants` or the run JSON:
 
 `CoreResult.material` maps `Exx→Ex`, `Eyy→Ey`, `Ezz→Ez` and `rho_infused→rho`.
 
-## Markdown table (agent default)
+## Agent payload
 
-Present moduli in **GPa** (divide Pa by 1e9):
+`b3_core run --json --units GPa` prints moduli and the 6×6 already in GPa.
+Poisson ratios stay dimensionless. Do not divide pascals by 1e9.
 
-```python
-from b3_core import homogenize
-
-r = homogenize("case.json")
-m = r.material
-
-rows = [
-    ("Ex", f"{m.Ex/1e9:.4f} GPa"),
-    ("Ey", f"{m.Ey/1e9:.4f} GPa"),
-    ("Ez", f"{m.Ez/1e9:.4f} GPa"),
-    ("Gxy", f"{m.Gxy/1e9:.4f} GPa"),
-    ("Gxz", f"{m.Gxz/1e9:.4f} GPa"),
-    ("Gyz", f"{m.Gyz/1e9:.4f} GPa"),
-    ("νxy", f"{m.nuxy:.4f}"),
-    ("νxz", f"{m.nuxz:.4f}"),
-    ("νyz", f"{m.nuyz:.4f}"),
-    ("ρ infused", f"{m.rho:.1f} kg/m³"),
-    ("resin Vf", f"{r.resin_volume_fraction:.3f}"),
-]
+```bash
+b3_core run case.json --json --units GPa --no-write
 ```
+
+`properties.Ex.value` is the number. `properties.Ex.unit` is `GPa`.
+`stiffness_unit` matches `stiffness`. `geometry.rho_infused` is
+`{value, unit: "kg/m^3"}`. A failure prints
+`{"error": {"type", "message", "hint"}}` and exits non-zero.
+`homogenize()` still returns pascals on `CoreResult`.
 
 ## JSON material card
 
@@ -125,7 +115,7 @@ from b3_core.viz import CoreModel
 
 model = CoreModel.from_json("case.json")
 C = model.stiffness       # Pa, Voigt order xx,yy,zz,yz,xz,xy
-C_GPa = C * 1e-9
+# A GPa table reads stiffness from `b3_core run --json --units GPa`.
 ```
 
 ## Downstream targets

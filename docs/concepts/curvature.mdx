@@ -101,7 +101,12 @@ or interpenetration of pinched foam walls is not modelled.
 
 ## Geometry model
 
-A curvature `kx` / `ky` **[1/mm]** acts on the corresponding groove family
+A curvature `kx` / `ky` is stored in **1/mm**. CLI flags take `--unit 1/mm`,
+`1/m`, `R-mm`, or `R-m` and echo the value they stored. The signed radius in
+metres is `1 / (1000 k)`; `k = 0` is flat. `k > 0` puts the centre of
+curvature on the mould side of `z = 0`.
+
+`kx` / `ky` acts on the corresponding groove family
 (`kx` → `xgr`, `ky` → `ygr`). Each groove wall rotates about the **root corner**:
 
 ```
@@ -134,7 +139,9 @@ opened = curved_panel(kx=0.012)
 # Bottom mouth (grid score): negative kx opens. Same call as .with_curvature.
 result = homogenize(grid_scored(cell_size=0.6), kx=-0.008)
 # Before a solve: case.input.kerf_openings(). After: result.kerfs.
-# Each row is axis, mouth, pitch_mm, hw_root_mm, hw_mouth_mm.
+# Each row carries axis, mouth, opens_for ("k>0" or "k<0"), pitch, and
+# the root and mouth half-widths. Read opens_for. Do not invent a global
+# "x opens when k < 0" sentence: a top mouth and a bottom mouth disagree.
 ```
 
 `auto` solves that tapered halo case with MFEM.

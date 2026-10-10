@@ -974,3 +974,52 @@ def plot_stiffness_moduli_vs_curvature(
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=6.5, ncol=4, loc="best")
     return fig
+
+
+def plot_sign_schematic(
+    *,
+    kx: float = 0.004,
+    pitch: float = 10.0,
+    thickness: float = 20.0,
+    width: float = 3.0,
+    depth: float = 8.0,
+    theme: CoreTheme = DEFAULT_THEME,
+    figsize: tuple[float, float] = (7.2, 3.2),
+) -> plt.Figure:
+    """Two families at one positive k. Each title is that mouth's ``opens_for``.
+
+    Wall polylines use the same ``hw(z)`` law as the halo curvature figures.
+    ``k > 0`` puts the centre of curvature on the mould side of ``z = 0``.
+    """
+    from b3_core.core.mesh import hw_at
+
+    hw0 = 0.5 * float(width)
+    panels = (
+        ("bottom", "k<0", float(depth)),
+        ("top", "k>0", -float(depth)),
+    )
+    with plt.rc_context(theme.publication_rcparams()):
+        fig, axes = plt.subplots(
+            1, 2, figsize=figsize, layout="constrained", sharey=True
+        )
+        for ax, (mouth, opens_for, signed_depth) in zip(axes, panels, strict=True):
+            slope = -float(np.sign(signed_depth)) * float(kx) * float(pitch) / 2.0
+            if signed_depth > 0.0:
+                zs = np.linspace(0.0, signed_depth, 80)
+            else:
+                zs = np.linspace(thickness + signed_depth, thickness, 80)
+            half = np.array(
+                [hw_at(hw0, signed_depth, slope, float(z), thickness) for z in zs]
+            )
+            centre = float(pitch)
+            ax.plot(centre - half, zs, color=theme.edge_color, lw=1.6)
+            ax.plot(centre + half, zs, color=theme.edge_color, lw=1.6)
+            ax.axhline(0.0, color="#888888", lw=0.6, ls=":")
+            ax.set_title(f"{mouth} mouth · opens for {opens_for}", fontsize=9)
+            ax.set_xlabel("x [mm]")
+        axes[0].set_ylabel("z [mm]  (0 = mould)")
+        fig.suptitle(
+            f"k = {float(kx):g} /mm  ·  centre on the mould side of z = 0",
+            fontsize=10,
+        )
+    return fig

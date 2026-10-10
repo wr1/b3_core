@@ -113,9 +113,11 @@ input alias for `mouth: top` (the groove opens at `z = thickness`).
 | `core`, `resin` | Constituent materials (Pa, kg/m³) |
 | `core.cell_size` | Foam cell size [mm] — enables resin halo (see below) |
 | `scoring` | Halo tuning: `damage_cells`, `sampling` strategy |
-| `curvature` | `{"kx", "ky"}` [1/mm]. Flat-RVE kerf taper `hw(z)`, not a curved mesh. Positive `kx` opens a top-mouth x-groove and pinches a bottom-mouth one |
+| `curvature` | `{"kx", "ky"}` stored in 1/mm. Flat-RVE kerf taper `hw(z)`, not a curved mesh. Each `kerf_openings` row has `opens_for` (`k>0` on a top mouth, `k<0` on a bottom mouth). Read that row. CLI curvature flags take `--unit 1/mm\|1/m\|R-mm\|R-m` and store 1/mm. Signed radius in metres is `1/(1000·k)`; `k=0` is `0 (flat)` |
 | `face` | `{"thickness": mm}` optional stabilising layer |
-| `backend` | `"auto"` (default), `"mfem"`, `"ccx"`, `"fenicsx"`, `"numpy"` |
+| `backend` | `"auto"` (default), `"mfem"`, `"ccx"`, `"fenicsx"`, `"numpy"`. Curved `auto` is FEniCSx only |
+| `allow_pair_periodicity` | `true` re-enables MFEM on a curved case (z-prolongation cross-check). Part of the cache key |
+| `allow_non_periodic` | `true` keeps a pitch that does not tile `dx` or `dy`. Default rejects that case. Part of the cache key |
 | `validate_with_ccx` | `true` to cross-check against CalculiX |
 
 Example cases ship under `examples/` when developing from source
@@ -248,9 +250,12 @@ raw = cprop("case.json")                  # deprecated: flat dict, overwrites ru
 ```
 
 Default backend is **`auto`**: FEniCSx when installed, otherwise MFEM, for
-isotropic, orthotropic, and graded resin halo. FEniCSx projects a periodic image
-onto the master cell when the face is not a tensor grid, and it returns
-displacements for datasheet and deformed views. Numpy is the last resort.
+isotropic, orthotropic, and graded resin halo on a **flat** case. A curved
+case (`kx` or `ky` nonzero) uses FEniCSx only. If it is not installed,
+`auto` raises. Pass `backend="numpy"` only when you accept the documented
+O(k^2) offset. `mfem` on a curved case needs `allow_pair_periodicity=True`.
+FEniCSx projects a periodic image onto the master cell when the face is not
+a tensor grid, and it returns displacements for datasheet and deformed views.
 PyMFEM is a required dependency. Use `backend: ccx` when you need CalculiX
 (`ccx` + `frd2vtu` on PATH).
 Repeated solves do not raise. Pass a cache (see Files and caching).
@@ -274,32 +279,31 @@ From `cprop` / `run*.json` or `result.engineering_constants`:
 
 `CoreResult.material` maps `Exx→Ex`, `Eyy→Ey`, `Ezz→Ez` plus `rho_infused→rho`.
 
-### Present as a markdown table (agent default)
+### Present from the agent payload
 
-After a run, format the constants for the user / downstream FEA deck:
+Do not scale pascals by hand. `b3_core run --json` returns moduli and stiffness
+already in the requested unit:
 
-```python
-from b3_core import homogenize
-
-r = homogenize("case.json")
-m = r.material
-
-rows = [
-    ("Ex", f"{m.Ex/1e9:.4f} GPa"),
-    ("Ey", f"{m.Ey/1e9:.4f} GPa"),
-    ("Ez", f"{m.Ez/1e9:.4f} GPa"),
-    ("Gxy", f"{m.Gxy/1e9:.4f} GPa"),
-    ("Gxz", f"{m.Gxz/1e9:.4f} GPa"),
-    ("Gyz", f"{m.Gyz/1e9:.4f} GPa"),
-    ("νxy", f"{m.nuxy:.4f}"),
-    ("νxz", f"{m.nuxz:.4f}"),
-    ("νyz", f"{m.nuyz:.4f}"),
-    ("ρ infused", f"{m.rho:.1f} kg/m³"),
-    ("resin Vf", f"{r.resin_volume_fraction:.3f}"),
-]
+```bash
+b3_core run path/to/case.json --json --units GPa --no-write
 ```
 
-Show this table in the response. Include GPa for moduli (divide Pa by 1e9).
+Read `properties.<name>.value` and `properties.<name>.unit`. Moduli (`Ex`, `Ey`,
+`Ez`, `Gxy`, `Gxz`, `Gyz`, and the `Exx` aliases) use `GPa` when `--units GPa`
+is set. Poisson ratios stay dimensionless (`unit` is `-`). `stiffness` matches
+`stiffness_unit`. `geometry.rho_infused` is `{value, unit: "kg/m^3"}`. The
+payload also has `case_hash`, `backend`, `provenance`, `cache_hit`,
+`elapsed_s`, `diagnostics`, and `written` (`null` with `--no-write`).
+`diagnostics.checks` lists `{id, status, value}` (`ok`, `warn`, or `fail`).
+`diagnostics.ties` lists `{face, top_nodes, slaves, identity, multi_node_rows, ok}`.
+`b3_core run --strict` exits 1 when a check is warn or fail, or a tie is not ok.
+`b3_core report ties CASE --kx --ky [--unit 1/mm|1/m|R-mm|R-m] --json` prints
+the coordinate ties and does not solve. `kx` and `ky` in that payload are
+1/mm, with `kx_tick` / `ky_tick` as `k (R = … m)`. The same `--unit` is on
+`check backends`, `surrogate lookup`, `viz halo-curvature`, and `viz sign`.
+
+A failure prints `{"error": {"type", "message", "hint"}}` and exits non-zero.
+`homogenize()` still returns SI pascals on `CoreResult` for Python callers.
 
 ### JSON material card (for matdb / scripts)
 
@@ -362,12 +366,13 @@ Substitute SI values from `result.material`. Temperature line is placeholder
 from b3_core import homogenize
 
 C = homogenize(case).stiffness   # Pa, 6×6
-C_GPa = C * 1e-9                 # for tables
 ```
 
 Use when the downstream solver needs the full anisotropic tensor rather than
-engineering constants. `CoreModel.stiffness` is the same tensor when a figure
-or a displacement field is also required.
+engineering constants. For a table, read `stiffness` from
+`b3_core run --json --units GPa` (`stiffness_unit` is `GPa`).
+`CoreModel.stiffness` is the same tensor in pascals when a figure or a
+displacement field is also required.
 
 ## 4. Reports
 
@@ -387,7 +392,8 @@ spec = generate("case.json", "report.pdf", out_png="report.png")
 # spec.engineering_constants, spec.c_eff_gpa available programmatically
 ```
 
-Needs `typst` on PATH.
+Needs `typst` on PATH. That command is the flat card. A curvature datasheet
+is `viz datasheet --full` (see Report a datasheet).
 
 ### Terminal comparison table (parametric sweeps)
 
@@ -400,6 +406,92 @@ Response curves / gallery / GIFs: `examples/offline/`.
 ```bash
 b3_core viz view case.json --what gallery -o board.png
 ```
+
+## Calibrate to a sparse datasheet
+
+Classify the measured rows, free the smallest parameter set the decision
+table allows, and stop when the fit is not inside two standard deviations.
+Do not put absolute customer moduli in the spec. Targets are the caller's
+numbers.
+
+**Procedure**
+
+1. Classify the data with `fit.split_basis`. Neat rows are fixed inputs.
+   Infused rows are targets. Record the test method and `axis_map` on each
+   target. Groove-parallel and groove-normal are not the machine axes until
+   that map says so.
+2. `b3_core fit bounds CASE --json`. Every parameter starts fixed.
+3. If infused density or resin uptake exists, `b3_core fit estimate-halo`.
+   Then fix `halo_cell_size` at the estimate, or leave it free inside that
+   interval at step 5. The estimate does not solve.
+4. Choose the free set from the table below.
+5. `b3_core fit sensitivity` at the prior mean. Drop a weak parameter. For
+   each collinear pair (`|corr| > 0.95`), fix the one later in this order:
+   `halo_cell_size` (when mass is known) > `foam_Ez_scale` > `foam_G_scale`
+   > `foam_E_scale` > `kerf_width` > `resin_E`.
+   Require `n_free ≤ n_targets_used`. When `n_free < 3`, call `fit refine`
+   and skip the response surface.
+6. `b3_core fit run FITSPEC --out DIR --json` when `n_free ≥ 3` (design,
+   quadratic surface, then refine). Exit is 0 only for `converged`,
+   `rsm_only`, or `no_free_params`.
+7. Accept only when `status` is `converged` and every `|z| ≤ 2`. Otherwise
+   print the residuals and stop. Do not widen bounds to force a pass.
+8. Pass `calibrated_case.json` to `b3_core sweep grid --fit-result`.
+
+Mass means infused density or resin uptake.
+
+| Data available | Free | Fixed | Status |
+|---|---|---|---|
+| Nothing tested | — | foam from `estimate_foam`, resin typical, halo at the case cell size | `no_free_params`. Label the sheet "predicted, not calibrated" |
+| Mass only | `halo_cell_size` via `estimate-halo` | foam neat or estimated, resin | Density and volume fractions only. Moduli stay predicted |
+| Neat foam card + mass | `halo_cell_size` | foam = neat card, resin | Same, with the neat card as the foam basis |
+| Infused Ez only | `foam_Ez_scale` | everything else; halo from mass when mass exists | One-parameter fit |
+| Infused Ez + Gxz or Gyz | `foam_Ez_scale`, `foam_G_scale` | in-plane foam, resin; halo from mass | Usually well conditioned |
+| Those plus mass | add `halo_cell_size` inside the estimate-halo interval | in-plane foam, resin | Mass separates halo from stiffness |
+| In-plane Ex or Ey, no mass | `halo_cell_size` or `foam_E_scale`, never both | the other one | Prefer `foam_E_scale` when no neat card exists; prefer the halo when it does |
+| In-plane + mass + neat foam | `halo_cell_size`, and `kerf_width` only if the groove was not measured | foam neat, resin | `resin_E` stays fixed unless a resin coupon exists |
+| Ex, Ey, Ez, Gxz, Gyz, and mass | at most four of `foam_E_scale`, `foam_Ez_scale`, `foam_G_scale`, `halo_cell_size` | resin and kerf width | Run sensitivity. Free `kerf_width` only with a measured groove section |
+
+**Axis map.** `Target.axis_map` rewrites a test-axis name onto the model
+axis (`Ex`, `Ey`, `Ez`, `Gxy`, `Gxz`, `Gyz`). A uniaxial groove pattern is
+anisotropic: the tested in-plane direction is groove-parallel or
+groove-normal, and the other in-plane modulus is predicted. The datasheet
+says which one was measured.
+
+`Material.source` is `neat`, `infused`, `estimated`, or `calibrated`.
+`Material.reference` is a short citation. Neither field enters the cache key.
+
+## Report a datasheet
+
+The agent writes only `prose.json`. It does not edit Typst, table cells, or
+copied numbers. Any check with `ok: false` stops the task.
+
+1. Sweep: `b3_core sweep grid CASE --backend fenicsx --out DIR --json`.
+   A nonzero `kx` with no x-grooves, or `ky` with no y-grooves, is an error
+   unless `--allow-inert-axis`.
+2. Figures: `b3_core viz figs DIR/manifest.json --out DIR`.
+3. `b3_core check accept project.yaml --json` before prose. Missing
+   artifacts fail closed. The library default does not load a customer
+   profile. Pass `--profile` only when the caller names one.
+4. Write `prose.json`: `title`, `summary` (≤ 400 characters),
+   `intended_use` and `limitations` (≤ 160 each), optional `notes`.
+5. `b3_core viz datasheet CASE --full --prose prose.json --sweep DIR/manifest.json --draft`
+   while the stamp is not ok. Drop `--draft` only after `check accept`
+   returns `ok`. A curved sheet that is not accepted carries the footnote
+   "cross-checked on flat; curved values FEniCSx".
+6. Confirm the PDF with `pdftotext -layout` and `pdfinfo`. A text session
+   cannot see the figures; say so.
+
+Curvature labels are `k (R = … m)` from `curvature_tick`. `k = 0` is
+`0 (flat)`. Signed radius in metres is `1/(1000·k)` with the sign of `k`.
+Read `opens_for` on each kerf row. Flat backend pairs fail above 0.01 %
+relative difference. Curved pairs above 0.1 % fail `check accept`; the
+halo mesh in the backends reference sits under that bar. Quote that table.
+Do not type moduli into the sheet.
+
+`b3_core report build project.yaml --out DIR` writes `report.md`,
+`report.typ`, and `version.json` from the project file. The skeleton is
+not a substitute for `prose.json`.
 
 ## 5. Downstream FEA integration
 
@@ -429,11 +521,16 @@ result = homogenize(case, cache=DiskCache(".b3cache"))
 ```
 
 `cache=None` is a null cache. `MemoryCache` is process-local. `DiskCache`
-writes `root/<key[:2]>/<key>.json` atomically. The key is `CACHE_SCHEMA`, the
-resolved backend, and the canonical case JSON. It does not include the package
-version. CalculiX scratch files go to a temporary directory unless the solve
-request names a workdir. `b3_core run` writes a run file and caches only when
-`--cache DIR` is set. `b3_core sweep` caches in `<study>/.b3cache`.
+writes `root/<key[:2]>/<key>.json` atomically. The key is `CACHE_SCHEMA` (2),
+a per-backend `SOLVER_STAMP`, the resolved backend, and the canonical case
+JSON. It does not include the package version. A stored stamp that does not
+match the current backend stamp is a miss, never a hit. `b3_core cache stats`,
+`cache inspect` (`cache ls`), and `cache purge --stale` list entries and
+delete stale stamps. `cache export DEST` zips the JSON entries and a stamp
+manifest. `cache import BUNDLE` copies them and skips keys that already
+exist unless `--overwrite`. CalculiX scratch files go to a temporary directory unless
+the solve request names a workdir. `b3_core run` writes a run file and caches
+only when `--cache DIR` is set. `b3_core sweep` caches in `<study>/.b3cache`.
 
 ## Surrogate sweeps
 
@@ -460,9 +557,18 @@ b3_core run case.yaml
 b3_core sweep homogenize
 b3_core viz datasheet case.json -o core.pdf --png core.png
 b3_core skill --stdout    # load this document
+b3_core doctor --json     # FEniCSx import, MPI, MUMPS, 2×2×2 solve
+b3_core report ties case.json --kx 5e-5 --json
+b3_core check backends case.json --points "0,0 5e-5,0" --json
+b3_core check cross case.json
+b3_core check accept project.yaml --json
+b3_core sweep grid case.json --dry-run
+b3_core fit bounds case.json --json
+b3_core viz datasheet case.json --full --draft --prose prose.json
 ```
 
-**Units:** input geometry mm; output moduli Pa; present moduli as GPa in tables.
+**Units:** input geometry mm; Python output moduli Pa. Present a table from
+`b3_core run --json --units GPa` (moduli already in GPa).
 **Backends:** `auto` prefers `fenicsx` when installed, otherwise `mfem`. Both
 handle isotropic, orthotropic, and `core.cell_size` (resin halo). FEniCSx
 projects the periodic image onto the master cell. Numpy is the fallback.

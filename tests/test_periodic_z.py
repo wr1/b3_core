@@ -10,6 +10,7 @@ from b3_core.solvers.fenicsx import (
     _hex_space,
     _periodic_constraint,
     is_fenicsx_available,
+    mpc_tie_report,
     runfenicsx,
 )
 from b3_core.solvers.mfem import is_mfem_available, runmfem
@@ -236,6 +237,11 @@ def test_taper_fenicsx_z_face_uses_the_interpolant():
             gap = np.min(np.linalg.norm(coords[masters, :2] - image, axis=1))
             assert gap > 1e-7
     assert multi >= 1
+    tapered = {row["face"]: row for row in mpc_tie_report(mpc, coords)}
+    assert tapered["z"]["slaves"] == tapered["z"]["top_nodes"]
+    assert tapered["z"]["ok"]
+    assert tapered["z"]["multi_node_rows"] >= 1
+    assert tapered["z"]["identity"] is False
 
     # x = dx, off the other high faces, is still an exact node copy.
     side = [
@@ -265,3 +271,7 @@ def test_taper_fenicsx_z_face_uses_the_interpolant():
         assert weights[0] == pytest.approx(1.0)
         image = _periodic_image(flat_coords, node, flat_points)
         assert np.allclose(flat_coords[masters[0], :2], image, atol=1e-8)
+    flat_ties = {row["face"]: row for row in mpc_tie_report(flat_mpc, flat_coords)}
+    assert flat_ties["z"]["identity"]
+    assert flat_ties["z"]["multi_node_rows"] == 0
+    assert flat_ties["z"]["slaves"] == flat_ties["z"]["top_nodes"]

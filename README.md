@@ -45,7 +45,7 @@ Prefer building the RVE in **Python** (factories / `CpropInput`). JSON/YAML are
 optional interchange for the CLI and frozen fixtures.
 
 ```bash
-uv sync --extra dev
+uv sync --locked --extra dev
 ```
 
 ```python
@@ -177,14 +177,16 @@ and `homogenize_to_disk` write one `run<hash12>.json`. Sweep caches live in
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM (`mfem`; a required dependency; `auto` selects it for isotropic cases)
+- FEniCSx (`dolfinx` + `dolfinx_mpc`; optional conda-forge stack, not installed by `uv sync`). When that environment is present, `auto` uses it for isotropic, orthotropic, and graded-halo cases. A curved case uses FEniCSx only
+- PyMFEM (`mfem`; required). On a flat case, `auto` uses it when FEniCSx is not installed
 - CalculiX + `frd2vtu` only for `backend: ccx` / `validate_with_ccx`
-- `treeparse` (PyPI), `b3_mat` (git: `wr1/b3_mat`) via `pyproject.toml`
-- `typst` only for datasheets
+- `treeparse>=0.3.4,<0.4` (PyPI), `b3_mat` (git: `wr1/b3_mat`) via `pyproject.toml`
+- `typst` for datasheets (`uv sync --extra report`, or the `typst` binary on `PATH`)
 
 ```bash
-uv sync --extra dev          # package + pytest + ruff + pre-commit
-uv sync --extra anim         # optional GIF/MP4 explainer
+uv sync --locked --extra dev    # package + pytest + ruff + pre-commit
+uv sync --extra anim            # optional GIF/MP4 explainer
+uv sync --extra report          # optional Python typst compiler
 ```
 
 ### Python 3.12 and pip
@@ -200,7 +202,7 @@ python -m pip install --upgrade pip
 pip install "numba>=0.60"
 pip install "mfem" --no-deps
 pip install "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
-  "pydantic>=2" "pyyaml" "treeparse" "rich>=13" \
+  "pydantic>=2" "pyyaml" "treeparse>=0.3.4,<0.4" "rich>=13" \
   "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
   "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
 pip install --no-deps .
@@ -211,7 +213,7 @@ Prefer `uv sync` when you can. The CI job `pip-install-smoke` runs the recipe ab
 ## Development
 
 ```bash
-make install           # uv sync --extra dev && git hooks → .githooks (ruff)
+make install           # uv sync --locked --extra dev && git hooks → .githooks (ruff)
 make lint              # ruff check
 make format            # ruff format + fix
 make pre-commit        # full hooks

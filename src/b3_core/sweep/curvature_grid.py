@@ -1,9 +1,10 @@
 """κ × cell_size (× ky) homogenisation grid for surrogate training.
 
 The parametric base case is the compact top-mouth RVE previously built inside
-``viz.halo``. Solves go through :func:`b3_core.api.run_case` with ``auto``:
-FEniCSx when that environment is installed, otherwise MFEM. Both grade a
-resin halo. Numpy remains the last resort.
+``viz.halo``. Flat rows use ``auto`` (FEniCSx when it imports, otherwise
+MFEM). Curved rows use FEniCSx, or MFEM with ``allow_pair_periodicity`` when
+FEniCSx is absent, so surrogate training still runs. Numpy stays the explicit
+curved opt-in for a published case.
 """
 
 from __future__ import annotations
@@ -61,8 +62,11 @@ def homogenize_halo_curvature(
 ) -> dict[str, Any]:
     """One homogenization at ``kx``, ``ky`` and halo width ``cell_size``.
 
-    The backend is ``auto``. ``cell_size is None`` or ``<= 0`` is a sharp
-    kerf. Face thickness comes from ``base`` (the parametric case has none).
+    The backend is ``auto``. A curved row (``kx`` or ``ky`` nonzero) follows
+    the curved rule: FEniCSx when it imports, otherwise MFEM with
+    ``allow_pair_periodicity`` so this training grid still runs where
+    FEniCSx is absent. ``cell_size is None`` or ``<= 0`` is a sharp kerf.
+    Face thickness comes from ``base`` (the parametric case has none).
     """
     inp = dict(base or parametric_base_case())
     core = dict(inp.get("core") or {})
@@ -75,7 +79,17 @@ def homogenize_halo_curvature(
     inp["resin"] = resin
     curvature = {"kx": float(kx), "ky": float(ky)}
     inp["curvature"] = curvature
-    record = run_case(inp, cache=cache)
+    kwargs: dict[str, Any] = {"cache": cache}
+    if float(kx) != 0.0 or float(ky) != 0.0:
+        from b3_core.pipeline import fenicsx_installed
+
+        if not fenicsx_installed():
+            # Surrogate training, not a published curved datasheet. Pair
+            # periodicity is the MFEM cross-check. The curved reference is
+            # the tolerance table in the backends reference.
+            kwargs["backend"] = "mfem"
+            kwargs["allow_pair_periodicity"] = True
+    record = run_case(inp, **kwargs)
     flat = record.flat()
     exx, eyy, ezz = float(flat["Exx"]), float(flat["Eyy"]), float(flat["Ezz"])
     return {

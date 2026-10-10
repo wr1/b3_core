@@ -96,3 +96,22 @@ class CoreTheme:
 
 
 DEFAULT_THEME = CoreTheme()
+
+# Datasheet figures. One row is a pair of cuts; two rows are a heatmap group.
+DPI = 150
+FIGSIZE_ONE_ROW = (9.6, 3.2)
+FIGSIZE_TWO_ROW = (9.6, 5.0)
+
+
+def percent_vmax(values) -> float:
+    """Symmetric color limit, rounded up to the next percent."""
+    import math
+
+    peak = 0.0
+    for value in values:
+        if value is None:
+            continue
+        peak = max(peak, abs(float(value)))
+    if peak == 0.0:
+        return 1.0
+    return float(math.ceil(peak - 1e-12))

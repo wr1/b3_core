@@ -25,6 +25,20 @@ def _base(**kw):
     return d
 
 
+def test_pitch_must_tile_unless_allowed():
+    with pytest.raises(ValidationError, match="allow_non_periodic"):
+        CpropInput(**_base(dx=30.0, xgr=[[0.0, 8.0, 10.0, 1.0]]))
+    kept = CpropInput(
+        **_base(dx=30.0, xgr=[[0.0, 8.0, 10.0, 1.0]], allow_non_periodic=True)
+    )
+    assert kept.allow_non_periodic is True
+    dumped = kept.model_dump()
+    assert dumped["allow_non_periodic"] is True
+    again = CpropInput(**dumped)
+    assert again.allow_non_periodic is True
+    assert CpropInput(**_base(dx=30.0, xgr=[[0.0, 10.0, 10.0, 1.0]])).dx == 30.0
+
+
 def test_cprop_input_validators():
     with pytest.raises(ValidationError):
         CpropInput(**_base(element_type="C3D99"))

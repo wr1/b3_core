@@ -11,7 +11,7 @@ import numpy as np
 from b3_core.solvers.calculix.stress import (
     case_tag,
     macro_strain_from_displacement,
-    stiffness_from_responses,
+    split_stiffness_from_responses,
     volume_average_from_dat,
 )
 from b3_core.solvers.elasticity import (
@@ -89,12 +89,13 @@ class CalculixBackend:
                 )
                 stresses.append(volume_average_from_dat(dat_path.read_text(), volumes))
                 del tag
-            stiffness = stiffness_from_responses(strains, stresses)
+            stiffness, raw = split_stiffness_from_responses(strains, stresses)
             properties, compliance = properties_from_stiffness(stiffness)
             return SolveResult(
                 stiffness=np.asarray(stiffness, dtype=float),
                 properties=properties,
                 compliance=np.asarray(compliance, dtype=float),
+                raw_stiffness=np.asarray(raw, dtype=float),
             )
         finally:
             if cleanup is not None:

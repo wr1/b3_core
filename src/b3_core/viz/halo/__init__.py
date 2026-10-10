@@ -7,6 +7,7 @@ from b3_core.viz.halo.curvature_figs import (
     plot_halo_curvature_compose,
     plot_halo_curvature_wall_strip,
     plot_halo_follows_angled_walls,
+    plot_sign_schematic,
     plot_stiffness_moduli_vs_curvature,
     plot_stiffness_vs_curvature_halo,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "plot_halo_intuitive_board",
     "plot_halo_sharp_vs_scored",
     "plot_halo_side_cut",
+    "plot_sign_schematic",
     "render_halo_3d_png",
     "render_halo_curvature_figures",
     "render_halo_figures",

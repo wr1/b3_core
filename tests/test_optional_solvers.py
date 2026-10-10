@@ -82,7 +82,10 @@ def test_fenicsx_curved_halo_matches_mfem(caplog):
     if not get_backend("fenicsx").is_available():
         pytest.skip("FEniCSx is not installed")
     case = grid_scored().with_curvature(kx=2e-3)
-    ref = np.asarray(homogenize(case, backend="mfem").stiffness, dtype=float)
+    ref = np.asarray(
+        homogenize(case, backend="mfem", allow_pair_periodicity=True).stiffness,
+        dtype=float,
+    )
     numpy_C = np.asarray(homogenize(case, backend="numpy").stiffness, dtype=float)
     got = _fenicsx_stiffness(case, caplog)
     scale = np.abs(ref).max()

@@ -7,10 +7,12 @@ but they no longer share (x, y) locations, so a coordinate tie drops the
 through-thickness pairs.
 
 The periodic condition on that face is the trace of the fluctuation:
-``w(x, y, H) = w(x, y, 0)``. A top node is the bilinear interpolant of the
-bottom-face cell that contains its (x, y). When every top node already sits
-on a bottom node, the weights are a permutation and the solvers keep the
-node-to-node tie.
+``w(x, y, H) = w(x, y, 0)``. The master face is the one whose transverse
+lines are more evenly spaced, and the other face is the bilinear interpolant
+of that grid. A flat mesh keeps the bottom face as master, which is the
+node-to-node tie when the two faces share coordinates. Choosing the bottom
+face unconditionally makes a bottom-mouth pinch and its z-mirror different
+discrete problems.
 """
 
 from __future__ import annotations
@@ -22,18 +24,20 @@ import numpy as np
 
 @dataclass(frozen=True)
 class ZFaceTies:
-    """One row per ``z = H`` node.
+    """One row per slave-face node.
 
-    ``masters`` are ``z = 0`` node indices. ``weights`` are the bilinear
-    values at the slave's (x, y); they sum to 1. ``identity`` is true when
-    every slave lands on a single bottom node in the same coordinate hash the
-    node-to-node tie uses.
+    ``masters`` are node indices on the master face. ``weights`` are the
+    bilinear values at the slave's (x, y); they sum to 1. ``identity`` is
+    true when every slave lands on a single master node in the same
+    coordinate hash the node-to-node tie uses. On a flat mesh the slaves are
+    the ``z = H`` nodes.
     """
 
     identity: bool
     slave: np.ndarray
     masters: np.ndarray
     weights: np.ndarray
+    master: str = "bottom"
 
 
 def _span(points: np.ndarray) -> float:
@@ -76,8 +80,36 @@ def _xy_hash(points: np.ndarray, xy: np.ndarray) -> np.ndarray:
     return np.round((np.asarray(xy, dtype=float) - lo[:2]) / span, 6)
 
 
+def _min_gap(vals: np.ndarray, tol: float) -> float:
+    lines = _cluster_lines(vals, tol)
+    if len(lines) < 2:
+        return 0.0
+    return float(np.diff(lines).min())
+
+
+def master_on_bottom(points: np.ndarray) -> bool:
+    """True when the ``z = 0`` face is the periodic master.
+
+    The master is the face with the larger minimum transverse gap, so a
+    pinched mouth is the slave and its z-mirror uses the same discrete space.
+    Equal gaps, including every flat mesh, keep ``z = 0``. A switch needs the
+    top gap to exceed twice the bottom gap, so a slight taper stays put.
+    """
+    points = np.asarray(points, dtype=float)
+    tol = face_tol(points)
+    lo = points.min(axis=0)
+    hi = points.max(axis=0)
+    on_bot = np.abs(points[:, 2] - lo[2]) < tol
+    on_top = np.abs(points[:, 2] - hi[2]) < tol
+    if not np.any(on_bot) or not np.any(on_top):
+        return True
+    bot_gap = min(_min_gap(points[on_bot, 0], tol), _min_gap(points[on_bot, 1], tol))
+    top_gap = min(_min_gap(points[on_top, 0], tol), _min_gap(points[on_top, 1], tol))
+    return not (top_gap > 2.0 * bot_gap)
+
+
 def z_face_ties(points: np.ndarray) -> ZFaceTies:
-    """Bilinear ties from every ``z = H`` node onto the ``z = 0`` tensor grid."""
+    """Bilinear ties of the less uniform z face onto the other face's grid."""
     points = np.asarray(points, dtype=float)
     if points.ndim != 2 or points.shape[1] != 3:
         raise ValueError("points must have shape (n, 3)")
@@ -91,10 +123,16 @@ def z_face_ties(points: np.ndarray) -> ZFaceTies:
     if len(bot_ids) == 0 or len(top_ids) == 0:
         raise ValueError("mesh has no nodes on a z face")
 
-    xs = _cluster_lines(points[bot_ids, 0], tol)
-    ys = _cluster_lines(points[bot_ids, 1], tol)
+    on_bottom = master_on_bottom(points)
+    master_name = "bottom" if on_bottom else "top"
+    master_ids = bot_ids if on_bottom else top_ids
+    slave_ids = top_ids if on_bottom else bot_ids
+    which = "z = 0" if on_bottom else "z = H"
+
+    xs = _cluster_lines(points[master_ids, 0], tol)
+    ys = _cluster_lines(points[master_ids, 1], tol)
     if len(xs) < 2 or len(ys) < 2:
-        raise ValueError("z = 0 face is not a 2-D grid")
+        raise ValueError(f"{which} face is not a 2-D grid")
 
     def _axis_index(vals: np.ndarray, lines: np.ndarray) -> np.ndarray:
         idx = np.searchsorted(lines, vals)
@@ -103,20 +141,21 @@ def z_face_ties(points: np.ndarray) -> ZFaceTies:
         use_prev = np.abs(vals - lines[prev]) <= np.abs(vals - lines[idx])
         idx = np.where(use_prev, prev, idx)
         if np.any(np.abs(vals - lines[idx]) > tol):
-            raise ValueError("z = 0 node does not lie on the tensor grid")
+            raise ValueError(f"{which} node does not lie on the tensor grid")
         return idx.astype(np.int64)
 
     grid = np.full((len(xs), len(ys)), -1, dtype=np.int64)
-    grid[_axis_index(points[bot_ids, 0], xs), _axis_index(points[bot_ids, 1], ys)] = (
-        bot_ids
-    )
+    grid[
+        _axis_index(points[master_ids, 0], xs),
+        _axis_index(points[master_ids, 1], ys),
+    ] = master_ids
     if np.any(grid < 0):
-        raise ValueError("z = 0 face is missing a tensor-grid node")
+        raise ValueError(f"{which} face is missing a tensor-grid node")
 
-    n = len(top_ids)
+    n = len(slave_ids)
     masters = np.empty((n, 4), dtype=np.int64)
     weights = np.empty((n, 4), dtype=float)
-    for s, node in enumerate(top_ids):
+    for s, node in enumerate(slave_ids):
         i, tx = _interval(float(points[node, 0]), xs)
         j, ty = _interval(float(points[node, 1]), ys)
         masters[s, 0] = grid[i, j]
@@ -128,7 +167,7 @@ def z_face_ties(points: np.ndarray) -> ZFaceTies:
         weights[s, 2] = (1.0 - tx) * ty
         weights[s, 3] = tx * ty
 
-    bot_keys = {tuple(row) for row in _xy_hash(points, points[bot_ids, :2])}
-    top_keys = _xy_hash(points, points[top_ids, :2])
-    identity = all(tuple(row) in bot_keys for row in top_keys)
-    return ZFaceTies(identity, top_ids, masters, weights)
+    master_keys = {tuple(row) for row in _xy_hash(points, points[master_ids, :2])}
+    slave_keys = _xy_hash(points, points[slave_ids, :2])
+    identity = all(tuple(row) in master_keys for row in slave_keys)
+    return ZFaceTies(identity, slave_ids, masters, weights, master_name)

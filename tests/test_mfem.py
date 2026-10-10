@@ -111,9 +111,30 @@ def test_mfem_halo_curvature_opens_kerf_and_matches_numpy():
     assert resolve_backend(base.input) == expected
     cache = MemoryCache()
     flat = homogenize(base, backend="mfem", cache=cache)
-    opened = homogenize(base, kx=-0.008, backend="mfem", cache=cache)
+    opened = homogenize(
+        base,
+        kx=-0.008,
+        backend="mfem",
+        cache=cache,
+        allow_pair_periodicity=True,
+    )
     numpy_opened = homogenize(base, kx=-0.008, backend="numpy")
-    record = run_case(base, kx=-0.008, cache=cache)
+    if get_backend("fenicsx").is_available():
+        record = run_case(base, kx=-0.008, cache=cache)
+        assert record.result.backend == "fenicsx"
+    else:
+        from b3_core.solvers.protocol import BackendCapabilityError
+
+        with pytest.raises(BackendCapabilityError):
+            run_case(base, kx=-0.008, cache=cache)
+        record = run_case(
+            base,
+            kx=-0.008,
+            backend="mfem",
+            cache=cache,
+            allow_pair_periodicity=True,
+        )
+        assert record.result.backend == "mfem"
 
     assert flat.kerfs[0]["hw_mouth_mm"] == pytest.approx(flat.kerfs[0]["hw_root_mm"])
     assert opened.kerfs[0]["mouth"] == "bottom"

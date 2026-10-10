@@ -47,6 +47,7 @@ class MfemResult:
     # visualisation. points are the base-grid coordinates (metres).
     displacements: dict | None = None
     points: np.ndarray | None = None
+    raw_stiffness: np.ndarray | None = None
 
 
 def is_mfem_available() -> bool:
@@ -395,8 +396,8 @@ def _solve_general(
 ):
     """Assemble and solve the six periodic cases with per-GP stiffness.
 
-    Returns ``(stiffness, correctors)`` where ``correctors[k]`` is the periodic
-    fluctuation ``w`` (global dof array) for load case ``k``.
+    Returns ``(stiffness, correctors, raw)``. ``raw`` is the energy matrix
+    before ``0.5(C+Cᵀ)``. ``correctors[k]`` is the fluctuation for load ``k``.
     """
     c_flat = c_gp.reshape(n_elem * nq, 6, 6)
     bilinear = mfem.BilinearForm(fes)
@@ -442,9 +443,9 @@ def _solve_general(
         correctors = _solve_reduced(bilinear, rhs_list, prolongation)
 
     w = np.column_stack(correctors)
-    stiffness = (t1 + load.T @ w) / total_volume
-    stiffness = 0.5 * (stiffness + stiffness.T)
-    return stiffness, correctors
+    raw = (t1 + load.T @ w) / total_volume
+    stiffness = 0.5 * (raw + raw.T)
+    return stiffness, correctors, raw
 
 
 def runmfem(
@@ -530,11 +531,18 @@ def runmfem(
         at_corner = np.flatnonzero(
             np.max(np.abs(points - origin), axis=1) < face_tol(points)
         )
-        if len(at_corner) != 1:
-            raise RuntimeError("expected one node at the low corner")
-        prolongation = _z_prolongation(
-            fes, peridx, ties, int(peridx[int(at_corner[0])])
-        )
+        slaves = {int(node) for node in ties.slave}
+        if len(at_corner) == 1 and int(at_corner[0]) not in slaves:
+            corner = int(at_corner[0])
+        else:
+            masters = [
+                int(node) for node in np.unique(ties.masters) if int(node) not in slaves
+            ]
+            if not masters:
+                raise RuntimeError("periodic tie left no master node to pin")
+            coords = points[masters]
+            corner = masters[int(np.lexsort((coords[:, 1], coords[:, 0]))[0])]
+        prolongation = _z_prolongation(fes, peridx, ties, int(peridx[corner]))
 
     general = _needs_general_path(core, resin, face, score_field)
     if general:
@@ -553,7 +561,7 @@ def runmfem(
             points_m=points,
             cells=cells,
         )
-        stiffness, correctors = _solve_general(
+        stiffness, correctors, raw_stiffness = _solve_general(
             mfem,
             fes,
             pinned,
@@ -647,6 +655,7 @@ def runmfem(
                     energy + load_vectors[k].dot(correctors[j])
                 ) / total_volume
 
+        raw_stiffness = np.array(stiffness, dtype=float, copy=True)
         stiffness = 0.5 * (stiffness + stiffness.T)
 
     properties, compliance = properties_from_stiffness(stiffness)
@@ -656,7 +665,14 @@ def runmfem(
             displacements[case] = (
                 points @ _macro_strain(case) + correctors[k][base_to_vdof]
             )
-        return MfemResult(properties, stiffness, compliance, displacements, points)
+        return MfemResult(
+            properties,
+            stiffness,
+            compliance,
+            displacements,
+            points,
+            raw_stiffness,
+        )
     return properties
 
 

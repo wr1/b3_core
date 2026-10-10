@@ -20,8 +20,10 @@ class UnknownBackendError(BackendError):
 class BackendCapabilityError(BackendError):
     """The requested backend cannot represent this case.
 
-    In 0.3 an incapable explicit backend warns and falls back to numpy.
-    From 1.0 ``resolve_backend`` raises this exception instead.
+    In 0.3 an incapable explicit backend warns and falls back, except a curved
+    case: ``mfem`` and ``ccx`` raise immediately because a coincident-node tie
+    on a tapered z face is the wrong number. From 1.0 every incapable explicit
+    backend raises.
     """
 
 
@@ -32,6 +34,7 @@ class Capabilities:
     face_layer: bool
     displacements: bool
     element_types: frozenset[str] = frozenset({"C3D8"})
+    interpolated_periodicity: bool = False
 
 
 @dataclass(frozen=True)
@@ -55,18 +58,27 @@ class SolveResult:
     displacements: dict[str, np.ndarray] | None = None
     points: np.ndarray | None = None
     extras: dict[str, float] = field(default_factory=dict)
+    # Matrix before ``0.5(C+Cᵀ)``. Fenicsx does not symmetrise, so this matches
+    # ``stiffness``. Absent on older result objects.
+    raw_stiffness: np.ndarray | None = None
+    # Per-face periodic ties. None means the caller builds them from the mesh.
+    ties: list[dict[str, Any]] | None = None
 
 
 def as_solve_result(result: Any, *, details: bool) -> SolveResult:
     """Adapt a legacy ``*Result`` object to :class:`SolveResult`."""
     displacements = getattr(result, "displacements", None)
     points = getattr(result, "points", None)
+    raw = getattr(result, "raw_stiffness", None)
+    ties = getattr(result, "ties", None)
     return SolveResult(
         stiffness=np.asarray(result.stiffness, dtype=float),
         properties=dict(result.properties),
         compliance=np.asarray(result.compliance, dtype=float),
         displacements=displacements if details else None,
         points=points if details else None,
+        raw_stiffness=None if raw is None else np.asarray(raw, dtype=float),
+        ties=None if ties is None else [dict(row) for row in ties],
     )
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
+import functools
 from dataclasses import dataclass
 
 import numpy as np
@@ -35,11 +35,30 @@ class FenicsxResult:
     # u = E·(x − x0) + w on the mesh vertices (metres), one array per load case.
     displacements: dict | None = None
     points: np.ndarray | None = None
+    raw_stiffness: np.ndarray | None = None
+    ties: list | None = None
 
 
+def _import_fenicsx_stack() -> None:
+    """Import the solver stack. A broken ABI fails here, not at ``find_spec``."""
+    import basix
+    import dolfinx
+    import dolfinx_mpc
+    import petsc4py
+    import ufl
+    from mpi4py import MPI
+
+    del basix, dolfinx, dolfinx_mpc, petsc4py, ufl, MPI
+
+
+@functools.lru_cache(maxsize=1)
 def is_fenicsx_available() -> bool:
-    required = ("dolfinx", "dolfinx_mpc", "ufl", "basix", "mpi4py", "petsc4py")
-    return all(importlib.util.find_spec(name) is not None for name in required)
+    """True when the FEniCSx stack imports. The result is cached per process."""
+    try:
+        _import_fenicsx_stack()
+    except Exception:
+        return False
+    return True
 
 
 def _require_fenicsx():
@@ -298,7 +317,7 @@ def _hex_space(mesh):
     return domain, fem.functionspace(domain, v_el), points, grid
 
 
-def _periodic_constraint(function_space, points):
+def _periodic_constraint(function_space, points, *, z_master: str = "bottom"):
     """Periodicity via the finite-element interpolant of the periodic image.
 
     ``create_periodic_constraint_topological`` evaluates the master cell that
@@ -313,11 +332,14 @@ def _periodic_constraint(function_space, points):
     lengths = upper - bounds
     tol = 1e-10
 
+    z_master_top = z_master == "top"
+    z_pin = upper[2] if z_master_top else bounds[2]
+
     def pin_corner(x):
         return (
             np.isclose(x[0], bounds[0], atol=tol)
             & np.isclose(x[1], bounds[1], atol=tol)
-            & np.isclose(x[2], bounds[2], atol=tol)
+            & np.isclose(x[2], z_pin, atol=tol)
         )
 
     zero = fem.Function(function_space)
@@ -329,10 +351,15 @@ def _periodic_constraint(function_space, points):
     # One tag covers every high face. An edge or corner dof is unique, and
     # the relation reduces every high coordinate.
     def on_high_face(x):
+        on_z = (
+            np.isclose(x[2], bounds[2], atol=tol)
+            if z_master_top
+            else np.isclose(x[2], upper[2], atol=tol)
+        )
         return (
             np.isclose(x[0], upper[0], atol=tol)
             | np.isclose(x[1], upper[1], atol=tol)
-            | np.isclose(x[2], upper[2], atol=tol)
+            | on_z
         )
 
     domain = function_space.mesh
@@ -342,9 +369,15 @@ def _periodic_constraint(function_space, points):
 
     def relation(x):
         out = np.array(x, copy=True)
-        for axis in range(3):
+        for axis in range(2):
             on_face = np.isclose(x[axis], upper[axis], atol=tol)
             out[axis, on_face] -= lengths[axis]
+        if z_master_top:
+            on_z = np.isclose(x[2], bounds[2], atol=tol)
+            out[2, on_z] += lengths[2]
+        else:
+            on_z = np.isclose(x[2], upper[2], atol=tol)
+            out[2, on_z] -= lengths[2]
         return out
 
     mpc = dolfinx_mpc.MultiPointConstraint(function_space)
@@ -364,11 +397,82 @@ def _periodic_constraint(function_space, points):
     return mpc, pin_bc, bounds
 
 
+def mpc_tie_report(mpc, points: np.ndarray) -> list[dict]:
+    """Per-face summary of the periodic MPC. ``points[i]`` is dof-node ``i``.
+
+    ``slaves`` counts high-face nodes that are MPC slaves. ``identity`` is true
+    when every one of those rows is a single weight of 1. ``multi_node_rows``
+    counts slaves whose image uses more than one master.
+    """
+    coords = np.asarray(points, dtype=float)
+    slaves = np.asarray(mpc.slaves)
+    coeffs, offsets = mpc.coefficients()
+    coeffs = np.asarray(coeffs, dtype=float)
+    offsets = np.asarray(offsets)
+    rows: dict[int, np.ndarray] = {}
+    for dof in slaves[slaves % 3 == 0]:
+        dof = int(dof)
+        weights = np.asarray(coeffs[offsets[dof] : offsets[dof + 1]], dtype=float)
+        rows[dof // 3] = weights
+
+    def _z_level() -> str:
+        zmax = float(coords[:, 2].max())
+        zmin = float(coords[:, 2].min())
+        high = sum(1 for node in rows if abs(float(coords[node, 2]) - zmax) <= 1e-10)
+        low = sum(1 for node in rows if abs(float(coords[node, 2]) - zmin) <= 1e-10)
+        return "low" if low > high else "high"
+
+    z_level = _z_level()
+    return [
+        _mpc_face(coords, rows, axis, name, level=("high" if name != "z" else z_level))
+        for axis, name in _FACES
+    ]
+
+
+_FACES = ((0, "x"), (1, "y"), (2, "z"))
+
+
+def _mpc_face(
+    coords: np.ndarray,
+    rows: dict[int, np.ndarray],
+    axis: int,
+    name: str,
+    *,
+    level: str = "high",
+):
+    bound = float(coords[:, axis].max() if level == "high" else coords[:, axis].min())
+    tol = 1e-10
+    top = [
+        node
+        for node in range(len(coords))
+        if abs(float(coords[node, axis]) - bound) <= tol
+    ]
+    slaves = 0
+    multi = 0
+    for node in top:
+        weights = rows.get(node)
+        if weights is None:
+            continue
+        slaves += 1
+        if int(np.count_nonzero(np.abs(weights) > 1e-8)) >= 2:
+            multi += 1
+    count = len(top)
+    identity = count > 0 and slaves == count and multi == 0
+    return {
+        "face": name,
+        "top_nodes": count,
+        "slaves": slaves,
+        "identity": identity,
+        "multi_node_rows": multi,
+        "ok": count > 0 and slaves == count,
+    }
+
+
 # One direct factor of the condensed system, reused for the six load cases.
 # On the curved grid-scored mesh (~19k dofs) MUMPS LU took 5.9 s, UMFPACK 13 s,
 # and PETSc's own LU 63 s. The three agreed to 1e-12. CHOLMOD rejects the
 # matrix: the MPC system is not positive definite.
-_DIRECT = ("lu", "mumps")
+DIRECT = ("lu", "mumps")
 
 
 def _solve_fluctuations(
@@ -384,7 +488,7 @@ def _solve_fluctuations(
     from dolfinx.la.petsc import _ghost_update, create_vector
     from petsc4py import PETSc
 
-    pc_type, package = _DIRECT
+    pc_type, package = DIRECT
     bcs = [pin_bc]
     matrix = dolfinx_mpc.assemble_matrix(a_form, mpc, bcs=bcs)
     ksp = PETSc.KSP().create(function_space.mesh.comm)
@@ -427,7 +531,12 @@ def _solve_fluctuations(
             fluctuation = fem.Function(function_space)
             assign(unknown, fluctuation)
             mpc.homogenize(fluctuation)
-            mpc.backsubstitution(fluctuation)
+            # A z-face image can land on a node that is still an x or y slave.
+            # dolfinx_mpc back-substitutes once, in creation order, so that
+            # chain is stale on the first pass. A second pass sees the updated
+            # master. Two passes close a chain; the third is a check.
+            for _ in range(3):
+                mpc.backsubstitution(fluctuation)
             total = fem.Function(function_space)
             total.x.array[:] = fluctuation.x.array + macro.x.array
             totals[case] = total
@@ -457,11 +566,11 @@ def runfenicsx(
     stiffness. The six load cases share one direct factor of ``K``. FEniCSx is
     imported lazily so the package stays usable without it.
 
-    Periodicity is ``dolfinx_mpc``'s topological constraint: each high-face
-    degree of freedom equals the finite-element interpolant of its image after
-    subtracting the periods of every high face it lies on. A node that lands
-    on a node stays a weight-1 tie. A kerf-tapered ``z`` face, whose nodes no
-    longer match, is the bilinear interpolant of the bottom face.
+    Periodicity is ``dolfinx_mpc``'s topological constraint. The master z face
+    is the more uniform one (flat meshes keep ``z = 0``). A node that lands on
+    a node stays a weight-1 tie. A kerf-tapered face gets the bilinear
+    interpolant of its image. The published matrix is the energy inner product
+    of the six total fields, not the average of one stress component.
     """
 
     basix, dolfinx_mpc, ufl, fem, _dmesh, _MPI = _require_fenicsx()
@@ -506,7 +615,11 @@ def runfenicsx(
     w = ufl.TestFunction(v)
     a = ufl.inner(sigma(u), eps(w)) * dx
 
-    mpc, pin_bc, bounds = _periodic_constraint(v, points)
+    from b3_core.solvers.periodic import master_on_bottom
+
+    z_master = "bottom" if master_on_bottom(points) else "top"
+    mpc, pin_bc, bounds = _periodic_constraint(v, points, z_master=z_master)
+    tie_rows = mpc_tie_report(mpc, np.asarray(v.tabulate_dof_coordinates()))
     # One matrix for all six columns. Only the macro-strain load changes.
     macro = fem.Function(v)
     a_form = fem.form(a)
@@ -516,29 +629,38 @@ def runfenicsx(
     )
 
     volume = fem.assemble_scalar(fem.form(1.0 * ufl.dx(domain)))
-    stress_entries = [
-        (0, 0),
-        (1, 1),
-        (2, 2),
-        (1, 2),
-        (0, 2),
-        (0, 1),
-    ]
     stiffness = np.zeros((6, 6), dtype=np.float64)
     displacements = {} if return_details else None
 
+    # Energy inner product, the same reduction numpy and MFEM use. The average
+    # of one stress component is that inner product only when the unit strain
+    # is an exact gradient of the FE space. On a skewed hex it is not, and the
+    # gap shows up as a nonsymmetric matrix.
     for col, case in enumerate(LOAD_CASES):
         total = fluctuations[case]
         if displacements is not None:
             displacements[case] = _nodal_vectors(v, total.x.array, points)
-        for row, (i, j) in enumerate(stress_entries):
+        for row, other in enumerate(LOAD_CASES):
             stiffness[row, col] = (
-                fem.assemble_scalar(fem.form(sigma(total)[i, j] * dx)) / volume
+                fem.assemble_scalar(
+                    fem.form(ufl.inner(sigma(total), eps(fluctuations[other])) * dx)
+                )
+                / volume
             )
 
     properties, compliance = properties_from_stiffness(stiffness)
+    # FEniCSx does not symmetrise. The assembled matrix is the raw matrix.
+    raw = np.array(stiffness, dtype=float, copy=True)
     if return_details:
-        return FenicsxResult(properties, stiffness, compliance, displacements, points)
+        return FenicsxResult(
+            properties,
+            stiffness,
+            compliance,
+            displacements,
+            points,
+            raw,
+            tie_rows,
+        )
     return properties
 
 
@@ -550,6 +672,7 @@ class FenicsxBackend:
         face_layer=True,
         displacements=True,
         element_types=frozenset({"C3D8"}),
+        interpolated_periodicity=True,
     )
 
     def is_available(self) -> bool:

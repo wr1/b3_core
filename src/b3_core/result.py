@@ -13,6 +13,8 @@ import numpy as np
 from b3_mat.materials import OrthotropicMaterial
 from pydantic import BaseModel, ConfigDict, Field
 
+from b3_core.provenance import Provenance
+
 
 class CoreResult(BaseModel):
     """Homogenized properties of a grooved, infused core."""
@@ -32,6 +34,7 @@ class CoreResult(BaseModel):
         description="Canonical Ex/Ey/Ez constants",
     )
     stiffness: Any = None
+    provenance: Provenance | None = None
     kerfs: list[dict[str, Any]] = Field(
         default_factory=list,
         description=(
@@ -152,6 +155,7 @@ class CoreResult(BaseModel):
                 "properties": canonical,
                 "stiffness": stiffness,
                 "kerfs": [dict(row) for row in geom.get("kerfs") or []],
+                "provenance": record.provenance,
             }
         )
 
@@ -171,8 +175,16 @@ class CoreResult(BaseModel):
 
         m = self.material
         C = orthotropic_C(m.Ex, m.Ey, m.Ez, m.Gxy, m.Gxz, m.Gyz, m.nuxy, m.nuxz, m.nuyz)
+        from b3_core.provenance import comment_line
+
         mat_name = name or m.name or "core_hom"
-        return ccx_ortho_card(C, name=mat_name, rho=m.rho, temperature=temperature)
+        return ccx_ortho_card(
+            C,
+            name=mat_name,
+            rho=m.rho,
+            temperature=temperature,
+            provenance_comment=comment_line(self.provenance),
+        )
 
 
 class ResultBlock(BaseModel):
@@ -187,17 +199,71 @@ class RunRecord(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_name: str = Field("b3_core.run/1", alias="schema")
+    schema_name: str = Field("b3_core.run/2", alias="schema")
     case_hash: str
     b3_core_version: str
+    solver_stamp: str = ""
+    provenance: Provenance | None = Field(default=None, alias="b3_core")
     input: dict[str, Any]
     geometry: dict[str, Any]
     result: ResultBlock
     validation: dict[str, Any] | None = None
+    diagnostics: dict[str, Any] = Field(
+        default_factory=lambda: {"checks": [], "ties": []}
+    )
 
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         kwargs.setdefault("by_alias", True)
         return super().model_dump(**kwargs)
+
+    def to_agent_json(
+        self,
+        *,
+        units: str = "Pa",
+        cache_hit: bool = False,
+        elapsed_s: float | None = None,
+        written: str | None = None,
+    ) -> dict[str, Any]:
+        """Machine-readable payload. Moduli are scaled only when ``units='GPa'``."""
+        if units not in ("Pa", "GPa"):
+            raise ValueError("units must be 'Pa' or 'GPa'")
+        scale = 1e-9 if units == "GPa" else 1.0
+        moduli = {"Ex", "Ey", "Ez", "Gxy", "Gxz", "Gyz", "Exx", "Eyy", "Ezz"}
+        properties: dict[str, Any] = {}
+        for key, value in self.result.properties.items():
+            number = float(value)
+            if key in moduli:
+                properties[key] = {"value": number * scale, "unit": units}
+            else:
+                properties[key] = {"value": number, "unit": "-"}
+        geometry = dict(self.geometry)
+        if "rho_infused" in geometry:
+            geometry["rho_infused"] = {
+                "value": float(geometry["rho_infused"]),
+                "unit": "kg/m^3",
+            }
+        stiffness = [
+            [float(entry) * scale for entry in row] for row in self.result.stiffness
+        ]
+        provenance = None
+        if self.provenance is not None:
+            provenance = self.provenance.model_dump(mode="json")
+        return {
+            "case_hash": self.case_hash,
+            "backend": self.result.backend,
+            "cache_hit": bool(cache_hit),
+            "elapsed_s": None if elapsed_s is None else float(elapsed_s),
+            "written": written,
+            "provenance": provenance,
+            "properties": properties,
+            "stiffness": stiffness,
+            "stiffness_unit": units,
+            "geometry": geometry,
+            "diagnostics": {
+                "checks": list(self.diagnostics.get("checks", [])),
+                "ties": list(self.diagnostics.get("ties", [])),
+            },
+        }
 
     def flat(self) -> dict[str, Any]:
         """Legacy flat dict: input fields, geometry, and ``Exx``/``Eyy``/``Ezz``."""
@@ -225,4 +291,6 @@ class RunRecord(BaseModel):
         out["case_hash"] = self.case_hash
         if self.validation is not None:
             out["ccx_validation"] = self.validation
+        if self.provenance is not None:
+            out["b3_core"] = self.provenance.model_dump(mode="json")
         return out

@@ -40,6 +40,7 @@ class AnisoResult:
     elem_strain: np.ndarray | None = None
     elem_attr: np.ndarray | None = None
     elem_volume: np.ndarray | None = None
+    raw_stiffness: np.ndarray | None = None
 
 
 def runnumpy(
@@ -87,9 +88,10 @@ def runnumpy(
 
     stiffness, info = homogenize_aniso(points, cells, gp_C)
     properties, compliance = properties_from_stiffness(stiffness)
+    raw = np.asarray(info["raw_stiffness"], dtype=float)
 
     if not return_details:
-        return AnisoResult(properties, stiffness, compliance)
+        return AnisoResult(properties, stiffness, compliance, raw_stiffness=raw)
 
     displacements = {}
     W = info["W"]
@@ -116,6 +118,7 @@ def runnumpy(
         info["elem_strain"],
         attr,
         info["vol"],
+        raw,
     )
 
 
@@ -127,6 +130,7 @@ class NumpyBackend:
         face_layer=True,
         displacements=True,
         element_types=frozenset({"C3D8"}),
+        interpolated_periodicity=True,
     )
 
     def is_available(self) -> bool:

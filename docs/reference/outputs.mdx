@@ -25,6 +25,18 @@ r.surface_area_factor
 print(r.ccx_ortho())   # CalculiX *elastic,type=ortho + *density
 ```
 
+## Run record
+
+`run_case` and `homogenize_to_disk` write schema `b3_core.run/2`. The
+`b3_core` block records version, commit, dirty flag, UTC time, solver stamp,
+and backend library versions. `solved_with` is the process that computed the
+numbers. `served_by` is the process that returned them, and it changes on a
+cache hit. A `b3_core.run/1` file still loads; its provenance is absent.
+`cprop` and sweep legacy files include the same block next to the flat keys.
+`diagnostics` holds the post-solve checks and the per-face tie rows. A
+`b3_core.run/1` file, and any record written before that block, loads with
+empty `checks` and `ties`.
+
 ## run JSON (`cprop`)
 
 `cprop` writes `run<HASH>.json` containing at least:

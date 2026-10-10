@@ -19,6 +19,21 @@ def _sort_face(face, points, free_axes):
     return face[order]
 
 
+def _require_node_pairs(low, high, points, axes, face: str) -> None:
+    """CalculiX ties node to node. A tapered face is not that tie."""
+    from b3_core.solvers.periodic import face_tol
+
+    mismatch = len(low) != len(high)
+    if not mismatch and len(low) > 0:
+        delta = np.abs(points[low][:, axes] - points[high][:, axes])
+        mismatch = float(delta.max()) > face_tol(points)
+    if mismatch:
+        raise ValueError(
+            "ccx supports node-pair periodicity only; "
+            f"this mesh's {face} faces do not match (curved case?)"
+        )
+
+
 def periodic_bcs(msh, added_nodes):
     bnds = msh.GetBounds()
     pts = msh.points
@@ -28,6 +43,9 @@ def periodic_bcs(msh, added_nodes):
     ymax = _sort_face(np.where(pts[:, 1] == bnds[3])[0], pts, [0, 2])
     zmin = _sort_face(np.where(pts[:, 2] == bnds[4])[0], pts, [0, 1])
     zmax = _sort_face(np.where(pts[:, 2] == bnds[5])[0], pts, [0, 1])
+    _require_node_pairs(xmin, xmax, pts, [1, 2], "x")
+    _require_node_pairs(ymin, ymax, pts, [0, 2], "y")
+    _require_node_pairs(zmin, zmax, pts, [0, 1], "z")
     nsets = [
         nset(i[0], i[1])
         for i in [

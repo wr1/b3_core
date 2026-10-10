@@ -15,8 +15,9 @@ from b3_core.cases import plain
 from b3_core.hashing import case_hash
 from b3_core.loaders import normalize_case
 
-# plain() isotropic case, resolved backend "mfem". Bump CACHE_SCHEMA when this moves.
-GOLDEN_PLAIN_MFEM = "f82dc7940c4a9b4b42300e0575a6cc0744a5af015f323eb36d499c894a829b27"
+# plain() isotropic case, resolved backend "mfem", CACHE_SCHEMA 2 + mfem stamp.
+# Recompute when CACHE_SCHEMA or the mfem stamp changes.
+GOLDEN_PLAIN_MFEM = "6fb7f93b185c2373d89cea2ca40b6d9b047011e806ba80254bee110d31f15590"
 
 
 def test_homogenize_is_pure(monkeypatch, tmp_path):
@@ -151,7 +152,8 @@ def test_write_true_overwrites_one_file(tmp_path):
     files = list(tmp_path.glob("run*.json"))
     assert len(files) == 1
     payload = json.loads(files[0].read_text())
-    assert payload["schema"] == "b3_core.run/1"
+    assert payload["schema"] == "b3_core.run/2"
+    assert payload["b3_core"]["solved_with"]["solver_stamp"] == "fake/unstamped"
     assert payload["result"]["backend"] == "fake"
 
 

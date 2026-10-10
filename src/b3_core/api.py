@@ -15,7 +15,10 @@ from b3_core.cache import Cache, NullCache
 from b3_core.hashing import case_hash
 from b3_core.loaders import normalize_case
 from b3_core.models import CaseInput, Curvature
+from b3_core.provenance import make_provenance, with_server
 from b3_core.result import CoreResult, ResultBlock, RunRecord
+from b3_core.solvers.checks import build_diagnostics
+from b3_core.solvers.stamps import stamp_for
 from b3_core.solvers.validation import validate_against
 
 __version__ = _version_mod.__version__
@@ -34,6 +37,7 @@ def _record_from(
     resolved: str,
     key: str,
     validation: dict | None,
+    diagnostics: dict | None = None,
 ) -> RunRecord:
     properties = {
         key_name: float(value)
@@ -57,6 +61,7 @@ def _record_from(
     return RunRecord(
         case_hash=key,
         b3_core_version=_version(),
+        solver_stamp=stamp_for(resolved),
         input=case.model_dump(mode="json"),
         geometry=prep.geometry.as_dict(),
         result=ResultBlock(
@@ -66,6 +71,10 @@ def _record_from(
             extras={k: float(v) for k, v in dict(solved.extras).items()},
         ),
         validation=validation,
+        provenance=make_provenance(solver_stamp=stamp_for(resolved)),
+        diagnostics=diagnostics
+        if diagnostics is not None
+        else {"checks": [], "ties": []},
     )
 
 
@@ -113,6 +122,21 @@ def _with_curvature(case: Any, kx: float | None, ky: float | None) -> Any:
     return updated
 
 
+def _with_pair(case: Any, enabled: bool | None) -> Any:
+    """Set ``allow_pair_periodicity`` when the caller passed the flag."""
+    if enabled is None:
+        return case
+    from b3_core.cases import CoreCase
+
+    case_in, workdir = normalize_case(case)
+    updated = case_in.model_copy(update={"allow_pair_periodicity": bool(enabled)})
+    if isinstance(case, CoreCase):
+        return case.__class__(input=updated, workdir=case.workdir)
+    if isinstance(case, (str, Path)):
+        return CoreCase(input=updated, workdir=workdir)
+    return updated
+
+
 def run_case(
     case: Any,
     *,
@@ -120,6 +144,8 @@ def run_case(
     cache: Cache | None = None,
     kx: float | None = None,
     ky: float | None = None,
+    allow_pair_periodicity: bool | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> RunRecord:
     """Solve a case and return a namespaced record. Does not write a run file.
 
@@ -130,7 +156,7 @@ def run_case(
     """
     from b3_core.pipeline import resolve_backend, run_pipeline
 
-    case = _with_curvature(case, kx, ky)
+    case = _with_pair(_with_curvature(case, kx, ky), allow_pair_periodicity)
     case_in, _workdir = normalize_case(case)
     resolved = resolve_backend(case_in, backend)
     key = case_hash(case_in, backend=resolved)
@@ -139,11 +165,18 @@ def run_case(
     hit = store.get(key)
     if hit is not None:
         logger.info("cache hit %s (%s)", short, hit.result.backend)
+        if meta is not None:
+            meta["cache_hit"] = True
+        if hit.provenance is not None:
+            return hit.model_copy(update={"provenance": with_server(hit.provenance)})
         return hit
+    if meta is not None:
+        meta["cache_hit"] = False
     logger.info("cache miss %s, solving with %s", short, resolved)
-    prep, solved, resolved = run_pipeline(case_in, backend=resolved)
+    prep, solved, resolved = run_pipeline(case_in, backend=resolved, details=True)
     validation = _maybe_validate(case_in, prep, solved, resolved)
-    record = _record_from(case_in, prep, solved, resolved, key, validation)
+    diagnostics = build_diagnostics(case_in, prep, solved)
+    record = _record_from(case_in, prep, solved, resolved, key, validation, diagnostics)
     store.put(key, record)
     return record
 
@@ -171,6 +204,10 @@ def _write_record(case: Any, record: RunRecord, workdir: str | Path | None) -> P
     return path
 
 
+with_curvature = _with_curvature
+write_record = _write_record
+
+
 def homogenize(
     case: Any,
     *,
@@ -181,6 +218,7 @@ def homogenize(
     workdir: str | Path | None = None,
     kx: float | None = None,
     ky: float | None = None,
+    allow_pair_periodicity: bool | None = None,
 ) -> CoreResult:
     """Homogenise one case.
 
@@ -193,12 +231,20 @@ def homogenize(
     bottom-mouth one. ``result.kerfs`` reports each groove's root and mouth
     half-width. Omit both to keep ``case.with_curvature(...)``.
 
-    ``backend="auto"`` (the default) uses FEniCSx when it is installed, otherwise
-    MFEM. Both cover isotropic, orthotropic, and resin-halo cases, including a
-    kerf opened by curvature. FEniCSx projects the periodic image onto the
-    master cell.
+    ``backend="auto"`` on a flat case uses FEniCSx when it is installed,
+    otherwise MFEM. A curved case (nonzero ``kx`` or ``ky``) uses FEniCSx
+    only. Without that install, ``auto`` raises. ``backend="numpy"`` is the
+    explicit curved opt-in and warns about the O(k^2) offset. ``mfem`` on a
+    curved case requires ``allow_pair_periodicity=True``. ``ccx`` rejects it.
     """
-    record = run_case(case, backend=backend, cache=cache, kx=kx, ky=ky)
+    record = run_case(
+        case,
+        backend=backend,
+        cache=cache,
+        kx=kx,
+        ky=ky,
+        allow_pair_periodicity=allow_pair_periodicity,
+    )
     if write:
         _write_record(case, record, workdir)
     return CoreResult.from_record(record, name=name)
