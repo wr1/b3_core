@@ -21,7 +21,7 @@ STAMPS: dict[str, str] = {
 
 # sha256 of solvers/**/*.py except this file. Update in the same commit as a
 # numerics change. Placeholder replaced after the first hash is computed.
-SOURCE_DIGEST = "bed5b22eb7dd3b4af65b7d9a8c83d05c32651fe59b821c72882bc33a1a3117bd"
+SOURCE_DIGEST = "61fb271305c37a593e56e8e24c7b9075030b5a3313feafcf7fcd0cf885dcd297"
 
 
 def stamp_for(backend: str) -> str:
