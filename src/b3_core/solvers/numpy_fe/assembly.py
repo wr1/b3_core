@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from b3_core.solvers.periodic import z_face_ties
@@ -218,6 +220,86 @@ def _z_prolongation(points: np.ndarray, ties):
 
 
 # --------------------------------------------------------------------------- #
+# element integration
+# --------------------------------------------------------------------------- #
+def _kernel_choice() -> str:
+    """``B3_CORE_KERNEL``: ``numpy`` (vectorized, default) or ``reference``."""
+    name = os.environ.get("B3_CORE_KERNEL", "numpy").strip().lower() or "numpy"
+    if name not in ("numpy", "reference"):
+        raise ValueError(f"B3_CORE_KERNEL must be 'numpy' or 'reference', got {name!r}")
+    return name
+
+
+def _element_terms_reference(points_m, cells, gp_C):
+    """Per-element loop; the readable reference for :func:`element_terms`."""
+    n_elem = len(cells)
+    Ke = np.zeros((n_elem, 24, 24))
+    fe = np.zeros((n_elem, 24, 6))  # macro-strain load: integral B^T C eps0
+    Bc = np.zeros((n_elem, 6, 24))  # B at element centre
+    vol = np.zeros(n_elem)
+    T1 = np.zeros((6, 6))  # integral of C (energy-reduction term)
+    for e, conn in enumerate(cells):
+        X = points_m[conn]  # (8,3)
+        for gp in range(8):
+            J = _DN[gp].T @ X  # (3,3)
+            dN_xyz = _DN[gp] @ np.linalg.inv(J)
+            B = _bmat(dN_xyz)
+            w = abs(np.linalg.det(J))  # |detJ| * Gauss weight(=1)
+            C = gp_C[e, gp]
+            Ke[e] += (B.T @ C @ B) * w
+            fe[e] += (B.T @ C) * w
+            vol[e] += w
+            T1 += C * w
+        Jc = _DN_C.T @ X
+        Bc[e] = _bmat(_DN_C @ np.linalg.inv(Jc))
+    return Ke, fe, Bc, vol, T1
+
+
+def _bmat_batch(dN_xyz):
+    """Vectorized :func:`_bmat`: ``(..., 8, 3)`` -> ``(..., 6, 24)``."""
+    shape = dN_xyz.shape[:-2]
+    B = np.zeros((*shape, 6, 8, 3))
+    bx, by, bz = dN_xyz[..., 0], dN_xyz[..., 1], dN_xyz[..., 2]
+    B[..., 0, :, 0] = bx
+    B[..., 1, :, 1] = by
+    B[..., 2, :, 2] = bz
+    B[..., 3, :, 1] = bz
+    B[..., 3, :, 2] = by
+    B[..., 4, :, 0] = bz
+    B[..., 4, :, 2] = bx
+    B[..., 5, :, 0] = by
+    B[..., 5, :, 1] = bx
+    return B.reshape(*shape, 6, 24)
+
+
+def _element_terms_numpy(points_m, cells, gp_C):
+    X = points_m[cells]  # (E, 8, 3)
+    J = np.einsum("gab,eac->egbc", _DN, X)  # (E, 8gp, 3, 3) = DN^T X
+    dN_xyz = np.einsum("gab,egbc->egac", _DN, np.linalg.inv(J))
+    B = _bmat_batch(dN_xyz)  # (E, 8, 6, 24)
+    w = np.abs(np.linalg.det(J))  # (E, 8)
+    CB = np.einsum("egij,egjk->egik", gp_C, B)
+    BtC = np.swapaxes(CB, -1, -2)  # B^T C (C symmetric per Gauss point)
+    if not np.allclose(gp_C, np.swapaxes(gp_C, -1, -2), rtol=0.0, atol=0.0):
+        BtC = np.einsum("egji,egjk->egik", B, gp_C)
+    Ke = np.einsum("egji,egjk,eg->eik", B, CB, w, optimize=True)
+    fe = np.einsum("egij,eg->eij", BtC, w)
+    vol = w.sum(axis=1)
+    T1 = np.einsum("egij,eg->ij", gp_C, w)
+    Jc = np.einsum("ab,eac->ebc", _DN_C, X)
+    Bc = _bmat_batch(np.einsum("ab,ebc->eac", _DN_C, np.linalg.inv(Jc)))
+    return Ke, fe, Bc, vol, T1
+
+
+def element_terms(points_m, cells, gp_C):
+    """Element stiffness, macro load, centre B, volume and integral of C."""
+    cells = np.asarray(cells, dtype=np.int64)
+    if _kernel_choice() == "reference":
+        return _element_terms_reference(points_m, cells, gp_C)
+    return _element_terms_numpy(points_m, cells, gp_C)
+
+
+# --------------------------------------------------------------------------- #
 # core homogenisation
 # --------------------------------------------------------------------------- #
 def _assemble_tied(cells, Ke, fe, master_of, n_master):
@@ -225,17 +307,14 @@ def _assemble_tied(cells, Ke, fe, master_of, n_master):
     from scipy.sparse import csr_matrix
 
     n_elem = len(cells)
-    edofs = np.empty((n_elem, 24), dtype=np.int64)
-    for e, conn in enumerate(cells):
-        mdofs = master_of[conn]
-        edofs[e] = 3 * np.repeat(mdofs, 3) + np.tile([0, 1, 2], 8)
+    mdofs = master_of[np.asarray(cells, dtype=np.int64)]
+    edofs = 3 * np.repeat(mdofs, 3, axis=1) + np.tile(np.arange(3), 8)
     ndof = 3 * n_master
     rows = np.repeat(edofs, 24, axis=1).reshape(n_elem, 24, 24)
     cols = np.tile(edofs, (1, 24)).reshape(n_elem, 24, 24)
     K = csr_matrix((Ke.ravel(), (rows.ravel(), cols.ravel())), shape=(ndof, ndof))
     L = np.zeros((ndof, 6))
-    for e in range(n_elem):
-        np.add.at(L, edofs[e], fe[e])
+    np.add.at(L, edofs.ravel(), fe.reshape(-1, 6))
     return K, L, edofs
 
 
@@ -309,7 +388,7 @@ def homogenize_aniso(points_m, cells, gp_C, *, _force_z_interp=False):
     apart are tied by bilinear interpolation on the box face. A flat mesh keeps
     the coordinate tie.
     """
-    from scipy.sparse.linalg import factorized
+    from b3_core.solvers.linsolve import factorize
 
     cells = _canonicalize(points_m, cells)
     gp_C = np.asarray(gp_C, dtype=float)
@@ -319,26 +398,7 @@ def homogenize_aniso(points_m, cells, gp_C, *, _force_z_interp=False):
     ties = z_face_ties(points_m)
     use_interp = _force_z_interp or not ties.identity
 
-    # Per-element B, detJ*w at each Gauss point, plus centre B and volume.
-    Ke = np.zeros((n_elem, 24, 24))
-    fe = np.zeros((n_elem, 24, 6))  # macro-strain load: integral B^T C eps0
-    Bc = np.zeros((n_elem, 6, 24))  # B at element centre
-    vol = np.zeros(n_elem)
-    T1 = np.zeros((6, 6))  # integral of C (energy-reduction term)
-    for e, conn in enumerate(cells):
-        X = points_m[conn]  # (8,3)
-        for gp in range(8):
-            J = _DN[gp].T @ X  # (3,3)
-            dN_xyz = _DN[gp] @ np.linalg.inv(J)
-            B = _bmat(dN_xyz)
-            w = abs(np.linalg.det(J))  # |detJ| * Gauss weight(=1)
-            C = gp_C[e, gp]
-            Ke[e] += (B.T @ C @ B) * w
-            fe[e] += (B.T @ C) * w
-            vol[e] += w
-            T1 += C * w
-        Jc = _DN_C.T @ X
-        Bc[e] = _bmat(_DN_C @ np.linalg.inv(Jc))
+    Ke, fe, Bc, vol, T1 = element_terms(points_m, cells, gp_C)
 
     w_nodal = None
     if use_interp:
@@ -355,11 +415,10 @@ def homogenize_aniso(points_m, cells, gp_C, *, _force_z_interp=False):
         free[:3] = False
 
     Kff = K[free][:, free]
-    solve = factorized(Kff.tocsc())
+    # One factorization, all six unit load cases as a single block solve.
+    solve = factorize(Kff)
     W = np.zeros((K.shape[0], 6))
-    rhs = -L[free]
-    for k in range(6):
-        W[free, k] = solve(rhs[:, k])
+    W[free] = solve(-L[free])
 
     # Total element strain at centre for each unit case: eps0_k + Bc @ w_k.
     elem_strain = np.zeros((n_elem, 6, 6))  # (elem, case, voigt)
@@ -371,9 +430,8 @@ def homogenize_aniso(points_m, cells, gp_C, *, _force_z_interp=False):
         elem_strain = _UNIT.T[None, :, :] + corr.transpose(0, 2, 1)
         master_of = None
     else:
-        for e in range(n_elem):
-            we = W[edofs[e]]  # (24, 6)
-            elem_strain[e] = _UNIT.T + (Bc[e] @ we).T  # row k = eps0_k + Bc w_k
+        corr = np.einsum("eij,ejk->eik", Bc, W[edofs])  # (elem, voigt, case)
+        elem_strain = _UNIT.T[None, :, :] + corr.transpose(0, 2, 1)
 
     # Exact energy reduction (matches the MFEM backend): the integral of the
     # constituent stiffness (T1, accumulated over Gauss points above) plus the

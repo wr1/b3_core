@@ -290,7 +290,7 @@ def _bilinear_csr(bilinear):
 
 def _solve_reduced(bilinear, rhs_list, prolongation):
     """Solve ``K w = rhs`` after eliminating interpolated z-face dofs."""
-    from scipy.sparse.linalg import factorized
+    from b3_core.solvers.linsolve import factorize
 
     K = _bilinear_csr(bilinear)
     if K.shape[0] != prolongation.shape[0]:
@@ -299,7 +299,7 @@ def _solve_reduced(bilinear, rhs_list, prolongation):
             f"{prolongation.shape[0]}"
         )
     reduced = (prolongation.T @ K @ prolongation).tocsc()
-    solve = factorized(reduced)
+    solve = factorize(reduced)
     fluctuations = []
     for rhs in rhs_list:
         load = np.asarray(rhs, dtype=float).ravel()

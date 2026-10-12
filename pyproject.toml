@@ -51,6 +51,8 @@ dev = [
     "import-linter>=2.0",
 ]
 report = ["typst>=0.12"]
+# PARDISO direct solver (auto-detected; SciPy SuperLU otherwise).
+fast = ["pypardiso>=0.4"]
 # conda-forge only (fenics-dolfinx, dolfinx_mpc, mpi4py, petsc4py). The
 # test-fenicsx job installs that stack; it is not on PyPI as a universal extra.
 fenicsx = []
