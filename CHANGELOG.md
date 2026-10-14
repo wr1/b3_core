@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Mesh consistency of the grooved RVE (results change; `CACHE_SCHEMA` 2 → 3):
+  - Groove-depth z stations are added at κ = 0 too, so the flat mesh equals
+    the k → 0 curved mesh (removes the ~4 % Ezz step at vanishing curvature).
+  - New `mesh_h_max` (default 2.0 mm) caps element edges in x, y and z, and
+    zero-width boundary instances no longer add halo lines, so a groove-offset
+    shift is a phase shift (was up to 18 % on Gxz).
+  - The outer-face halo band gets its own z lines, so Gauss points no longer
+    jump into it as the reach grows (removes the Ezz jump near reach 1 mm).
+
 ### Changed
 
 - Cache keys now include `CACHE_SCHEMA` 2 and a per-backend solver stamp.

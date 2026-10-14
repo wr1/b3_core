@@ -243,6 +243,10 @@ class CaseInput(BaseModel):
     core: Material
     resin: Material
     madd: list[float] = Field(default_factory=lambda: [0.0])
+    # Largest element edge (mm) in x, y and z. Long foam bays and deep grooves
+    # are split so results do not depend on where the grooves sit in the cell.
+    # ``None`` keeps the legacy coarse grid (groove walls and halo lines only).
+    mesh_h_max: float | None = Field(2.0, gt=0)
     face: Face | None = None
     curvature: Curvature = Field(default_factory=Curvature)
     scoring: Scoring | None = None
@@ -347,6 +351,7 @@ class CaseInput(BaseModel):
             "xcuts": [groove.as_cut() for groove in self.xgr],
             "ycuts": [groove.as_cut() for groove in self.ygr],
             "madd": tuple(self.madd),
+            "h_max": None if self.mesh_h_max is None else float(self.mesh_h_max),
             "tface": face_thickness,
             "kx": kx,
             "ky": ky,
