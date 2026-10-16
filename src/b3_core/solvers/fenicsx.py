@@ -393,8 +393,72 @@ def _periodic_constraint(function_space, points, *, z_master: str = "bottom"):
             scale=1.0,
             tol=tol,
         )
-    mpc.finalize()
-    return mpc, pin_bc, bounds
+    flat = _flatten_master_chains(function_space, mpc)
+    flat.finalize()
+    return flat, pin_bc, bounds
+
+
+def _flatten_master_chains(function_space, staged):
+    """Rebuild the staged MPC so no master is itself a slave.
+
+    An interpolated tie on a morphed z face can land in a low-face cell that
+    touches a high x/y face, so some of its masters are x/y slaves. dolfinx_mpc
+    does not resolve such chains: the slave-master keeps its own row in the
+    condensed system and the tie couples to an unconstrained copy of it, which
+    over-stiffens opening curvature (wr1/b3_core#3). Each slave-master is
+    replaced by its own masters, recursively. Serial only, so global and
+    local dof numbers coincide.
+    """
+    _basix, dolfinx_mpc, _ufl, _fem, _dmesh, _MPI = _require_fenicsx()
+    slaves = np.asarray(staged._slaves, dtype=np.int64)
+    masters = np.asarray(staged._masters, dtype=np.int64)
+    coeffs = np.asarray(staged._coeffs, dtype=np.float64)
+    offsets = np.asarray(staged._offsets, dtype=np.int64)
+    rows = {
+        int(s): dict(
+            zip(
+                masters[offsets[i] : offsets[i + 1]].tolist(),
+                coeffs[offsets[i] : offsets[i + 1]].tolist(),
+                strict=True,
+            )
+        )
+        for i, s in enumerate(slaves)
+    }
+
+    resolved: dict[int, dict[int, float]] = {}
+
+    def resolve(dof: int, depth: int = 0) -> dict[int, float]:
+        if dof in resolved:
+            return resolved[dof]
+        if depth > len(rows):
+            raise RuntimeError("cyclic periodic constraint")
+        out: dict[int, float] = {}
+        for master, weight in rows[dof].items():
+            if master in rows:
+                for leaf, w in resolve(master, depth + 1).items():
+                    out[leaf] = out.get(leaf, 0.0) + weight * w
+            else:
+                out[master] = out.get(master, 0.0) + weight
+        resolved[dof] = {m: w for m, w in out.items() if abs(w) > 1e-14}
+        return resolved[dof]
+
+    new_slaves, new_masters, new_coeffs, new_offsets = [], [], [], [0]
+    for s in slaves.tolist():
+        row = resolve(int(s))
+        new_slaves.append(int(s))
+        new_masters.extend(row.keys())
+        new_coeffs.extend(row.values())
+        new_offsets.append(len(new_masters))
+    flat = dolfinx_mpc.MultiPointConstraint(function_space)
+    flat.add_constraint(
+        function_space,
+        np.asarray(new_slaves, dtype=np.int32),
+        np.asarray(new_masters, dtype=np.int64),
+        np.asarray(new_coeffs, dtype=np.float64),
+        np.zeros(len(new_masters), dtype=np.int32),
+        np.asarray(new_offsets, dtype=np.int32),
+    )
+    return flat
 
 
 def mpc_tie_report(mpc, points: np.ndarray) -> list[dict]:
