@@ -27,7 +27,7 @@ class CoreTheme:
     background: str = "white"
 
     cmap_displacement: str = "viridis"  # |u| on the deformed modes
-    cmap_modulus: str = "turbo"  # directional Young's modulus surface
+    cmap_modulus: str = "cividis"  # directional Young's modulus surface
     cmap_stiffness: str = "coolwarm"  # signed 6x6 C_eff heatmap
 
     core_opacity: float = 0.12  # translucent so internal grooves show
