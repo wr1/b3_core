@@ -243,6 +243,14 @@ class CaseInput(BaseModel):
     core: Material
     resin: Material
     madd: list[float] = Field(default_factory=lambda: [0.0])
+    # Largest element edge (mm) in x, y and z. Long foam bays and deep grooves
+    # are split so results do not depend on where the grooves sit in the cell.
+    # ``None`` keeps the legacy coarse grid (groove walls and halo lines only).
+    mesh_h_max: float | None = Field(2.0, gt=0)
+    # Elements over each groove depth, the same for flat and curved meshes.
+    # The tapered wall is planar, so 1 already represents the kerf wedge; 4 is
+    # the converged default (flat Ezz within ~1.6 % of 16 layers, vs 3.4 % for 1).
+    kerf_z_elems: int = Field(4, ge=1)
     face: Face | None = None
     curvature: Curvature = Field(default_factory=Curvature)
     scoring: Scoring | None = None
@@ -347,6 +355,8 @@ class CaseInput(BaseModel):
             "xcuts": [groove.as_cut() for groove in self.xgr],
             "ycuts": [groove.as_cut() for groove in self.ygr],
             "madd": tuple(self.madd),
+            "h_max": None if self.mesh_h_max is None else float(self.mesh_h_max),
+            "kerf_z_elems": int(self.kerf_z_elems),
             "tface": face_thickness,
             "kx": kx,
             "ky": ky,

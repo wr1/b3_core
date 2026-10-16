@@ -15,7 +15,7 @@ from b3_core.solvers.stamps import SOURCE_DIGEST, STAMPS, source_digest
 
 def test_cache_key_carries_schema_and_stamp():
     key = cache_key(plain().input, backend="mfem")
-    assert key.schema == CACHE_SCHEMA == 2
+    assert key.schema == CACHE_SCHEMA == 3
     assert key.solver_stamp == STAMPS["mfem"]
     assert key.backend == "mfem"
     assert case_hash(plain().input, backend="mfem") == key.hexdigest()
