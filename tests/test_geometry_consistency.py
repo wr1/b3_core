@@ -135,12 +135,49 @@ def test_fenicsx_opening_curvature_matches_numpy():
 
 
 @pytest.mark.fenicsx
-@pytest.mark.xfail(
-    strict=True,
-    reason="wr1/b3_core#3: FEniCSx opening curvature over-stiff without "
-    "grid lines near the periodic boundary",
-)
 def test_fenicsx_opening_without_halo_matches_numpy():
+    """wr1/b3_core#3: no grid lines near the periodic boundary."""
     _require("fenicsx")
     case = _case(kx=1e-3)
     assert _maxrel(_props(case, "fenicsx"), _props(case, "numpy")) < 0.01
+
+
+@pytest.mark.fenicsx
+@pytest.mark.parametrize("cell_size", [None, 0.5], ids=["no-halo", "halo"])
+@pytest.mark.parametrize(
+    "kx,ky",
+    [(3e-3, 0.0), (3e-3, 3e-3), (-3e-3, 0.0), (-3e-3, -3e-3)],
+    ids=["open-x", "open-xy", "close-x", "close-xy"],
+)
+def test_fenicsx_curved_matches_numpy(kx, ky, cell_size):
+    _require("fenicsx")
+    case = _case(kx=kx, ky=ky, cell_size=cell_size)
+    assert _maxrel(_props(case, "fenicsx"), _props(case, "numpy")) < 0.01
+
+
+@pytest.mark.fenicsx
+@pytest.mark.parametrize("kx", [3e-3, -3e-3], ids=["open", "close"])
+def test_fenicsx_curved_matches_numpy_on_legacy_coarse_grid(kx):
+    _require("fenicsx")
+    case = _case(kx=kx)
+    case.update(mesh_h_max=None, kerf_z_elems=1)
+    assert _maxrel(_props(case, "fenicsx"), _props(case, "numpy")) < 0.01
+
+
+@pytest.mark.fenicsx
+def test_fenicsx_periodic_masters_are_never_slaves():
+    """Chained ties (a master that is itself a slave) must be flattened."""
+    _require("fenicsx")
+    from b3_core.loaders import normalize_case
+    from b3_core.pipeline import prepare
+    from b3_core.solvers.fenicsx import _hex_space, _periodic_constraint
+
+    case = _case(kx=3e-3, ky=3e-3)
+    case.update(mesh_h_max=None, kerf_z_elems=1)
+    case_in, _ = normalize_case(case)
+    _domain, space, points, _grid = _hex_space(prepare(case_in).mesh)
+    mpc, _pin, _bounds = _periodic_constraint(space, points)
+    slaves = set(np.asarray(mpc.slaves).tolist())
+    masters = set(np.asarray(mpc.masters.array).tolist())
+    assert slaves
+    assert not slaves & masters
