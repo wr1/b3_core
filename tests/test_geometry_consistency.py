@@ -1,6 +1,7 @@
 """Mesh-consistency regressions for the grooved RVE.
 
-1. k -> 0 on the curved path recovers the flat result (same z stations).
+1. k -> 0 on the curved path recovers the flat result: flat and curved meshes
+   share the same z stations (``kerf_z_elems`` over each groove depth).
 2. A pure groove-offset shift of a periodic pattern does not change C.
 3. The halo response is smooth in the reach (the thin outer-face band is
    resolved in z, so Gauss points do not jump in or out of it).
@@ -100,3 +101,46 @@ def test_halo_response_is_smooth_and_monotone(backend):
     assert np.all(steps > 0)
     # Consecutive steps grow gently; the old Gauss-point jump was ~7x.
     assert np.all(steps[1:] / steps[:-1] < 1.5)
+
+
+def test_kerf_z_elems_sets_stations_and_pinch_adds_one():
+    kw = dict(
+        thickness=10.0,
+        dx=20.0,
+        dy=20.0,
+        xcuts=[[10.0, 20.0, -8.0, 1.0]],
+        ycuts=[],
+        madd=(0.0,),
+        tface=0.0,
+    )
+    z4 = np.unique(create_grooved_mesh(**kw, kerf_z_elems=4).points[:, 2])
+    # Root at z = 2, mouth at z = 10: four equal elements over the depth.
+    np.testing.assert_allclose(z4, [0.0, 2.0, 4.0, 6.0, 8.0, 10.0], atol=1e-9)
+    # Closing past full pinch: hw(z) kinks at MIN_HW (z = 6.99), one extra station.
+    pinch = create_grooved_mesh(**kw, kerf_z_elems=4, kx=-0.01)
+    assert len(np.unique(np.round(pinch.points[:, 2], 9))) == len(z4) + 1
+    # Opening (no pinch) keeps the flat stations.
+    opening = create_grooved_mesh(**kw, kerf_z_elems=4, kx=0.01)
+    assert len(np.unique(np.round(opening.points[:, 2], 9))) == len(z4)
+
+
+@pytest.mark.fenicsx
+def test_fenicsx_opening_curvature_matches_numpy():
+    """Opening kerfs (top mouth, kx > 0): FEniCSx and numpy must agree."""
+    _require("fenicsx")
+    case = _case(cell_size=0.5, kx=1e-3)
+    fx = _props(case, "fenicsx")
+    npy = _props(case, "numpy")
+    assert _maxrel(fx, npy) < 0.01
+
+
+@pytest.mark.fenicsx
+@pytest.mark.xfail(
+    strict=True,
+    reason="wr1/b3_core#3: FEniCSx opening curvature over-stiff without "
+    "grid lines near the periodic boundary",
+)
+def test_fenicsx_opening_without_halo_matches_numpy():
+    _require("fenicsx")
+    case = _case(kx=1e-3)
+    assert _maxrel(_props(case, "fenicsx"), _props(case, "numpy")) < 0.01

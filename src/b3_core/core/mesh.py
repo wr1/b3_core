@@ -409,12 +409,15 @@ def create_grooved_mesh(
     wall_morph: bool = True,
     s_face_halo: float = 0.0,
     h_max: float | None = None,
+    kerf_z_elems: int = 1,
 ):
     """Build a structured RVE; open/close via wall-aligned morph when κ ≠ 0.
 
     1. Rectangular flat grid (walls = grid faces, rectangular resin tags).
        ``s_face_halo`` adds z lines inside the outer-face halo band and
        ``h_max`` caps every element edge (mm); ``None`` keeps the coarse grid.
+       ``kerf_z_elems`` sets the elements over each groove depth (flat and
+       curved alike).
     2. If ``kx``/``ky`` nonzero, interval-affine morph so walls track ``hw(z)``.
        Foam bays become trapezoidal on the flat RVE (intended FEA geometry).
     """
@@ -439,23 +442,33 @@ def create_grooved_mesh(
         if roots:
             fz = np.append(fz, np.clip(np.concatenate(roots), 0.0, thickness + tface))
 
-    # Through-thickness stations along every groove depth so a morphed wall is
-    # piecewise-linear. They are added at κ = 0 too: the flat mesh and the
-    # k -> 0 curved mesh must be the same mesh, or the curved path shows a
-    # discretisation step at vanishing curvature. An axis without grooves
-    # adds none, so ky does not refine an x-only pattern.
-    n_z_taper = 9
+    # Through-thickness stations along every groove depth, identical for the
+    # flat and the curved mesh: the k -> 0 curved mesh must be the flat mesh,
+    # or the curved path shows a discretisation step at vanishing curvature.
+    # The tapered wall hw(z) is linear in z, so one element over the depth
+    # already represents the open/closed wedge exactly; ``kerf_z_elems`` only
+    # sets convergence. A groove that pinches shut has a kink where hw(z) hits
+    # MIN_HW, and only that groove gets one extra station at the kink.
+    n_elems = max(1, int(kerf_z_elems))
     taper_z = []
-    for cuts in (xcuts, ycuts):
+    for cuts, kappa in ((xcuts, kx), (ycuts, ky)):
         for cut in cuts:
             d = float(cut[2])
             if d == 0.0:
                 continue
             if d > 0:
                 z0, z1 = 0.0, d
+                z_root, sign = d, -1.0
             else:
                 z0, z1 = thickness + d, thickness
-            taper_z.append(np.linspace(z0, z1, n_z_taper))
+                z_root, sign = thickness + d, 1.0
+            taper_z.append(np.linspace(z0, z1, n_elems + 1))
+            hw0 = 0.5 * float(cut[3])
+            slope = -float(np.sign(d)) * float(kappa) * float(cut[1]) / 2.0
+            if slope < 0.0:
+                zeta = (_MIN_HW - hw0) / slope
+                if 0.0 < zeta < abs(d):
+                    taper_z.append(np.array([z_root + sign * zeta]))
     if taper_z:
         fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
 
@@ -467,9 +480,6 @@ def create_grooved_mesh(
 
     xc, xhw = 0.5 * (bx + tx), 0.5 * (tx - bx)
     yc, yhw = 0.5 * (by + ty), 0.5 * (ty - by)
-    # Boundary-clamped zero-width instances are not grooves: no halo lines.
-    xkeep = (xhw > 0) & (hx != 0)
-    ykeep = (yhw > 0) & (hy != 0)
 
     # Local refinement near walls. Halo band lines at nominal hw + s_halo, and
     # (when κ opens the mouth) at max |hw(z)| + s_halo so the open-mouth foam
@@ -478,14 +488,8 @@ def create_grooved_mesh(
     yoff = yhw[:, None]
     if s_halo > 0:
         hf = np.linspace(0.0, 1.0, 3)[1:]
-        xoff = np.concatenate(
-            [xoff, np.where(xkeep[:, None], xhw[:, None] + s_halo * hf[None, :], 0.0)],
-            axis=1,
-        )
-        yoff = np.concatenate(
-            [yoff, np.where(ykeep[:, None], yhw[:, None] + s_halo * hf[None, :], 0.0)],
-            axis=1,
-        )
+        xoff = np.concatenate([xoff, xhw[:, None] + s_halo * hf[None, :]], axis=1)
+        yoff = np.concatenate([yoff, yhw[:, None] + s_halo * hf[None, :]], axis=1)
     if s_halo > 0 and (abs(kx) > 0.0 or abs(ky) > 0.0):
         # Farthest wall from root-hinged taper (open mouth or closed root).
         def _flare_hw(hw0, depth, slope):
