@@ -233,6 +233,15 @@ def prepare(case: CaseInput, *, wall_morph: bool = True) -> PreparedCase:
     from b3_core.core.scoring import ScoreField, effective_resin_vf, halo_reach
 
     reach = halo_reach(case)
+    if case.mesh_h_max is None:
+        warnings.warn(
+            "mesh_h_max=None selects the legacy coarse grid (groove walls and "
+            "halo lines only). Its results are mesh-dependent, especially with "
+            "a halo on curved cells; it will be removed in 1.0. Use a size "
+            "such as the default 2.0 mm.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     kwargs = case.mesh_kwargs()
     kwargs["s_halo"] = reach
     kwargs["wall_morph"] = wall_morph

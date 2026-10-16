@@ -53,7 +53,7 @@ flowchart TB
 1. Build a structured 3D RVE over `[0, dx] × [0, dy] × [0, thickness]` (mm).
 2. Tag cells as core, resin (groove volume), optional face layer, optional resin halo.
 3. If `kx`/`ky` set, **morph walls** so kerfs track `hw(z)` (open/close).
-4. Solve six unit macroscopic strains under periodic BC (**mfem** by default).
+4. Solve six unit macroscopic strains under periodic BC (**FEniCSx** by default; MFEM when FEniCSx is not installed).
 5. Average reactions and face jumps → orthotropic constants and infused density.
 
 **Units:** geometry in mm; materials and outputs in SI (Pa, kg/m³). The mesh is scaled
