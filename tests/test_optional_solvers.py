@@ -66,11 +66,18 @@ def test_fenicsx_orthotropic_matches_numpy(caplog):
 
 
 @pytest.mark.fenicsx
+def _coarse(case):
+    from dataclasses import replace
+
+    return replace(case, input=case.input.model_copy(update={"mesh_h_max": 3.0}))
+
+
 def test_fenicsx_halo_matches_numpy(caplog):
     """Graded resin halo on an orthotropic core reproduces numpy."""
     if not get_backend("fenicsx").is_available():
         pytest.skip("FEniCSx is not installed")
-    case = grid_scored()
+    # Same mesh for both backends; a coarse cap keeps the numpy reference small.
+    case = _coarse(grid_scored())
     ref = np.asarray(homogenize(case, backend="numpy").stiffness, dtype=float)
     got = _fenicsx_stiffness(case, caplog)
     assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
@@ -81,7 +88,7 @@ def test_fenicsx_curved_halo_matches_mfem(caplog):
     """A tapered orthotropic halo matches MFEM. Both sit off numpy by O(kappa^2)."""
     if not get_backend("fenicsx").is_available():
         pytest.skip("FEniCSx is not installed")
-    case = grid_scored().with_curvature(kx=2e-3)
+    case = _coarse(grid_scored()).with_curvature(kx=2e-3)
     ref = np.asarray(
         homogenize(case, backend="mfem", allow_pair_periodicity=True).stiffness,
         dtype=float,
