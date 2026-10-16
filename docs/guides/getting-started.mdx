@@ -57,8 +57,9 @@ Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
 mouths at `z = thickness`. Positive `kx` opens a top mouth and pinches a
 bottom mouth. The same setting is `homogenize(case, kx=, ky=)` or
 `.with_curvature`. `result.kerfs` is the half-width after that taper.
-Default solver is **MFEM**, including halo and orthotropic foam. Numpy is the
-fallback.
+Default solver is **FEniCSx** (`backend: auto` picks it when the conda-forge
+stack is installed), including halo, orthotropic foam and curvature. Without it,
+a flat case falls back to MFEM, then numpy; a curved case needs FEniCSx.
 
 Shipped examples (JSON is interchange; factories are the source of truth):
 

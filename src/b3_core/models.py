@@ -245,11 +245,15 @@ class CaseInput(BaseModel):
     madd: list[float] = Field(default_factory=lambda: [0.0])
     # Largest element edge (mm) in x, y and z. Long foam bays and deep grooves
     # are split so results do not depend on where the grooves sit in the cell.
-    # ``None`` keeps the legacy coarse grid (groove walls and halo lines only).
-    mesh_h_max: float | None = Field(2.0, gt=0)
+    # 1.5 mm: in-plane moduli, shears and the curvature-driven Eyy/Gyz within
+    # ~1 % of the h→0 extrapolation, Ezz ~2.4 % high; 1.0 mm (used by the
+    # engineering datasheet) halves the Ezz error at ~2.5× the solve time
+    # (docs/reference/convergence). ``None`` keeps the
+    # deprecated legacy coarse grid (groove walls and halo lines only).
+    mesh_h_max: float | None = Field(1.5, gt=0)
     # Elements over each groove depth, the same for flat and curved meshes.
-    # The tapered wall is planar, so 1 already represents the kerf wedge; 4 is
-    # the converged default (flat Ezz within ~1.6 % of 16 layers, vs 3.4 % for 1).
+    # The tapered wall is planar, so 1 already represents the kerf wedge; with
+    # mesh_h_max capping z spacing, 2 → 8 changes every modulus by < 0.3 %.
     kerf_z_elems: int = Field(4, ge=1)
     face: Face | None = None
     curvature: Curvature = Field(default_factory=Curvature)

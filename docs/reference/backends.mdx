@@ -7,8 +7,8 @@ description: FEniCSx when installed, otherwise MFEM, plus CalculiX and numpy.
 
 | Backend | Strengths | Limits |
 |---------|-----------|--------|
-| **`fenicsx`** (leads `auto` when installed) | Projected periodicity: the image is the master cell's interpolant; same 6×6 map; displacements | Conda-forge stack; linear hex |
-| **`mfem`** (default install) | Fast in-process; orthotropic + per-GP halo; tensor-grid z interpolant; datasheet / deformed / viz | Needs PyMFEM |
+| **`fenicsx`** (recommended default; leads `auto`) | Projected periodicity: the image is the master cell's interpolant; same 6×6 map; displacements | Conda-forge stack; linear hex |
+| **`mfem`** (pip-installable flat fallback) | Fast in-process; orthotropic + per-GP halo; tensor-grid z interpolant; datasheet / deformed / viz | Needs PyMFEM |
 | **`ccx`** | CalculiX `.inp` + VTU post; validation twin | Isotropic two-phase; needs `ccx` + `frd2vtu` |
 | **`numpy`** | Always-available `BᵀCB` assembly; resin-grid failure strains | Slower reference path |
 

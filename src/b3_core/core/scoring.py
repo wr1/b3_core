@@ -280,21 +280,62 @@ def score_field_for(inp):
     return ScoreField(data)
 
 
+_GAUSS = np.array([-1.0, 1.0]) / np.sqrt(3.0)
+# VTK hexahedron node order in reference coordinates.
+_HEX_REF = np.array(
+    [
+        [-1, -1, -1],
+        [1, -1, -1],
+        [1, 1, -1],
+        [-1, 1, -1],
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, 1],
+        [-1, 1, 1],
+    ],
+    dtype=float,
+)
+
+
+def hex_gauss_points(mesh) -> tuple[np.ndarray, np.ndarray]:
+    """2x2x2 Gauss points and weights (|J|·w) per hex cell: (n,8,3), (n,8).
+
+    The same rule the solvers integrate stiffness with, so a volume fraction
+    taken here matches the halo the stiffness sees.
+    """
+    grid = mesh.cast_to_unstructured_grid() if not hasattr(mesh, "cells_dict") else mesh
+    cells = np.asarray(grid.cells_dict[12], dtype=np.int64)
+    xe = np.asarray(grid.points, dtype=float)[cells]  # (n, 8, 3)
+    g = np.stack(np.meshgrid(_GAUSS, _GAUSS, _GAUSS, indexing="ij"), -1).reshape(-1, 3)
+    r = _HEX_REF
+    # Trilinear shape functions and their reference derivatives at each point.
+    terms = 1.0 + g[:, None, :] * r[None, :, :]  # (8q, 8n, 3)
+    shape = 0.125 * terms.prod(-1)
+    dshape = np.empty((len(g), 8, 3))
+    for k in range(3):
+        others = [j for j in range(3) if j != k]
+        dshape[:, :, k] = 0.125 * r[None, :, k] * terms[:, :, others].prod(-1)
+    pts = np.einsum("qn,cnd->cqd", shape, xe)
+    jac = np.einsum("qnk,cnd->cqdk", dshape, xe)
+    weights = np.abs(np.linalg.det(jac))
+    return pts, weights
+
+
 def effective_resin_vf(mesh, field, resin_vf: float):
     """``(effective_resin_vf, halo_vf)``: neat resin plus the halo's resin content.
 
-    Adds the volume integral of P(resin) over the **foam** cells (evaluated at
-    cell centres) to the neat-kerf ``resin_vf``. Returns the inputs unchanged when
-    no field is active.
+    Adds the volume integral of P(resin) over the **foam** cells to the
+    neat-kerf ``resin_vf``. P is integrated with the 2x2x2 Gauss rule the
+    stiffness uses, so density and stiffness see the same halo. Returns the
+    inputs unchanged when no field is active.
     """
     if field is None or not field.active:
         return resin_vf, 0.0
-    ma = mesh.compute_cell_sizes()
-    vol = np.abs(ma.cell_data["Volume"])
     foam = ~(
         np.asarray(mesh.cell_data["resin"], bool)
         | np.asarray(mesh.cell_data["face"], bool)
     )
-    p = field.resin_probability(mesh.cell_centers().points)
-    halo_vf = float((p[foam] * vol[foam]).sum() / vol.sum())
+    pts, w = hex_gauss_points(mesh)
+    p = np.asarray(field.resin_probability(pts.reshape(-1, 3)), float).reshape(w.shape)
+    halo_vf = float((p[foam] * w[foam]).sum() / w.sum())
     return resin_vf + halo_vf, halo_vf

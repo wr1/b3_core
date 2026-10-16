@@ -28,7 +28,7 @@ dependencies = [
     "scipy",
     "pandas",
     "matplotlib~=3.9",
-    "pyvista>=0.44,<0.45",
+    "pyvista>=0.44,<0.50",
     "pydantic>=2.0",
     "pyyaml",
     "treeparse>=0.3.4,<0.4",

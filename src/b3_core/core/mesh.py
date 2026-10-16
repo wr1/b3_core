@@ -527,6 +527,13 @@ def create_grooved_mesh(
         0,
         dy,
     )
+    if h_max is not None and h_max > 0:
+        # At least two elements across every kerf: with one linear hex across
+        # the width the resin wedge locks in bending, and opening Ezz is ~10 %
+        # off whenever h_max happens to exceed the kerf width (see the docs'
+        # convergence table). The centreline is the cheapest second element.
+        xlines = np.concatenate([xlines, np.clip(xc, 0, dx)])
+        ylines = np.concatenate([ylines, np.clip(yc, 0, dy)])
     X, Y, Z = np.meshgrid(
         _cap_spacing(_at_least_three_elements(xlines, dx), h_max),
         _cap_spacing(_at_least_three_elements(ylines, dy), h_max),
