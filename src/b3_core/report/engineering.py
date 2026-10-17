@@ -132,12 +132,18 @@ def radius_label(k: float) -> str:
 # --------------------------------------------------------------------------- #
 # solves
 # --------------------------------------------------------------------------- #
-def fenicsx_solver(backend: str = "fenicsx") -> Solver:
+def fenicsx_solver(backend: str = "fenicsx", cache: Any = None) -> Solver:
+    """Flat/curved solve → flat property dict. ``cache`` (e.g. a ``DiskCache``)
+    makes a long sheet build resumable."""
     from b3_core.api import run_case
 
     def solve(case: dict, kx: float = 0.0, ky: float = 0.0) -> dict:
         rec = run_case(
-            copy.deepcopy(case), kx=kx or None, ky=ky or None, backend=backend
+            copy.deepcopy(case),
+            kx=kx or None,
+            ky=ky or None,
+            backend=backend,
+            cache=cache,
         )
         out = {
             k: float(v) for k, v in rec.flat().items() if isinstance(v, (int, float))
@@ -563,6 +569,19 @@ def fig_calibration(data: SheetData, out: Path) -> Path:
         a1.plot(m[i], s0[i], "o", mfc="none", mec="0.55", ms=4.5, mew=0.8)
         a1.plot([m[i], m[i]], [s0[i], f[i]], color="0.75", lw=0.6, zorder=1)
         a1.plot(m[i], f[i], "o", color=cols[i], ms=5, label=_TARGET_TEX.get(n, n))
+    for j, n in enumerate(fit.check_measured):
+        cm = _target_display(n, fit.check_measured[n])
+        cf = _target_display(n, fit.check_model[n])
+        a1.plot(
+            cm,
+            cf,
+            "*",
+            mfc="white",
+            mec=cols[(len(names) + j) % 10],
+            ms=8,
+            mew=1.0,
+            label=f"{_TARGET_TEX.get(n, n)} (held out)",
+        )
     a1.plot([], [], "o", mfc="none", mec="0.55", ms=4.5, label="nominal")
     a1.set_xscale("log")
     a1.set_yscale("log")
@@ -1003,6 +1022,14 @@ def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
             f"[{'—' if start is None else fmt(start)}], [{fmt(fit.model[n])}], "
             f"[*{fit.residual_pct[n]:+.3f} %*]"
         )
+    for n in fit.check_measured:
+        fmt = lambda x: f"{x / 1e6:.4g}"  # noqa: E731
+        res = 100 * (fit.check_model[n] / fit.check_measured[n] - 1)
+        rrow.append(
+            f"[{_TARGET_TYP.get(n, _esc(n))} [MPa] _held out_], "
+            f"[{fmt(fit.check_measured[n])}], [—], [{fmt(fit.check_model[n])}], "
+            f"[{res:+.2f} %]"
+        )
     rtab = (
         "#table(columns: 5, align: (left, right, right, right, right), "
         f"[*Target*], [*{_esc(fit.label)}*], [*Nominal*], [*Fitted*], [*Residual*], "
@@ -1028,6 +1055,8 @@ def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
         ),
         ("FE solves", f"{fit.n_solves} for the fit"),
     ]
+    if (fit.extra or {}).get("identifiability_note"):
+        info.insert(3, ("Why these", fit.extra["identifiability_note"]))
     if noisy:
         info.append(
             (
