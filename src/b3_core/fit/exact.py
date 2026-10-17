@@ -74,6 +74,11 @@ TARGETS: dict[str, tuple[str, ...]] = {
     "Gxy": ("Gxy",),
     "rho": ("rho_infused",),
 }
+# Default fitted set. On a symmetric grooved cell G_tr and Gxy respond almost
+# identically to every material knob (screened Jacobian rows nearly parallel),
+# so Gxy is kept as a held-out check instead of a fitted target.
+FIT_TARGETS: tuple[str, ...] = ("E_in", "Ezz", "G_tr", "rho")
+FIT_KNOBS: tuple[str, ...] = ("halo_reach", "core_E", "core_G", "resin_E")
 TARGET_LABELS = {
     "E_in": "E_in = (Exx+Eyy)/2",
     "Ezz": "Ezz",
@@ -386,6 +391,8 @@ class ExactFit:
     surface_rms_pct: float
     surface_loo_pct: float
     start_model: dict[str, float] = field(default_factory=dict)
+    check_measured: dict[str, float] = field(default_factory=dict)
+    check_model: dict[str, float] = field(default_factory=dict)
     true: list[float] | None = None
     at_bound: list[str] = field(default_factory=list)
     label: str = "test"
@@ -417,6 +424,7 @@ def exact_fit(
     knobs: Sequence[str],
     *,
     targets: Sequence[str] | None = None,
+    checks: Sequence[str] | None = None,
     bounds: Mapping[str, Sequence[float]] | None = None,
     tol_pct: float = 0.01,
     max_polish: int = 3,
@@ -428,18 +436,31 @@ def exact_fit(
     """Square, bounded, exact fit of ``knobs`` to the flat ``measured`` targets.
 
     ``measured`` may hold raw test properties (Exx, Eyy, ...) or averaged
-    targets (``E_in``...). ``tol_pct`` is the max |residual| that stops the
-    true-solve polish.
+    targets (``E_in``...). ``targets`` defaults to :data:`FIT_TARGETS`;
+    ``checks`` (default: the other targets the test has) are not fitted and
+    are reported as held-out predictions. ``tol_pct`` is the max |residual|
+    that stops the true-solve polish.
     """
-    targets = list(targets or TARGETS)
+    targets = list(targets or FIT_TARGETS)
     if len(targets) != len(knobs):
         raise ValueError(
             f"exact fit needs as many knobs ({len(knobs)}) as targets ({len(targets)})"
         )
-    meas = {
-        n: float(measured[n]) if n in measured else targets_of(measured, [n])[n]
-        for n in targets
-    }
+
+    def _meas(n: str) -> float | None:
+        if n in measured:
+            return float(measured[n])
+        if all(p in measured for p in TARGETS[n]):
+            return targets_of(measured, [n])[n]
+        return None
+
+    meas = {n: _meas(n) for n in targets}
+    if any(v is None for v in meas.values()):
+        raise KeyError(f"measured lacks {[n for n, v in meas.items() if v is None]}")
+    checks = [
+        n for n in (checks if checks is not None else TARGETS) if n not in targets
+    ]
+    check_meas = {n: v for n in checks if (v := _meas(n)) is not None}
     ks = [knob(n, bounds) for n in knobs]
     ev = Evaluator(solve, case, ks, targets, store)
     logy = np.log([meas[n] for n in targets])
@@ -470,6 +491,7 @@ def exact_fit(
         u, _ = solve_surface(surf, shifted, [u])
     x = ev.from_unit(u)
     model = targets_of(ev.props(x), targets)
+    check_model = targets_of(ev.props(x), list(check_meas))
     j = surf.jac(u)
     ident = identifiability(j)
     at_bound = [k.name for k, v in zip(ks, u, strict=True) if abs(v) > 1 - 1e-6]
@@ -492,6 +514,8 @@ def exact_fit(
         surface_rms_pct=surf.fit_rms_pct,
         surface_loo_pct=surf.loo_max_pct,
         start_model=start_model,
+        check_measured=check_meas,
+        check_model=check_model,
         true=None if true is None else [float(v) for v in true],
         at_bound=at_bound,
         label=label,

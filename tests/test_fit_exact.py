@@ -19,6 +19,7 @@ CASE = {
     "resin": {"E": 3.2e9, "nu": 0.35, "rho": 1150.0},
 }
 KNOBS = ["halo_reach", "core_E", "core_G", "resin_E", "resin_rho"]
+ALL = list(X.TARGETS)
 TRUTH = {
     "halo_reach": 0.72,
     "core_E": 92e6,
@@ -115,14 +116,16 @@ def test_identifiability_rank_and_subsets():
 def test_exact_fit_clean_recovers_truth(tmp_path):
     meas = X.mock_test(fake, CASE, TRUTH)
     store = tmp_path / "s.jsonl"
-    fit = X.exact_fit(fake, CASE, meas, KNOBS, store=store, true=list(TRUTH.values()))
+    fit = X.exact_fit(
+        fake, CASE, meas, KNOBS, targets=ALL, store=store, true=list(TRUTH.values())
+    )
     assert fit.max_abs_residual_pct < 0.01
     assert fit.fitted == pytest.approx(list(TRUTH.values()), rel=1e-3)
     assert fit.n_design == 27 and np.isfinite(fit.condition)
     assert fit.history[0]["stage"] == "surface"
     assert not fit.at_bound
     # Resume: every solve comes back from the store.
-    again = X.exact_fit(fake, CASE, meas, KNOBS, store=store)
+    again = X.exact_fit(fake, CASE, meas, KNOBS, targets=ALL, store=store)
     assert again.n_solves == 0 and again.fitted == pytest.approx(fit.fitted)
     back = X.ExactFit.from_dict(json.loads(json.dumps(fit.to_dict())))
     assert back.values() == pytest.approx(fit.values())
@@ -135,7 +138,7 @@ def test_exact_fit_noisy_is_still_exact_on_targets():
     }
     meas = X.mock_test(fake, CASE, TRUTH, noise=noise, seed=3)
     assert meas["Exx"] != meas["Eyy"]
-    fit = X.exact_fit(fake, CASE, meas, KNOBS)
+    fit = X.exact_fit(fake, CASE, meas, KNOBS, targets=ALL)
     if not fit.at_bound:
         assert fit.max_abs_residual_pct < 0.01
 
@@ -143,3 +146,15 @@ def test_exact_fit_noisy_is_still_exact_on_targets():
 def test_exact_fit_needs_a_square_system():
     with pytest.raises(ValueError, match="as many knobs"):
         X.exact_fit(fake, CASE, {}, KNOBS[:3])
+
+
+def test_default_fit_is_four_by_four_with_gxy_held_out():
+    truth = {k: TRUTH[k] for k in X.FIT_KNOBS}
+    meas = X.mock_test(fake, CASE, truth)
+    fit = X.exact_fit(fake, CASE, meas, X.FIT_KNOBS)
+    assert list(fit.measured) == list(X.FIT_TARGETS)
+    assert list(fit.check_measured) == ["Gxy"]
+    assert fit.check_model["Gxy"] == pytest.approx(meas["Gxy"], rel=1e-3)
+    assert fit.max_abs_residual_pct < 0.01 and fit.n_design == 25
+    with pytest.raises(KeyError, match="lacks"):
+        X.exact_fit(fake, CASE, {"Exx": 1.0}, X.FIT_KNOBS)

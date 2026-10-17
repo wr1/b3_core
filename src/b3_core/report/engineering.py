@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 PROPS = ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "Gxy")
 CAL_PROPS = (*PROPS, "rho_infused")
-# Exact-fit knobs: one per identifiable flat target (E_in, Ezz, G_tr, Gxy, ρ).
-CAL_KNOBS = ("halo_reach", "core_E", "core_G", "resin_E", "resin_rho")
+# Exact-fit knobs, one per identifiable flat target (see b3_core.fit.exact).
+CAL_KNOBS = ("halo_reach", "core_E", "core_G", "resin_E")
 MAP_PROPS = (
     ("Exx", "$E_{xx}$"),
     ("Eyy", "$E_{yy}$"),
@@ -181,6 +181,7 @@ def load_calibration(calibration: Any, case: dict, solve: Solver):
         spec["measured"],
         spec.get("knobs", CAL_KNOBS),
         targets=spec.get("targets"),
+        checks=spec.get("checks"),
         bounds=spec.get("bounds"),
         true=spec.get("true"),
         label=spec.get("label", "test"),
