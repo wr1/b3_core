@@ -209,3 +209,23 @@ src/b3_core/viz/
 ```
 
 Datasheet and deformed CLIs build on this layer; they do not reimplement meshing.
+
+## Engineering datasheet (multi-page, FEniCSx)
+
+```bash
+b3_core viz datasheet case.json --engineering [--calibration measured.json] -o sheet.pdf
+```
+
+`datasheet.generate(case, out, engineering=True, calibration=..., radii_m=...)` runs every solve itself (mesh_h_max 1.0 unless the case sets one) and writes:
+
+- Page 1: key numbers against plain foam (absolute and per unit density), inputs and assumptions, provenance (backend, commit, mesh, convergence status, k→0 continuity), an RVE iso view with the halo band and a true-scale inset, and phase cuts between the grooves.
+- Page 2: curvature map in % vs the flat card. It uses a shared symmetric coolwarm scale, with R = 1/(1000 k) m ticks. Closed-groove cells are hatched, and a warning is printed on the closure clamp. A kx line cut with the closure band follows. kx drives Eyy and Gyz.
+- Page 3: the constants, the 6×6 matrix, and the optional exact calibration: a parity plot (test vs model, with held-out checks), the free parameters inside their bounds (nominal, fitted, truth for mock data, and an optional noisy-fit column), residuals, the condition number and the FE-solve history.
+
+### Exact calibration
+
+The calibration is square: as many bounded material knobs as identifiable flat targets, so the fit is exact rather than a least-squares compromise (`b3_core.fit.exact`). A symmetric cell has the targets `E_in` = mean(Exx, Eyy), `Ezz`, `G_tr` = mean(Gxz, Gyz), `Gxy` and infused `rho`. On the grooved cell, `G_tr` and `Gxy` respond almost identically to every material knob, so the default is 4 × 4: `halo_reach` (resin seepage), `core_E`, `core_G` and `resin_E` against `E_in`, `Ezz`, `G_tr` and `rho`, with `Gxy` reported as a held-out check. The core is written as cubic-symmetric (Ex = Ey = Ez, one G), which equals the isotropic material when G = E/2(1+ν).
+
+Steps: a face-centred CCD of FE solves (25 for 4 knobs), a full quadratic in ln(property), a bounded Newton solve on the surface, then a polish on FE solves that shifts the target by the surface error (output space mapping). One or two polish solves usually bring max |residual| below 0.01 %. `jacobian`, `identifiability` and `rank_subsets` screen candidate knob sets by rank and condition number.
+
+The calibration JSON is either a spec, `{"measured": {...}, "knobs": [...], "bounds": {...}, "targets": [...], "true": [...], "label": ..., "note": ...}` (`measured` holds raw flat properties in Pa plus `rho_infused`, or the averaged targets), or a saved fit (`ExactFit.to_dict()`), which is applied without re-solving. Old single-parameter specs (`param`) are rejected.

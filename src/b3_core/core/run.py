@@ -646,7 +646,16 @@ def cmd_viz_datasheet(
     prose: str = "",
     cache: str = "",
     grid: str = "",
+    engineering: bool = False,
+    calibration: str = "",
 ):
+    if engineering:
+        from b3_core.datasheet import generate
+
+        out_pdf = output or str(Path(path).with_suffix(".pdf"))
+        pdf = generate(path, out_pdf, engineering=True, calibration=calibration or None)
+        print(f"Wrote {pdf}")
+        return
     if full or sweep or grid:
         from b3_core.cli_ext import write_full_datasheet
 
@@ -818,6 +827,17 @@ def _viz_subgroup() -> group:
                         flags=["--full"],
                         flag=True,
                         help="Curvature sheet from data.json. Needs a passing stamp or --draft.",
+                    ),
+                    option(
+                        flags=["--engineering"],
+                        flag=True,
+                        help="Multi-page FEniCSx sheet: foam baseline, curvature map, provenance.",
+                    ),
+                    option(
+                        flags=["--calibration"],
+                        arg_type=str,
+                        default="",
+                        help="With --engineering: JSON of measured flat data to fit the halo to.",
                     ),
                     option(
                         flags=["--draft"],

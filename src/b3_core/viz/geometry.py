@@ -70,3 +70,36 @@ def sample_plane(mesh, mat, u_axis, v_axis, fixed_axis, coord, u_vals, v_vals):
     inside = cids >= 0
     out[inside] = mat[cids[inside]]
     return out.reshape(uu.shape)
+
+
+def between_grooves(grooves, length: float) -> float:
+    """Midpoint of the longest groove-free interval inside ``[0, length]``.
+
+    ``grooves`` are ``[offset, pitch, depth, width]`` rows. A cut there shows
+    the foam bay and both walls instead of slicing along a kerf.
+    """
+    walls = []
+    for row in grooves or []:
+        offset, pitch, _depth, width = (float(v) for v in row[:4])
+        pitch = pitch if pitch > 0 else length
+        n0 = int(np.floor(-offset / pitch)) - 1
+        n1 = int(np.ceil((length - offset) / pitch)) + 1
+        for n in range(n0, n1 + 1):
+            c = offset + n * pitch
+            walls.append((c - width / 2.0, c + width / 2.0))
+    free = [(0.0, length)]
+    for lo, hi in walls:
+        nxt = []
+        for a, b in free:
+            if hi <= a or lo >= b:
+                nxt.append((a, b))
+                continue
+            if lo > a:
+                nxt.append((a, lo))
+            if hi < b:
+                nxt.append((hi, b))
+        free = nxt
+    if not free:
+        return 0.5 * length
+    a, b = max(free, key=lambda ab: ab[1] - ab[0])
+    return 0.5 * (a + b)
