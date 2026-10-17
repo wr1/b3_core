@@ -108,6 +108,23 @@ def is_clamped(case: dict, kx: float, ky: float) -> bool:
     return False
 
 
+_XY_SWAP = {"Exx": "Eyy", "Eyy": "Exx", "Gxz": "Gyz", "Gyz": "Gxz"}
+
+
+def xy_symmetric(case: dict) -> bool:
+    """True when x and y are interchangeable (same pitch, same groove rows).
+
+    Then the (ky, kx) solve is the (kx, ky) solve with x and y swapped, so a
+    biaxial sweep needs only half the solves.
+    """
+    rows = lambda key: [[float(v) for v in r[:4]] for r in case.get(key) or []]  # noqa: E731
+    return float(case["dx"]) == float(case["dy"]) and rows("xgr") == rows("ygr")
+
+
+def _swap_xy(f: dict) -> dict:
+    return {_XY_SWAP.get(k, k): v for k, v in f.items() if k in (*PROPS, "rho_infused")}
+
+
 def radius_label(k: float) -> str:
     return "flat" if k == 0 else f"{1 / (1000 * k):+g}"
 
@@ -234,8 +251,16 @@ def collect(
         else [(k, 0.0) for k in ks] + [(0.0, k) for k in ks if k]
     )
     clamped = 0
+    mirror = xy_symmetric(case)
+    done: dict[tuple[float, float], dict] = {}
     for kx, ky in pairs:
-        f = flat if (kx == 0 and ky == 0) else solve(case, kx, ky)
+        if kx == 0 and ky == 0:
+            f = flat
+        elif mirror and (ky, kx) in done:
+            f = _swap_xy(done[(ky, kx)])
+        else:
+            f = solve(case, kx, ky)
+        done[(kx, ky)] = f
         c = is_clamped(case, kx, ky)
         clamped += c
         sweep.append(

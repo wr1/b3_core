@@ -118,7 +118,7 @@ def test_calibration_accepts_saved_fit_and_rejects_old_spec(tmp_path):
             CASE, radii_m=(1.0,), biaxial=False, calibration=saved, solve=counting
         )
     assert again.case["core"]["cell_size"] == pytest.approx(0.7, abs=1e-4)
-    assert len(calls) == 3 + 4  # flat, k→0, plain foam + 4 sweep points: no fit
+    assert len(calls) == 3 + 2  # flat, k→0, plain + 2 kx points (ky mirrored): no fit
     with pytest.raises(ValueError, match="exact fit"):
         eng.load_calibration(
             {"measured": {}, "param": "core.cell_size"}, CASE, fake_solver
@@ -140,6 +140,34 @@ def test_typst_has_required_content():
     assert "drives $E_(y y)$ and $G_(y z)$" in src
     assert "past groove closure" in src
     assert " GPa" not in src.split("Key numbers")[1].split("Inputs")[0]
+
+
+@pytest.mark.skipif(shutil.which("typst") is None, reason="typst not installed")
+def test_symmetric_sweep_mirrors_half_the_solves():
+    calls = []
+
+    def counting(case, kx=0.0, ky=0.0):
+        calls.append((kx, ky))
+        return fake_solver(case, kx, ky)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        data = eng.collect(CASE, radii_m=(1.0, 2.0), solve=counting)
+        full = eng.collect(
+            CASE | {"ygr": [[15.0, 30.0, -18.0, 2.0001]]},
+            radii_m=(1.0, 2.0),
+            solve=fake_solver,
+        )
+    assert eng.xy_symmetric(CASE) and not eng.xy_symmetric(full.case)
+    n = len(data.ks)
+    assert (
+        len(calls) == 3 + (n * n - 1 + n - 1) // 2
+    )  # flat, k→0, plain + upper triangle
+    by = {(r["kx"], r["ky"]): r for r in data.sweep}
+    for (kx, ky), r in by.items():
+        ref = fake_solver(CASE, kx, ky)
+        for p in eng.PROPS:
+            assert r[p] == pytest.approx(ref[p]), (kx, ky, p)
 
 
 @pytest.mark.skipif(shutil.which("typst") is None, reason="typst not installed")
