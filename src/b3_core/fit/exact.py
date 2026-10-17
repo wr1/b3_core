@@ -56,7 +56,7 @@ class Knob:
 KNOBS: dict[str, Knob] = {
     k.name: k
     for k in (
-        Knob("halo_reach", "halo reach (resin seepage)", "mm", 0.2, 0.9),
+        Knob("halo_reach", "halo reach", "mm", 0.2, 0.9),
         Knob("core_E", "core E", "MPa", 60e6, 110e6, 1e6),
         Knob("core_G", "core G", "MPa", 22e6, 40e6, 1e6),
         Knob("resin_E", "resin E", "GPa", 2.8e9, 3.6e9, 1e9),

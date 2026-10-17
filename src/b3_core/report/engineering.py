@@ -529,9 +529,9 @@ _TARGET_TEX = {
     "rho": "ρ",
 }
 _TARGET_TYP = {
-    "E_in": "$E_(i n)$ = ($E_(x x)$+$E_(y y)$)/2",
+    "E_in": "$E_(i n)$",
     "Ezz": "$E_(z z)$",
-    "G_tr": "$G_(t r)$ = ($G_(x z)$+$G_(y z)$)/2",
+    "G_tr": "$G_(t r)$",
     "Gxy": "$G_(x y)$",
     "rho": "infused ρ",
 }
@@ -549,7 +549,7 @@ def fig_calibration(data: SheetData, out: Path) -> Path:
 
     fit = data.calibration
     names = list(fit.measured)
-    cols = plt.get_cmap("tab10")(np.arange(len(names)))
+    cols = plt.get_cmap("tab10")(np.arange(10))
     fig, (a1, a2, a3) = plt.subplots(
         1,
         3,
@@ -618,7 +618,8 @@ def fig_calibration(data: SheetData, out: Path) -> Path:
             va="center",
             fontsize=5.5,
         )
-        a2.text(0.5, y + 0.32, k.label, ha="center", va="bottom", fontsize=6)
+        label = k.label + (" (resin seepage)" if name == "halo_reach" else "")
+        a2.text(0.5, y + 0.32, label, ha="center", va="bottom", fontsize=6)
     handles = [
         plt.Line2D([], [], ls="", marker="o", mfc="none", mec="0.5", label="nominal"),
         plt.Line2D([], [], ls="", marker="o", color="#b40426", ms=3.6, label="fitted"),
@@ -649,7 +650,7 @@ def fig_calibration(data: SheetData, out: Path) -> Path:
         handletextpad=0.2,
         columnspacing=0.8,
     )
-    a2.set_xlim(-0.32, 1.42)
+    a2.set_xlim(-0.4, 1.45)
     a2.set_ylim(-0.6, len(fit.knobs) - 0.2)
     a2.axis("off")
     a2.set_title("free parameters inside their bounds", fontsize=7.5)
@@ -1026,7 +1027,7 @@ def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
         fmt = lambda x: f"{x / 1e6:.4g}"  # noqa: E731
         res = 100 * (fit.check_model[n] / fit.check_measured[n] - 1)
         rrow.append(
-            f"[{_TARGET_TYP.get(n, _esc(n))} [MPa] _held out_], "
+            f"[{_TARGET_TYP.get(n, _esc(n))} [MPa] (held out)], "
             f"[{fmt(fit.check_measured[n])}], [—], [{fmt(fit.check_model[n])}], "
             f"[{res:+.2f} %]"
         )
@@ -1040,7 +1041,9 @@ def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
     info = [
         (
             "Fit",
-            f"{len(fit.knobs)} parameters ↔ {len(fit.measured)} targets: square, so exact",
+            f"{len(fit.knobs)} parameters ↔ {len(fit.measured)} targets: square, so exact. "
+            "E_in = mean(Exx, Eyy), G_tr = mean(Gxz, Gyz): equal by symmetry, so "
+            "averaged. Halo reach = resin seepage depth into the foam.",
         ),
         ("Max |residual|", f"{fit.max_abs_residual_pct:.3f} % ({stages})"),
         (

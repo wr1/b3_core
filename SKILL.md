@@ -45,7 +45,8 @@ scored core + κ  →  homogenize RVE  →  (E, G, ν, ρ)
 
 ```python
 from b3_core.skill import read_skill, skill_path
-print(skill_path())   # checkout: …/src/b3_core/SKILL.md → root; wheel: site-packages
+
+print(skill_path())  # checkout: …/src/b3_core/SKILL.md → root; wheel: site-packages
 ```
 
 Or: `b3_core skill` (path) · `b3_core skill --stdout` (full text).
@@ -71,14 +72,21 @@ for CLI and frozen fixtures (`textile.to_json(path)`).
 
 ```python
 from b3_core import (
-    plain, uniaxial, crossed, two_sided, curved_panel, grid_scored,
-    homogenize, CpropInput, Material,
+    plain,
+    uniaxial,
+    crossed,
+    two_sided,
+    curved_panel,
+    grid_scored,
+    homogenize,
+    CpropInput,
+    Material,
 )
 
 case = plain()
 case = uniaxial(depth=8, pitch=10)
 case = grid_scored(cell_size=0.6).with_curvature(kx=-0.008)  # bottom mouth: −kx opens
-case = curved_panel(thickness=30, ligament=3, kx=0.012)       # top mouth: +kx opens
+case = curved_panel(thickness=30, ligament=3, kx=0.012)  # top mouth: +kx opens
 
 result = homogenize(case)  # same taper: homogenize(grid_scored(), kx=-0.008)
 # result.kerfs: root vs mouth half-width after kx/ky → hw(z)
@@ -243,10 +251,10 @@ uv run b3_core run examples/with_grooves.json
 ```python
 from b3_core import homogenize, cprop
 
-result = homogenize("case.json")          # CoreResult; writes nothing
-mat = result.material                     # b3_mat.OrthotropicMaterial
+result = homogenize("case.json")  # CoreResult; writes nothing
+mat = result.material  # b3_mat.OrthotropicMaterial
 
-raw = cprop("case.json")                  # deprecated: flat dict, overwrites run*.json
+raw = cprop("case.json")  # deprecated: flat dict, overwrites run*.json
 ```
 
 Default backend is **`auto`**: FEniCSx when installed, otherwise MFEM, for
@@ -310,9 +318,15 @@ A failure prints `{"error": {"type", "message", "hint"}}` and exits non-zero.
 ```python
 card = {
     "name": "grooved_core_homogenized",
-    "Ex": m.Ex, "Ey": m.Ey, "Ez": m.Ez,
-    "Gxy": m.Gxy, "Gxz": m.Gxz, "Gyz": m.Gyz,
-    "nuxy": m.nuxy, "nuxz": m.nuxz, "nuyz": m.nuyz,
+    "Ex": m.Ex,
+    "Ey": m.Ey,
+    "Ez": m.Ez,
+    "Gxy": m.Gxy,
+    "Gxz": m.Gxz,
+    "Gyz": m.Gyz,
+    "nuxy": m.nuxy,
+    "nuxz": m.nuxz,
+    "nuyz": m.nuyz,
     "rho": m.rho,
 }
 ```
@@ -328,7 +342,7 @@ xx,yy,zz,yz,xz,xy; CalculiX ORTHO wants D1212=Gxy, D1313=Gxz, D2323=Gyz.
 from b3_core import homogenize
 
 r = homogenize("case.json")
-print(r.ccx_ortho())                 # *material / *elastic,type=ortho / *density
+print(r.ccx_ortho())  # *material / *elastic,type=ortho / *density
 # or from C_eff directly:
 # CoreModel.from_json("case.json").ccx_ortho()
 ```
@@ -365,7 +379,7 @@ Substitute SI values from `result.material`. Temperature line is placeholder
 ```python
 from b3_core import homogenize
 
-C = homogenize(case).stiffness   # Pa, 6×6
+C = homogenize(case).stiffness  # Pa, 6×6
 ```
 
 Use when the downstream solver needs the full anisotropic tensor rather than
@@ -388,6 +402,7 @@ b3_core viz datasheet case.json -o report.pdf --png report.png
 
 ```python
 from b3_core.datasheet import generate
+
 spec = generate("case.json", "report.pdf", out_png="report.png")
 # spec.engineering_constants, spec.c_eff_gpa available programmatically
 ```
