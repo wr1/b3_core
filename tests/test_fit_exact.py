@@ -19,7 +19,13 @@ CASE = {
     "resin": {"E": 3.2e9, "nu": 0.35, "rho": 1150.0},
 }
 KNOBS = ["halo_reach", "core_E", "core_G", "resin_E", "resin_rho"]
-TRUTH = {"halo_reach": 0.72, "core_E": 92e6, "core_G": 29.5e6, "resin_E": 3.05e9, "resin_rho": 1180.0}
+TRUTH = {
+    "halo_reach": 0.72,
+    "core_E": 92e6,
+    "core_G": 29.5e6,
+    "resin_E": 3.05e9,
+    "resin_rho": 1180.0,
+}
 
 
 def fake(case, kx=0.0, ky=0.0):
@@ -59,7 +65,17 @@ def test_apply_and_read_knobs_roundtrip():
 
 
 def test_targets_average_symmetric_pairs():
-    t = X.targets_of({"Exx": 1.0, "Eyy": 3.0, "Ezz": 2, "Gxz": 4, "Gyz": 6, "Gxy": 1, "rho_infused": 9})
+    t = X.targets_of(
+        {
+            "Exx": 1.0,
+            "Eyy": 3.0,
+            "Ezz": 2,
+            "Gxz": 4,
+            "Gyz": 6,
+            "Gxy": 1,
+            "rho_infused": 9,
+        }
+    )
     assert t == {"E_in": 2.0, "Ezz": 2.0, "G_tr": 5.0, "Gxy": 1.0, "rho": 9.0}
 
 
@@ -114,7 +130,9 @@ def test_exact_fit_clean_recovers_truth(tmp_path):
 
 
 def test_exact_fit_noisy_is_still_exact_on_targets():
-    noise = {p: 0.03 for p in ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "Gxy")} | {"rho_infused": 0.01}
+    noise = {p: 0.03 for p in ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "Gxy")} | {
+        "rho_infused": 0.01
+    }
     meas = X.mock_test(fake, CASE, TRUTH, noise=noise, seed=3)
     assert meas["Exx"] != meas["Eyy"]
     fit = X.exact_fit(fake, CASE, meas, KNOBS)

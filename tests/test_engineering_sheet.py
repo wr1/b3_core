@@ -67,25 +67,62 @@ def test_collect_warns_on_clamp_and_marks_points():
     assert data.plain["Exx"] < data.flat["Exx"]
 
 
-def test_calibration_recovers_parameter():
+def _cal_spec(halo=0.7):
+    """1 × 1 exact fit on the stand-in: density pins the halo reach."""
     truth = fake_solver(
-        json.loads(json.dumps(CASE)) | {"core": CASE["core"] | {"cell_size": 0.7}}
+        json.loads(json.dumps(CASE)) | {"core": CASE["core"] | {"cell_size": halo}}
     )
-    cal = {
+    return {
         "measured": {p: truth[p] for p in eng.CAL_PROPS},
-        "sigma_rel": {p: 0.03 for p in eng.CAL_PROPS},
-        "bounds": [0.2, 0.9],
-        "start": 0.5,
+        "knobs": ["halo_reach"],
+        "targets": ["rho"],
+        "true": [halo],
         "label": "mock test",
+        "note": "synthetic",
     }
+
+
+def test_calibration_recovers_parameter():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         data = eng.collect(
-            CASE, radii_m=(1.0,), biaxial=False, calibration=cal, solve=fake_solver
+            CASE,
+            radii_m=(1.0,),
+            biaxial=False,
+            calibration=_cal_spec(),
+            solve=fake_solver,
         )
-    assert data.cal_result.value == pytest.approx(0.7, abs=1e-3)
-    assert data.case["core"]["cell_size"] == pytest.approx(0.7, abs=1e-3)
-    assert data.cal_result.rms_pct < 0.1
+    fit = data.calibration
+    assert fit.fitted[0] == pytest.approx(0.7, abs=1e-4)
+    assert data.case["core"]["cell_size"] == pytest.approx(0.7, abs=1e-4)
+    assert fit.max_abs_residual_pct < 0.01
+
+
+def test_calibration_accepts_saved_fit_and_rejects_old_spec(tmp_path):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        data = eng.collect(
+            CASE, radii_m=(1.0,), calibration=_cal_spec(), solve=fake_solver
+        )
+    saved = tmp_path / "fit.json"
+    saved.write_text(json.dumps(data.calibration.to_dict()))
+    calls = []
+
+    def counting(case, kx=0.0, ky=0.0):
+        calls.append((kx, ky))
+        return fake_solver(case, kx, ky)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        again = eng.collect(
+            CASE, radii_m=(1.0,), biaxial=False, calibration=saved, solve=counting
+        )
+    assert again.case["core"]["cell_size"] == pytest.approx(0.7, abs=1e-4)
+    assert len(calls) == 3 + 4  # flat, k→0, plain foam + 4 sweep points: no fit
+    with pytest.raises(ValueError, match="exact fit"):
+        eng.load_calibration(
+            {"measured": {}, "param": "core.cell_size"}, CASE, fake_solver
+        )
 
 
 def test_typst_has_required_content():
@@ -107,14 +144,7 @@ def test_typst_has_required_content():
 
 @pytest.mark.skipif(shutil.which("typst") is None, reason="typst not installed")
 def test_full_pdf_smoke(tmp_path):
-    cal = {
-        "measured": {
-            p: v * 1.01 for p, v in fake_solver(CASE).items() if p in eng.CAL_PROPS
-        },
-        "sigma_rel": {p: 0.03 for p in eng.CAL_PROPS},
-        "label": "mock test",
-        "note": "synthetic",
-    }
+    cal = _cal_spec(0.65)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         pdf = eng.generate_engineering(
@@ -127,7 +157,9 @@ def test_full_pdf_smoke(tmp_path):
         )
     assert pdf.is_file() and pdf.stat().st_size > 20_000
     numbers = json.loads((tmp_path / "numbers.json").read_text())
-    assert numbers["calibration"]["value"] > 0
+    assert numbers["calibration"]["fitted"][0] == pytest.approx(0.65, abs=1e-3)
+    src = (tmp_path / "sheet.typ").read_text()
+    assert "exact fit" in src and "cond(J)" in src and "Truth" in src
     for name in (
         "fig_rve_iso_halo.png",
         "fig_rve_cuts.png",

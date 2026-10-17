@@ -9,8 +9,9 @@ Every number on the page comes from FE solves made here (FEniCSx by default):
 * page 2: curvature map (% vs the flat card, shared symmetric coolwarm scale,
   mould radius ticks R = 1/(1000 k) m, closed-groove cells hatched) and the
   single-curvature line cut with the closure band;
-* page 3 (optional): calibration to measured flat data: measured vs model,
-  the fitted parameter with bounds and 95 % CI, residuals and the SSR scan.
+* page 3 (optional): exact calibration to a flat test (:mod:`b3_core.fit.exact`):
+  parity plot, free parameters with bounds / nominal / fitted (/ truth),
+  residuals, condition number and the FE-solve history.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import shutil
 import subprocess
 import warnings
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 PROPS = ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "Gxy")
 CAL_PROPS = (*PROPS, "rho_infused")
+# Exact-fit knobs: one per identifiable flat target (E_in, Ezz, G_tr, Gxy, ρ).
+CAL_KNOBS = ("halo_reach", "core_E", "core_G", "resin_E", "resin_rho")
 MAP_PROPS = (
     ("Exx", "$E_{xx}$"),
     ("Eyy", "$E_{yy}$"),
@@ -45,15 +48,6 @@ DEFAULT_RADII_M = (0.2, 0.5, 1.0, 2.0)
 ENGINEERING_H_MAX = 1.0
 # Above this flat-vs-k→0 gap the curved and flat solves are not one model.
 CONTINUITY_TOL_PCT = 1.0
-_TEX = {
-    "Exx": "$E_(x x)$",
-    "Eyy": "$E_(y y)$",
-    "Ezz": "$E_(z z)$",
-    "Gxz": "$G_(x z)$",
-    "Gyz": "$G_(y z)$",
-    "Gxy": "$G_(x y)$",
-    "rho_infused": "ρ [kg/m³]",
-}
 
 Solver = Callable[[dict, float, float], dict]
 
@@ -142,108 +136,39 @@ def fenicsx_solver(backend: str = "fenicsx") -> Solver:
     return solve
 
 
-def _with_param(case: dict, path: str, value: float) -> dict:
-    d = copy.deepcopy(case)
-    node = d
-    keys = path.split(".")
-    for k in keys[:-1]:
-        node = node.setdefault(k, {})
-    node[keys[-1]] = float(value)
-    return d
+def load_calibration(calibration: Any, case: dict, solve: Solver):
+    """``ExactFit`` from a fit object, a saved fit, or a spec that is solved here.
 
+    A spec holds ``measured`` (raw flat properties or averaged targets),
+    ``knobs`` (default :data:`CAL_KNOBS`), optional ``bounds``, ``targets``,
+    ``true``, ``label`` and ``note``. A saved fit (``ExactFit.to_dict()``) has
+    ``fitted`` and is used as is.
+    """
+    from b3_core.fit.exact import ExactFit, exact_fit
 
-@dataclass
-class Calibration:
-    """Measured flat data and the one free model parameter to fit."""
-
-    measured: dict[str, float]
-    sigma_rel: dict[str, float]
-    param: str = "core.cell_size"
-    bounds: tuple[float, float] = (0.2, 0.9)
-    start: float = 0.5
-    label: str = "measured"
-    note: str = ""
-
-    @classmethod
-    def from_any(cls, obj: Any) -> Calibration:
-        if isinstance(obj, Calibration):
-            return obj
-        if isinstance(obj, (str, Path)):
-            obj = json.loads(Path(obj).read_text(encoding="utf-8"))
-        obj = dict(obj)
-        obj["bounds"] = tuple(obj.get("bounds", (0.2, 0.9)))
-        return cls(**obj)
-
-
-@dataclass
-class CalibrationResult:
-    value: float
-    se: float
-    ci95: tuple[float, float]
-    start_model: dict[str, float]
-    fit_model: dict[str, float]
-    residual_pct: dict[str, float]
-    rms_pct: float
-    chi2_red: float
-    scan: list[tuple[float, float]] = field(default_factory=list)
-    at_bound: bool = False
-
-
-def calibrate(case: dict, cal: Calibration, solve: Solver) -> CalibrationResult:
-    """Bounded weighted least squares on relative residuals, one parameter."""
-    from scipy.optimize import least_squares
-
-    props = [p for p in CAL_PROPS if p in cal.measured]
-    meas = np.array([cal.measured[p] for p in props])
-    w = 1.0 / np.array([cal.sigma_rel.get(p, 0.03) for p in props])
-    memo: dict[float, np.ndarray] = {}
-
-    def model(x: float) -> np.ndarray:
-        key = round(float(x), 6)
-        if key not in memo:
-            f = solve(_with_param(case, cal.param, key), 0.0, 0.0)
-            memo[key] = np.array([f[p] for p in props])
-        return memo[key]
-
-    lo, hi = cal.bounds
-    for x in np.linspace(lo, hi, 5):
-        model(x)
-    scan_best = min(memo, key=lambda x: float(np.sum((w * (memo[x] / meas - 1)) ** 2)))
-    ls = least_squares(
-        lambda x: w * (model(x[0]) / meas - 1),
-        [scan_best],
-        bounds=([lo], [hi]),
-        diff_step=1e-2,
-        xtol=1e-4,
-    )
-    x = float(ls.x[0])
-    dof = max(1, len(props) - 1)
-    chi2 = float(2 * ls.cost / dof)
-    jtj = float((ls.jac.T @ ls.jac)[0, 0])
-    se = float(np.sqrt(chi2 / jtj)) if jtj > 0 else float("nan")
-    fit = model(x)
-    res = 100 * (fit / meas - 1)
-    scan = sorted(
-        (k, float(np.sum((w * (v / meas - 1)) ** 2))) for k, v in memo.items()
-    )
-    at_bound = min(x - lo, hi - x) < 1e-3 * (hi - lo)
-    if at_bound:
-        warnings.warn(
-            f"calibrated {cal.param} = {x:.4g} sits on a bound {cal.bounds}",
-            RuntimeWarning,
-            stacklevel=2,
+    if isinstance(calibration, ExactFit):
+        return calibration
+    if isinstance(calibration, (str, Path)):
+        calibration = json.loads(Path(calibration).read_text(encoding="utf-8"))
+    spec = dict(calibration)
+    if "fitted" in spec:
+        return ExactFit.from_dict(spec)
+    if "param" in spec:
+        raise ValueError(
+            "single-parameter calibration specs are replaced by the exact fit; "
+            "give 'measured' and 'knobs' (see b3_core.fit.exact)"
         )
-    return CalibrationResult(
-        value=x,
-        se=se,
-        ci95=(x - 1.96 * se, x + 1.96 * se),
-        start_model=dict(zip(props, model(cal.start).tolist(), strict=True)),
-        fit_model=dict(zip(props, fit.tolist(), strict=True)),
-        residual_pct=dict(zip(props, res.tolist(), strict=True)),
-        rms_pct=float(np.sqrt(np.mean(res**2))),
-        chi2_red=chi2,
-        scan=scan,
-        at_bound=at_bound,
+    return exact_fit(
+        solve,
+        case,
+        spec["measured"],
+        spec.get("knobs", CAL_KNOBS),
+        targets=spec.get("targets"),
+        bounds=spec.get("bounds"),
+        true=spec.get("true"),
+        label=spec.get("label", "test"),
+        note=spec.get("note", ""),
+        store=spec.get("store"),
     )
 
 
@@ -260,8 +185,7 @@ class SheetData:
     continuity_pct: dict[str, float]
     mesh_cells: int
     provenance: dict[str, str]
-    calibration: Calibration | None = None
-    cal_result: CalibrationResult | None = None
+    calibration: Any = None  # b3_core.fit.exact.ExactFit
 
 
 def collect(
@@ -281,11 +205,10 @@ def collect(
     case = copy.deepcopy(case)
     case.setdefault("mesh_h_max", ENGINEERING_H_MAX)
     case.setdefault("kerf_z_elems", 4)
-    cal = cal_res = None
+    cal = None
     if calibration is not None:
-        cal = Calibration.from_any(calibration)
-        cal_res = calibrate(case, cal, solve)
-        case = _with_param(case, cal.param, cal_res.value)
+        cal = load_calibration(calibration, case, solve)
+        case = cal.apply(case)
 
     flat = solve(case, 0.0, 0.0)
     near = solve(case, 1e-9, 1e-9)
@@ -348,7 +271,6 @@ def collect(
         mesh_cells=mesh_cells,
         provenance=prov,
         calibration=cal,
-        cal_result=cal_res,
     )
 
 
@@ -567,73 +489,146 @@ def fig_grooving(data: SheetData, out: Path) -> Path:
     return out
 
 
+_TARGET_TEX = {
+    "E_in": "$E_{in}$",
+    "Ezz": "$E_{zz}$",
+    "G_tr": "$G_{tr}$",
+    "Gxy": "$G_{xy}$",
+    "rho": "ρ",
+}
+_TARGET_TYP = {
+    "E_in": "$E_(i n)$ = ($E_(x x)$+$E_(y y)$)/2",
+    "Ezz": "$E_(z z)$",
+    "G_tr": "$G_(t r)$ = ($G_(x z)$+$G_(y z)$)/2",
+    "Gxy": "$G_(x y)$",
+    "rho": "infused ρ",
+}
+
+
+def _target_display(name: str, v: float) -> float:
+    """MPa for moduli, kg/m³ for density."""
+    return float(v) if name == "rho" else float(v) / 1e6
+
+
 def fig_calibration(data: SheetData, out: Path) -> Path:
+    """Parity (test vs model), knobs inside their bounds, residual history."""
     _mpl_mod, plt = _mpl()
-    cal, res = data.calibration, data.cal_result
-    props = list(res.fit_model)
-    m = np.array([cal.measured[p] for p in props])
-    f = np.array([res.fit_model[p] for p in props])
-    s0 = np.array([res.start_model[p] for p in props])
-    sd = np.array([cal.sigma_rel.get(p, 0.03) for p in props])
-    lab = {
-        p: _TEX[p].replace("(", "{").replace(")", "}").replace("$E_{x x}", "$E_{xx}")
-        for p in props
-    }
-    names = [
-        {
-            "Exx": "$E_{xx}$",
-            "Eyy": "$E_{yy}$",
-            "Ezz": "$E_{zz}$",
-            "Gxz": "$G_{xz}$",
-            "Gyz": "$G_{yz}$",
-            "Gxy": "$G_{xy}$",
-            "rho_infused": "ρ",
-        }.get(p, lab[p])
-        for p in props
-    ]
-    fig, (a1, a2) = plt.subplots(
+    from b3_core.fit.exact import knob
+
+    fit = data.calibration
+    names = list(fit.measured)
+    cols = plt.get_cmap("tab10")(np.arange(len(names)))
+    fig, (a1, a2, a3) = plt.subplots(
         1,
-        2,
-        figsize=(7.0, 2.9),
+        3,
+        figsize=(7.2, 2.75),
         constrained_layout=True,
-        gridspec_kw={"width_ratios": [1.7, 1]},
+        gridspec_kw={"width_ratios": [1.05, 1.35, 0.8]},
     )
-    xx = np.arange(len(props))
-    a1.bar(
-        xx - 0.27, s0 / m, 0.27, color="#bbbbbb", label=f"model, start {cal.start:g}"
-    )
-    a1.bar(xx, np.ones(len(props)), 0.27, color="#3b4cc0", label=f"{cal.label} (= 1)")
-    a1.bar(
-        xx + 0.27, f / m, 0.27, color="#f49a7b", label=f"model, fitted {res.value:.3g}"
-    )
-    a1.errorbar(
-        xx, np.ones(len(props)), yerr=sd, fmt="none", ecolor="k", lw=0.7, capsize=2
-    )
-    for i, val in enumerate(f / m):
-        a1.text(
-            i + 0.27,
-            val + 0.01,
-            f"{100 * (val - 1):+.1f}",
-            ha="center",
-            va="bottom",
+    # (a) parity
+    m = np.array([_target_display(n, fit.measured[n]) for n in names])
+    f = np.array([_target_display(n, fit.model[n]) for n in names])
+    s0 = np.array([_target_display(n, fit.start_model.get(n, np.nan)) for n in names])
+    lo, hi = 0.7 * np.nanmin(np.r_[m, f, s0]), 1.4 * np.nanmax(np.r_[m, f, s0])
+    xx = np.geomspace(lo, hi, 50)
+    a1.fill_between(xx, 0.97 * xx, 1.03 * xx, color="0.9", lw=0, label="±3 %")
+    a1.plot(xx, xx, color="0.4", lw=0.7)
+    for i, n in enumerate(names):
+        a1.plot(m[i], s0[i], "o", mfc="none", mec="0.55", ms=4.5, mew=0.8)
+        a1.plot([m[i], m[i]], [s0[i], f[i]], color="0.75", lw=0.6, zorder=1)
+        a1.plot(m[i], f[i], "o", color=cols[i], ms=5, label=_TARGET_TEX.get(n, n))
+    a1.plot([], [], "o", mfc="none", mec="0.55", ms=4.5, label="nominal")
+    a1.set_xscale("log")
+    a1.set_yscale("log")
+    a1.set_xlim(lo, hi)
+    a1.set_ylim(lo, hi)
+    a1.set_xlabel(f"{fit.label} [MPa; ρ kg/m³]")
+    a1.set_ylabel("model [MPa; ρ kg/m³]")
+    a1.set_title("parity", fontsize=7.5)
+    a1.legend(frameon=False, fontsize=5.5, loc="upper left", handlelength=1)
+    # (b) knobs within bounds
+    noisy = (fit.extra or {}).get("noisy")
+    for i, name in enumerate(fit.knobs):
+        k = knob(
+            name,
+            dict(zip(fit.knobs, zip(fit.lower, fit.upper, strict=True), strict=True)),
+        )
+        y = len(fit.knobs) - 1 - i
+        pos = lambda v: (float(v) - k.lower) / (k.upper - k.lower)  # noqa: E731,B023
+        a2.plot([0, 1], [y, y], color="0.85", lw=5, solid_capstyle="butt", zorder=0)
+        a2.plot(pos(fit.start[i]), y, "o", mfc="none", mec="0.5", ms=5, mew=0.8)
+        if noisy:
+            a2.plot(pos(noisy["fitted"][i]), y, "D", color="#f4a261", ms=4.2)
+        if fit.true:
+            a2.plot(pos(fit.true[i]), y, "x", color="k", ms=7, mew=1.2)
+        a2.plot(pos(fit.fitted[i]), y, "o", color="#b40426", ms=3.6)
+        a2.text(
+            -0.03, y, f"{k.lower / k.scale:.3g}", ha="right", va="center", fontsize=5.5
+        )
+        a2.text(
+            1.03,
+            y,
+            f"{k.upper / k.scale:.3g} {k.unit}",
+            ha="left",
+            va="center",
             fontsize=5.5,
         )
-    lo = min(0.9, float(np.min(np.r_[s0 / m, f / m])) - 0.05)
-    a1.set_ylim(lo, max(1.15, float(np.max(np.r_[s0 / m, f / m])) + 0.08))
-    a1.set_xticks(xx, names)
-    a1.set_ylabel(f"model ÷ {cal.label}")
-    a1.legend(frameon=False, fontsize=5.8, loc="upper center", ncol=3)
-    g = np.array([s[0] for s in res.scan])
-    ssr = np.array([s[1] for s in res.scan])
-    a2.plot(g, ssr, "o-", ms=3, lw=0.8, color="#555555", label="FE solves")
-    a2.axvspan(*res.ci95, color="#f49a7b", alpha=0.3, lw=0)
-    a2.axvline(res.value, color="#b40426", lw=1, label=f"fit {res.value:.3g}")
-    for b in cal.bounds:
-        a2.axvline(b, color="0.5", lw=0.6, ls=":")
-    a2.set_yscale("log")
-    a2.set_xlabel(f"{cal.param} (bounds dotted)")
-    a2.set_ylabel("weighted SSR")
-    a2.legend(frameon=False, fontsize=5.5)
+        a2.text(0.5, y + 0.32, k.label, ha="center", va="bottom", fontsize=6)
+    handles = [
+        plt.Line2D([], [], ls="", marker="o", mfc="none", mec="0.5", label="nominal"),
+        plt.Line2D([], [], ls="", marker="o", color="#b40426", ms=3.6, label="fitted"),
+    ]
+    if fit.true:
+        handles.append(
+            plt.Line2D([], [], ls="", marker="x", color="k", label="hidden truth")
+        )
+    if noisy:
+        handles.append(
+            plt.Line2D(
+                [],
+                [],
+                ls="",
+                marker="D",
+                color="#f4a261",
+                ms=4,
+                label=noisy.get("label", "noisy"),
+            )
+        )
+    a2.legend(
+        handles=handles,
+        frameon=False,
+        fontsize=5.5,
+        ncol=len(handles),
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.02),
+        handletextpad=0.2,
+        columnspacing=0.8,
+    )
+    a2.set_xlim(-0.32, 1.42)
+    a2.set_ylim(-0.6, len(fit.knobs) - 0.2)
+    a2.axis("off")
+    a2.set_title("free parameters inside their bounds", fontsize=7.5)
+    # (c) residual history
+    stages = ["nominal"] + [h["stage"] for h in fit.history]
+    start_res = (
+        max(abs(100 * (fit.start_model[n] / fit.measured[n] - 1)) for n in names)
+        if fit.start_model
+        else np.nan
+    )
+    vals = [start_res] + [h["max_abs_pct"] for h in fit.history]
+    a3.semilogy(
+        range(len(vals)), np.maximum(vals, 1e-6), "o-", color="#3b4cc0", ms=3.5, lw=0.9
+    )
+    a3.axhline(0.1, color="#b40426", lw=0.7, ls="--")
+    a3.text(len(vals) - 1, 0.13, "0.1 %", color="#b40426", fontsize=5.5, ha="right")
+    for i, v in enumerate(vals):
+        a3.text(i, max(v, 1e-6) * 1.6, f"{v:.2g}", ha="center", fontsize=5.5)
+    a3.set_xticks(range(len(vals)), stages, rotation=30, ha="right", fontsize=5.8)
+    a3.set_ylabel("max |residual| [%]")
+    a3.set_ylim(
+        min(1e-3, 0.3 * min(np.maximum(vals, 1e-6))), max(30, 4 * np.nanmax(vals))
+    )
+    a3.set_title("FE solves to exact fit", fontsize=7.5)
     fig.savefig(out)
     plt.close(fig)
     return out
@@ -768,7 +763,8 @@ def _cells(rows: list[Sequence[str]], raw_first: bool = False) -> str:
 def _mat_text(m: dict) -> str:
     e = m.get("E", m.get("Ex"))
     nu = m.get("nu", m.get("nuxy"))
-    return f"E {fmt_modulus(e)}, ν {nu:.2f}, ρ {m['rho']:.0f} kg/m³"
+    g = "" if "E" in m or m.get("Gxz") is None else f", G {fmt_modulus(m['Gxz'])}"
+    return f"E {fmt_modulus(e)}{g}, ν {nu:.2f}, ρ {m['rho']:.0f} kg/m³"
 
 
 def build_typst(
@@ -854,8 +850,14 @@ def build_typst(
             )
     halo = c["core"].get("cell_size")
     if halo:
-        src = "fitted, p. 3" if data.cal_result else "input"
-        inputs.append(("Resin halo", f"saw-cut reach {halo:.3g} mm ({src})"))
+        src = "fitted, p. 3" if data.calibration is not None else "input"
+        inputs.append(
+            (
+                "Resin halo",
+                f"seepage reach {halo:.3g} mm from groove walls, "
+                f"{100 * data.flat.get('halo_vf', 0):.1f} % of volume ({src})",
+            )
+        )
     inputs.append(
         ("Curvature", f"R = 1/(1000 k) m; grooves close at {', '.join(close) or '—'}")
     )
@@ -876,8 +878,10 @@ def build_typst(
         )
     if cont > CONTINUITY_TOL_PCT:
         warn_lines.append(f"k→0 curved solve differs from flat by {cont:.2f} %.")
-    if data.cal_result and data.cal_result.at_bound:
-        warn_lines.append("Calibrated parameter sits on a bound.")
+    if data.calibration is not None and data.calibration.at_bound:
+        warn_lines.append(
+            f"Calibrated {', '.join(data.calibration.at_bound)} on a bound."
+        )
     warn = "".join(
         f'#text(7pt, fill: rgb("#b40426"))[⚠ {_esc(w)}] \\\n' for w in warn_lines
     )
@@ -917,36 +921,8 @@ image("{figs["line"]}", width: 100%),
 #table(columns: (auto, auto, auto, auto), [*R [m]*], [*$E_(y y)$*], [*$E_(z z)$*], [*$G_(y z)$*], {_cut_rows(data)})])
 """
     page3 = "\n#pagebreak()\n" + _stiffness_block(data)
-    if data.cal_result:
-        cal, res = data.calibration, data.cal_result
-        rows = ", ".join(
-            f"[{_TEX[p]}], [{_esc(_fmt_prop(p, cal.measured[p]))}], [{_esc(_fmt_prop(p, res.fit_model[p]))}], [{res.residual_pct[p]:+.1f} %]"
-            for p in res.fit_model
-        )
-        par = [
-            (
-                "Free",
-                f"{cal.param}, bounds {cal.bounds[0]:g}–{cal.bounds[1]:g}, start {cal.start:g}",
-            ),
-            (
-                "Fitted",
-                f"{res.value:.3g} (95 % CI {res.ci95[0]:.3g}–{res.ci95[1]:.3g})",
-            ),
-            ("Fit quality", f"RMS {res.rms_pct:.1f} %, χ²red {res.chi2_red:.2f}"),
-            (
-                "Method",
-                "bounded weighted least squares on relative residuals, direct FE solves",
-            ),
-        ]
-        note = f"#text(6.5pt, fill: gray)[{_esc(cal.note)}]" if cal.note else ""
-        page3 += f"""
-== Calibration to flat test ({_esc(cal.label)})
-#image("{figs["calibration"]}", width: 100%)
-#grid(columns: (1.25fr, 1fr), gutter: 10pt,
-table(columns: (auto, 1fr, 1fr, auto), [*Property*], [*{_esc(cal.label)}*], [*Model (fit)*], [*Residual*], {rows}),
-[#table(columns: (auto, 1fr), {_cells(par)})
-{note}])
-"""
+    if data.calibration is not None:
+        page3 += _calibration_block(data, figs)
     head = (
         '#set page(paper: "a4", margin: (x: 1.5cm, y: 1.4cm), footer: [#set text(6.5pt, fill: gray); '
         f"{_esc(data.provenance['code'])} · {_esc(data.provenance['backend'])} "
@@ -955,6 +931,97 @@ table(columns: (auto, 1fr, 1fr, auto), [*Property*], [*{_esc(cal.label)}*], [*Mo
         "#set table(stroke: 0.4pt + luma(180), inset: 3.5pt)\n"
     )
     return head + page1 + page2 + page3
+
+
+def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
+    """Exact multi-parameter fit: figure, parameter table, residuals, method."""
+    from b3_core.fit.exact import knob
+
+    fit = data.calibration
+    noisy = (fit.extra or {}).get("noisy")
+    bounds = dict(zip(fit.knobs, zip(fit.lower, fit.upper, strict=True), strict=True))
+    head = ["Parameter", "Bounds", "Nominal", "Fitted"]
+    if fit.true:
+        head.append("Truth")
+    if noisy:
+        head.append(noisy.get("label", "noisy"))
+    prow = []
+    for i, name in enumerate(fit.knobs):
+        k = knob(name, bounds)
+        v = lambda x: f"{x / k.scale:.4g}"  # noqa: E731,B023
+        row = [
+            f"{k.label} [{k.unit}]",
+            f"{v(k.lower)}–{v(k.upper)}",
+            v(fit.start[i]),
+            f"*{v(fit.fitted[i])}*",
+        ]
+        if fit.true:
+            row.append(v(fit.true[i]))
+        if noisy:
+            row.append(v(noisy["fitted"][i]))
+        prow.append(row)
+    ptab = (
+        f"#table(columns: {len(head)}, align: (left, {', '.join(['right'] * (len(head) - 1))}), "
+        + ", ".join(f"[*{_esc(h)}*]" for h in head)
+        + ", "
+        + _cells(prow)
+        + ")"
+    )
+    rrow = []
+    for n in fit.measured:
+        fmt = (lambda x: f"{x:.1f}") if n == "rho" else (lambda x: f"{x / 1e6:.4g}")
+        unit = "kg/m³" if n == "rho" else "MPa"
+        start = fit.start_model.get(n)
+        rrow.append(
+            f"[{_TARGET_TYP.get(n, _esc(n))} [{unit}]], [{fmt(fit.measured[n])}], "
+            f"[{'—' if start is None else fmt(start)}], [{fmt(fit.model[n])}], "
+            f"[*{fit.residual_pct[n]:+.3f} %*]"
+        )
+    rtab = (
+        "#table(columns: 5, align: (left, right, right, right, right), "
+        f"[*Target*], [*{_esc(fit.label)}*], [*Nominal*], [*Fitted*], [*Residual*], "
+        + ", ".join(rrow)
+        + ")"
+    )
+    stages = " → ".join(f"{h['stage']} {h['max_abs_pct']:.2g} %" for h in fit.history)
+    info = [
+        (
+            "Fit",
+            f"{len(fit.knobs)} parameters ↔ {len(fit.measured)} targets: square, so exact",
+        ),
+        ("Max |residual|", f"{fit.max_abs_residual_pct:.3f} % ({stages})"),
+        (
+            "Conditioning",
+            f"cond(J) = {fit.condition:.3g} at the fit (∂ ln target / ∂ parameter, bounds → ±1)",
+        ),
+        (
+            "Method",
+            f"{fit.n_design}-point face-centred CCD of FE solves → quadratic in ln(property) "
+            f"(LOO max {fit.surface_loo_pct:.2g} %) → bounded Newton on the surface → "
+            "polish on FE solves (target shifted by the surface error)",
+        ),
+        ("FE solves", f"{fit.n_solves} for the fit"),
+    ]
+    if noisy:
+        info.append(
+            (
+                "Sensitivity",
+                f"{noisy.get('label', 'noisy')}: same truth + test noise, fit still exact "
+                f"(max |residual| {noisy['max_abs_pct']:.3f} %); parameters move up to "
+                f"{noisy['max_shift_pct']:.0f} % of their value",
+            )
+        )
+    note = f"#text(6.5pt, fill: gray)[{_esc(fit.note)}]" if fit.note else ""
+    return f"""
+== Calibration to the flat test ({_esc(fit.label)}): exact fit
+#image("{figs["calibration"]}", width: 100%)
+#grid(columns: (1.15fr, 1fr), gutter: 8pt,
+[{ptab}
+#v(2pt)
+{rtab}],
+[#table(columns: (auto, 1fr), {_cells(info)})
+{note}])
+"""
 
 
 def _stiffness_block(data: SheetData) -> str:
@@ -1001,10 +1068,6 @@ def _fmt_cut(c: dict, key: str, dim: str) -> str:
     from b3_core.viz.geometry import between_grooves
 
     return f"{between_grooves(c.get(key), float(c[dim])):.3g}"
-
-
-def _fmt_prop(p: str, v: float) -> str:
-    return f"{v:.1f}" if p == "rho_infused" else f"{fmt_mpa(v)} MPa"
 
 
 def _cut_rows(data: SheetData) -> str:
@@ -1070,7 +1133,7 @@ def generate_engineering(
         "heatmaps": fig_heatmaps(data, out / "fig_curvature_map.png").name,
         "line": fig_line_cut(data, out / "fig_kx_cut.png").name,
     }
-    if data.cal_result:
+    if data.calibration is not None:
         figs["calibration"] = fig_calibration(data, out / "fig_calibration.png").name
     numbers = {
         "provenance": data.provenance,
@@ -1080,18 +1143,7 @@ def generate_engineering(
         "continuity_pct": data.continuity_pct,
         "closure_k_per_mm": data.closure,
         "sweep": data.sweep,
-        "calibration": None
-        if not data.cal_result
-        else {
-            "param": data.calibration.param,
-            "bounds": data.calibration.bounds,
-            "value": data.cal_result.value,
-            "ci95": data.cal_result.ci95,
-            "residual_pct": data.cal_result.residual_pct,
-            "rms_pct": data.cal_result.rms_pct,
-            "chi2_red": data.cal_result.chi2_red,
-            "scan": data.cal_result.scan,
-        },
+        "calibration": None if data.calibration is None else data.calibration.to_dict(),
     }
     (out / "numbers.json").write_text(
         json.dumps(numbers, indent=1, default=str), encoding="utf-8"

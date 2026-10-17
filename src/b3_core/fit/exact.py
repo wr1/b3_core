@@ -145,7 +145,9 @@ def read_knobs(case: Mapping[str, Any], names: Sequence[str]) -> dict[str, float
     return {n: get[n]() for n in names}
 
 
-def targets_of(props: Mapping[str, float], names: Sequence[str] = tuple(TARGETS)) -> dict:
+def targets_of(
+    props: Mapping[str, float], names: Sequence[str] = tuple(TARGETS)
+) -> dict:
     """Averaged symmetric targets from raw solver/test properties."""
     return {n: float(np.mean([props[p] for p in TARGETS[n]])) for n in names}
 
@@ -183,12 +185,18 @@ class Evaluator:
 
     def to_unit(self, x: Sequence[float]) -> np.ndarray:
         return np.array(
-            [2 * (v - k.lower) / (k.upper - k.lower) - 1 for v, k in zip(x, self.knobs, strict=True)]
+            [
+                2 * (v - k.lower) / (k.upper - k.lower) - 1
+                for v, k in zip(x, self.knobs, strict=True)
+            ]
         )
 
     def from_unit(self, u: Sequence[float]) -> np.ndarray:
         return np.array(
-            [k.lower + 0.5 * (v + 1) * (k.upper - k.lower) for v, k in zip(u, self.knobs, strict=True)]
+            [
+                k.lower + 0.5 * (v + 1) * (k.upper - k.lower)
+                for v, k in zip(u, self.knobs, strict=True)
+            ]
         )
 
     def _key(self, x: np.ndarray) -> str:
@@ -200,13 +208,19 @@ class Evaluator:
         if key not in self.memo:
             vals = dict(zip((k.name for k in self.knobs), x, strict=True))
             out = self.solve(apply_knobs(self.case, vals), 0.0, 0.0)
-            props = {k: float(v) for k, v in out.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+            props = {
+                k: float(v)
+                for k, v in out.items()
+                if isinstance(v, (int, float)) and not isinstance(v, bool)
+            }
             self.memo[key] = props
             self.n_solves += 1
             if self.store:
                 self.store.parent.mkdir(parents=True, exist_ok=True)
                 with self.store.open("a") as fh:
-                    fh.write(json.dumps({"key": key, "x": x.tolist(), "props": props}) + "\n")
+                    fh.write(
+                        json.dumps({"key": key, "x": x.tolist(), "props": props}) + "\n"
+                    )
         return self.memo[key]
 
     def log_targets(self, x: Sequence[float]) -> np.ndarray:
@@ -220,7 +234,9 @@ class Evaluator:
 # --------------------------------------------------------------------------- #
 # identifiability
 # --------------------------------------------------------------------------- #
-def jacobian(ev: Evaluator, u0: Sequence[float] | None = None, step: float = 0.1) -> np.ndarray:
+def jacobian(
+    ev: Evaluator, u0: Sequence[float] | None = None, step: float = 0.1
+) -> np.ndarray:
     """Central-difference d ln(target) / d u, shape (targets, knobs)."""
     u0 = np.zeros(len(ev.knobs)) if u0 is None else np.asarray(u0, float)
     cols = []
@@ -248,7 +264,9 @@ def rank_subsets(
         jj = jj[list(rows)]
     out = []
     for combo in itertools.combinations(range(len(names)), k):
-        out.append((identifiability(jj[:, combo])["condition"], tuple(names[c] for c in combo)))
+        out.append(
+            (identifiability(jj[:, combo])["condition"], tuple(names[c] for c in combo))
+        )
     return sorted(out)
 
 
@@ -299,7 +317,9 @@ class QuadSurface:
     def fit(cls, u: np.ndarray, logy: np.ndarray) -> QuadSurface:
         phi = _phi(u)
         if phi.shape[0] < phi.shape[1]:
-            raise ValueError(f"{phi.shape[0]} design rows < {phi.shape[1]} quadratic terms")
+            raise ValueError(
+                f"{phi.shape[0]} design rows < {phi.shape[1]} quadratic terms"
+            )
         coef, *_ = np.linalg.lstsq(phi, logy, rcond=None)
         res = phi @ coef - logy
         # Leave-one-out via the hat matrix: e_i / (1 - h_ii).
@@ -308,7 +328,9 @@ class QuadSurface:
         return cls(
             coef=coef,
             fit_rms_pct=float(100 * np.sqrt(np.mean(res**2))),
-            loo_max_pct=float(100 * np.max(np.abs(loo))) if np.all(hat < 1 - 1e-9) else float("nan"),
+            loo_max_pct=float(100 * np.max(np.abs(loo)))
+            if np.all(hat < 1 - 1e-9)
+            else float("nan"),
         )
 
     def predict(self, u: Sequence[float]) -> np.ndarray:
@@ -411,8 +433,13 @@ def exact_fit(
     """
     targets = list(targets or TARGETS)
     if len(targets) != len(knobs):
-        raise ValueError(f"exact fit needs as many knobs ({len(knobs)}) as targets ({len(targets)})")
-    meas = {n: float(measured[n]) if n in measured else targets_of(measured, [n])[n] for n in targets}
+        raise ValueError(
+            f"exact fit needs as many knobs ({len(knobs)}) as targets ({len(targets)})"
+        )
+    meas = {
+        n: float(measured[n]) if n in measured else targets_of(measured, [n])[n]
+        for n in targets
+    }
     ks = [knob(n, bounds) for n in knobs]
     ev = Evaluator(solve, case, ks, targets, store)
     logy = np.log([meas[n] for n in targets])
