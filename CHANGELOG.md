@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `b3_core.symmetry`: x/y symmetry is detected (geometry and core/resin/face
+  materials: Ex = Ey, Gxz = Gyz, nuxz = nuyz), never assumed. Exact-fit targets
+  default to the raw properties; averaging (`average_xy`) is opt-in and only
+  for detected-symmetric input; the flat x/y pairs are reported as a check.
+  Core knobs scale the existing core and keep its anisotropy. The engineering
+  sweep mirrors only symmetric input and records it in the provenance;
+  asymmetric sheets add a k_y cut.
 - `b3_core.fit.exact`: square, bounded, exact calibration of material knobs
   (halo reach / resin seepage, core E, core G, resin E, resin ν, resin ρ,
   core ρ) to flat-test targets. It includes log-Jacobian identifiability
