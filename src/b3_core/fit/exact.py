@@ -1,10 +1,14 @@
 """Exact calibration to a flat test: as many free knobs as identifiable targets.
 
-The flat test of a symmetric grooved cell measures five independent numbers:
-in-plane E (Exx = Eyy, averaged), Ezz, transverse shear G (Gxz = Gyz,
-averaged), in-plane shear Gxy and infused density. With the same number of
-bounded material knobs the fit is a square root-finding problem, so the
-residual can be driven to zero instead of to a least-squares compromise.
+Targets are the raw flat properties (Exx, Eyy, Ezz, Gxz, Gyz, Gxy, infused
+density). x/y symmetry is never assumed: averaging the pairs into ``E_in`` =
+mean(Exx, Eyy) and ``G_tr`` = mean(Gxz, Gyz) is an explicit opt-in
+(``average_xy=True``) that only takes effect when the case is *detected* as
+x/y symmetric (geometry and materials, :mod:`b3_core.symmetry`). With the same
+number of bounded material knobs as targets the fit is a square root-finding
+problem, so the residual can be driven to zero instead of to a least-squares
+compromise. The flat solve's x/y pairs are reported as a diagnostic
+(``ExactFit.extra["xy_check"]``).
 
 Deterministic steps, each a separate primitive:
 
@@ -20,9 +24,12 @@ Deterministic steps, each a separate primitive:
    space mapping: shift the target by the surface error at the current point
    and re-solve the surface. One or two true solves usually reach < 0.01 %.
 
-Core stiffness is written as cubic-symmetric (Ex = Ey = Ez = E, all G equal,
-ν fixed) so core E and core G are independent knobs; for G = E / 2(1+ν) the
-result is identical to the isotropic material.
+Core knobs *scale* the existing core: ``core_E`` is the value of Ex and
+multiplies Ex, Ey and Ez by the same factor; ``core_G`` is the value of Gxz and
+multiplies Gxy, Gxz and Gyz. An orthotropic core keeps its anisotropy ratios.
+An isotropic core is first written in orthotropic form with G = E / 2(1+ν), so
+the result at the nominal point equals the isotropic material. ``core_Ex``,
+``core_Ey``, ``core_Gxz`` and ``core_Gyz`` set a single component.
 """
 
 from __future__ import annotations
@@ -63,29 +70,59 @@ KNOBS: dict[str, Knob] = {
         Knob("resin_nu", "resin ν", "–", 0.30, 0.40),
         Knob("resin_rho", "resin ρ", "kg/m³", 1100.0, 1250.0),
         Knob("core_rho", "core ρ", "kg/m³", 72.0, 88.0),
+        Knob("core_Ex", "core Ex", "MPa", 40e6, 140e6, 1e6),
+        Knob("core_Ey", "core Ey", "MPa", 40e6, 140e6, 1e6),
+        Knob("core_Gxz", "core Gxz", "MPa", 15e6, 50e6, 1e6),
+        Knob("core_Gyz", "core Gyz", "MPa", 15e6, 50e6, 1e6),
     )
 }
 
-# Symmetric cell: the averaged pairs are what a test can tell apart.
+# Raw targets: one per measured property. The default.
 TARGETS: dict[str, tuple[str, ...]] = {
+    "Exx": ("Exx",),
+    "Eyy": ("Eyy",),
+    "Ezz": ("Ezz",),
+    "Gxz": ("Gxz",),
+    "Gyz": ("Gyz",),
+    "Gxy": ("Gxy",),
+    "rho": ("rho_infused",),
+}
+# Averaged pairs: only for a case detected as x/y symmetric, on request.
+SYM_TARGETS: dict[str, tuple[str, ...]] = {
     "E_in": ("Exx", "Eyy"),
     "Ezz": ("Ezz",),
     "G_tr": ("Gxz", "Gyz"),
     "Gxy": ("Gxy",),
     "rho": ("rho_infused",),
 }
-# Default fitted set. On a symmetric grooved cell G_tr and Gxy respond almost
-# identically to every material knob (screened Jacobian rows nearly parallel),
-# so Gxy is kept as a held-out check instead of a fitted target.
-FIT_TARGETS: tuple[str, ...] = ("E_in", "Ezz", "G_tr", "rho")
+ALL_TARGETS: dict[str, tuple[str, ...]] = {**TARGETS, **SYM_TARGETS}
+# Default fitted sets. On the grooved cell transverse shear and Gxy respond
+# almost identically to every material knob (screened Jacobian rows nearly
+# parallel), so Gxy is kept as a held-out check instead of a fitted target.
+FIT_TARGETS: tuple[str, ...] = ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "rho")
+FIT_TARGETS_SYM: tuple[str, ...] = ("E_in", "Ezz", "G_tr", "rho")
 FIT_KNOBS: tuple[str, ...] = ("halo_reach", "core_E", "core_G", "resin_E")
 TARGET_LABELS = {
-    "E_in": "E_in = (Exx+Eyy)/2",
+    "Exx": "Exx",
+    "Eyy": "Eyy",
     "Ezz": "Ezz",
+    "Gxz": "Gxz",
+    "Gyz": "Gyz",
+    "E_in": "E_in = (Exx+Eyy)/2",
     "G_tr": "G_tr = (Gxz+Gyz)/2",
     "Gxy": "Gxy",
     "rho": "infused ρ",
 }
+
+
+def default_targets(case: Mapping[str, Any], average_xy: bool = False) -> tuple:
+    """Raw targets, or the averaged set when requested *and* the case is
+    detected as x/y symmetric."""
+    from b3_core.symmetry import is_xy_symmetric
+
+    if average_xy and is_xy_symmetric(case):
+        return FIT_TARGETS_SYM
+    return FIT_TARGETS
 
 
 def knob(name: str, bounds: Mapping[str, Sequence[float]] | None = None) -> Knob:
@@ -99,29 +136,52 @@ def knob(name: str, bounds: Mapping[str, Sequence[float]] | None = None) -> Knob
 # --------------------------------------------------------------------------- #
 # case <-> knobs
 # --------------------------------------------------------------------------- #
-def cubic_core(core: Mapping[str, Any]) -> dict:
-    """Isotropic ``E, nu`` → cubic orthotropic with independent ``G``."""
+_CORE_KNOBS = {"core_E", "core_G", "core_Ex", "core_Ey", "core_Gxz", "core_Gyz"}
+
+
+def orthotropic_core(core: Mapping[str, Any]) -> dict:
+    """Isotropic ``E, nu`` → the same material in orthotropic form.
+
+    An orthotropic core is returned unchanged (its anisotropy is kept). The
+    equalities written for an isotropic input are that material's own
+    isotropy, not an imposed symmetry.
+    """
     c = dict(core)
-    if "E" in c:
+    if "E" in c and c.get("Ex") is None:
         e, nu = float(c.pop("E")), float(c.pop("nu", 0.3))
         g = e / (2 * (1 + nu))
         c.update(Ex=e, Ey=e, Ez=e, Gxy=g, Gxz=g, Gyz=g, nuxy=nu, nuxz=nu, nuyz=nu)
     return c
 
 
+cubic_core = orthotropic_core  # backwards-compatible name
+
+
+def _scale(c: dict, keys: Sequence[str], ref: str, v: float) -> None:
+    f = v / float(c[ref])
+    for k in keys:
+        c[k] = float(c[k]) * f
+
+
 def apply_knobs(case: Mapping[str, Any], values: Mapping[str, float]) -> dict:
-    """Copy ``case`` with knob values written in. Unknown names raise."""
+    """Copy ``case`` with knob values written in. Unknown names raise.
+
+    Core knobs scale the existing core (see module docstring); they never
+    overwrite it to a symmetric form.
+    """
     d = copy.deepcopy(dict(case))
-    if {"core_E", "core_G"} & set(values):
-        d["core"] = cubic_core(d["core"])
+    if _CORE_KNOBS & set(values):
+        d["core"] = orthotropic_core(d["core"])
     for name, v in values.items():
         v = float(v)
         if name == "halo_reach":
             d["core"]["cell_size"] = v
         elif name == "core_E":
-            d["core"].update(Ex=v, Ey=v, Ez=v)
+            _scale(d["core"], ("Ex", "Ey", "Ez"), "Ex", v)
         elif name == "core_G":
-            d["core"].update(Gxy=v, Gxz=v, Gyz=v)
+            _scale(d["core"], ("Gxy", "Gxz", "Gyz"), "Gxz", v)
+        elif name in ("core_Ex", "core_Ey", "core_Gxz", "core_Gyz"):
+            d["core"][name[5:]] = v
         elif name == "resin_E":
             d["resin"]["E"] = v
         elif name == "resin_nu":
@@ -137,8 +197,12 @@ def apply_knobs(case: Mapping[str, Any], values: Mapping[str, float]) -> dict:
 
 def read_knobs(case: Mapping[str, Any], names: Sequence[str]) -> dict[str, float]:
     """Current knob values of a case (the nominal start)."""
-    core, resin = cubic_core(case["core"]), case["resin"]
+    core, resin = orthotropic_core(case["core"]), case["resin"]
     get = {
+        "core_Ex": lambda: float(core["Ex"]),
+        "core_Ey": lambda: float(core["Ey"]),
+        "core_Gxz": lambda: float(core["Gxz"]),
+        "core_Gyz": lambda: float(core["Gyz"]),
         "halo_reach": lambda: float(core.get("cell_size") or 0.0),
         "core_E": lambda: float(core["Ex"]),
         "core_G": lambda: float(core["Gxz"]),
@@ -153,8 +217,9 @@ def read_knobs(case: Mapping[str, Any], names: Sequence[str]) -> dict[str, float
 def targets_of(
     props: Mapping[str, float], names: Sequence[str] = tuple(TARGETS)
 ) -> dict:
-    """Averaged symmetric targets from raw solver/test properties."""
-    return {n: float(np.mean([props[p] for p in TARGETS[n]])) for n in names}
+    """Targets from raw solver/test properties (raw, or averaged pairs when
+    ``E_in``/``G_tr`` are named explicitly)."""
+    return {n: float(np.mean([props[p] for p in ALL_TARGETS[n]])) for n in names}
 
 
 # --------------------------------------------------------------------------- #
@@ -227,6 +292,9 @@ class Evaluator:
                         json.dumps({"key": key, "x": x.tolist(), "props": props}) + "\n"
                     )
         return self.memo[key]
+
+    def values(self, x: Sequence[float]) -> dict[str, float]:
+        return dict(zip((k.name for k in self.knobs), x, strict=True))
 
     def log_targets(self, x: Sequence[float]) -> np.ndarray:
         t = targets_of(self.props(x), self.targets)
@@ -424,6 +492,7 @@ def exact_fit(
     knobs: Sequence[str],
     *,
     targets: Sequence[str] | None = None,
+    average_xy: bool = False,
     checks: Sequence[str] | None = None,
     bounds: Mapping[str, Sequence[float]] | None = None,
     tol_pct: float = 0.01,
@@ -436,12 +505,24 @@ def exact_fit(
     """Square, bounded, exact fit of ``knobs`` to the flat ``measured`` targets.
 
     ``measured`` may hold raw test properties (Exx, Eyy, ...) or averaged
-    targets (``E_in``...). ``targets`` defaults to :data:`FIT_TARGETS`;
+    targets (``E_in``...). ``targets`` defaults to the raw
+    :data:`FIT_TARGETS`; with ``average_xy=True`` *and* a case detected as
+    x/y symmetric it is :data:`FIT_TARGETS_SYM` instead. Naming ``E_in`` or
+    ``G_tr`` for an asymmetric case raises.
     ``checks`` (default: the other targets the test has) are not fitted and
     are reported as held-out predictions. ``tol_pct`` is the max |residual|
     that stops the true-solve polish.
     """
-    targets = list(targets or FIT_TARGETS)
+    from b3_core.symmetry import is_xy_symmetric, symmetry_check, xy_asymmetry
+
+    symmetric = is_xy_symmetric(case)
+    targets = list(targets or default_targets(case, average_xy))
+    averaged = [n for n in targets if len(ALL_TARGETS[n]) > 1]
+    if averaged and not symmetric:
+        raise ValueError(
+            f"targets {averaged} average x/y pairs, but the case is not x/y "
+            f"symmetric ({'; '.join(xy_asymmetry(case))}); fit the raw properties"
+        )
     if len(targets) != len(knobs):
         raise ValueError(
             f"exact fit needs as many knobs ({len(knobs)}) as targets ({len(targets)})"
@@ -450,7 +531,7 @@ def exact_fit(
     def _meas(n: str) -> float | None:
         if n in measured:
             return float(measured[n])
-        if all(p in measured for p in TARGETS[n]):
+        if all(p in measured for p in ALL_TARGETS[n]):
             return targets_of(measured, [n])[n]
         return None
 
@@ -458,7 +539,11 @@ def exact_fit(
     if any(v is None for v in meas.values()):
         raise KeyError(f"measured lacks {[n for n, v in meas.items() if v is None]}")
     checks = [
-        n for n in (checks if checks is not None else TARGETS) if n not in targets
+        n
+        for n in (
+            checks if checks is not None else (SYM_TARGETS if averaged else TARGETS)
+        )
+        if n not in targets
     ]
     check_meas = {n: v for n in checks if (v := _meas(n)) is not None}
     ks = [knob(n, bounds) for n in knobs]
@@ -496,6 +581,13 @@ def exact_fit(
     ident = identifiability(j)
     at_bound = [k.name for k, v in zip(ks, u, strict=True) if abs(v) > 1 - 1e-6]
     start_model = targets_of(ev.props(x_start), targets)
+    xy_check = symmetry_check(apply_knobs(case, ev.values(x)), ev.props(x))
+    xy_check["averaged"] = averaged
+    xy_check["averaging"] = (
+        "x/y pairs averaged: input detected as x/y symmetric and averaging requested"
+        if averaged
+        else "raw x/y targets (no averaging)"
+    )
     return ExactFit(
         knobs=list(knobs),
         lower=[k.lower for k in ks],
@@ -520,6 +612,7 @@ def exact_fit(
         at_bound=at_bound,
         label=label,
         note=note,
+        extra={"xy_check": xy_check},
     )
 
 
@@ -536,7 +629,7 @@ def mock_test(
     ``noise`` maps raw property → relative sd. Noise is drawn per raw
     property (Exx and Eyy separately, as a test would), in a fixed order.
     """
-    raw = sorted({p for ps in TARGETS.values() for p in ps})
+    raw = sorted({p for ps in ALL_TARGETS.values() for p in ps})
     props = solve(apply_knobs(case, truth), 0.0, 0.0)
     out = {p: float(props[p]) for p in raw}
     if noise:

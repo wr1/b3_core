@@ -218,3 +218,109 @@ def test_fenicsx_near_zero_curvature_matches_flat():
     near = solve(case, 1e-9, 1e-9)
     for p in eng.PROPS:
         assert near[p] == pytest.approx(flat[p], rel=5e-3), p
+
+
+def test_asymmetric_material_sweep_is_not_mirrored():
+    calls = []
+
+    def counting(case, kx=0.0, ky=0.0):
+        calls.append((kx, ky))
+        return fake_solver(case, kx, ky)
+
+    ortho = {
+        "Ex": 100e6,
+        "Ey": 70e6,
+        "Ez": 85e6,
+        "Gxy": 30e6,
+        "Gxz": 36e6,
+        "Gyz": 26e6,
+        "nuxy": 0.3,
+        "nuxz": 0.3,
+        "nuyz": 0.3,
+        "rho": 80.0,
+        "cell_size": 0.5,
+    }
+    acase = CASE | {"core": ortho}
+    assert eng.xy_symmetric(CASE)
+    assert not eng.xy_symmetric(acase)  # same geometry, asymmetric core
+    assert not eng.xy_symmetric(
+        CASE | {"core": ortho | {"Ey": 100e6, "Gyz": 36e6, "nuyz": 0.25}}
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        data = eng.collect(acase, radii_m=(1.0, 2.0), solve=counting)
+    n = len(data.ks)
+    assert len(calls) == 3 + n * n - 1  # every sweep point solved
+    assert "no mirroring" in data.provenance["x/y symmetry"]
+    assert "core Ex≠Ey" in data.provenance["x/y symmetry"]
+
+
+def test_symmetric_sweep_records_mirroring_in_provenance():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        data = eng.collect(CASE, radii_m=(1.0,), solve=fake_solver)
+    n = len(data.ks)
+    prov = data.provenance
+    assert (
+        f"{(n * n - n) // 2} sweep point(s) taken as x↔y mirrors"
+        in prov["x/y symmetry"]
+    )
+    assert "consistent with symmetric input" in prov["flat x/y check"]
+
+
+def test_calibration_text_states_why_it_averages():
+    from b3_core.fit.exact import ExactFit
+
+    base = dict(
+        knobs=["a"],
+        lower=[0.0],
+        upper=[1.0],
+        start=[0.5],
+        fitted=[0.5],
+        model={},
+        residual_pct={},
+        condition=1.0,
+        singular_values=[1.0],
+        jacobian=[[1.0]],
+        history=[],
+        n_design=1,
+        n_solves=1,
+        surface_rms_pct=0.0,
+        surface_loo_pct=0.0,
+    )
+    avg = ExactFit(measured={"E_in": 1.0, "G_tr": 1.0}, **base)
+    raw = ExactFit(measured={"Exx": 1.0, "Eyy": 1.0}, **base)
+    assert "detected as x/y symmetric" in eng._averaging_text(avg)
+    assert "equal by symmetry" not in eng._averaging_text(avg)
+    assert "no averaging" in eng._averaging_text(raw)
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("b3_core.pipeline").fenicsx_installed() is False,
+    reason="FEniCSx not installed",
+)
+def test_fenicsx_shallow_y_grooves_split_x_and_y():
+    """Real solve: shallower y-grooves give Exx ≠ Eyy and Gxz ≠ Gyz."""
+    case = CASE | {"ygr": [[15.0, 30.0, -9.0, 2.0]], "mesh_h_max": 3.0}
+    f = eng.fenicsx_solver()(case, 0.0, 0.0)
+    assert abs(f["Exx"] / f["Eyy"] - 1) > 0.01
+    assert abs(f["Gxz"] / f["Gyz"] - 1) > 0.01
+    from b3_core.symmetry import symmetry_check
+
+    assert not symmetry_check(case, f)["symmetric_input"]
+    s = eng.fenicsx_solver()(CASE, 0.0, 0.0)
+    assert symmetry_check(CASE, s, tol_pct=1e-6)["ok"]
+
+
+@pytest.mark.skipif(shutil.which("typst") is None, reason="typst not installed")
+def test_asymmetric_sheet_shows_ky_cut(tmp_path):
+    case = CASE | {"ygr": [[15.0, 30.0, -9.0, 2.0]]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        eng.generate_engineering(
+            case, tmp_path, title="Asym", radii_m=(1.0,), solve=fake_solver
+        )
+    src = (tmp_path / "sheet.typ").read_text()
+    assert (tmp_path / "fig_ky_cut.png").is_file()
+    assert "($k_x$ = 0)" in src and "($k_y$ = 0)" in src
+    assert "$G_(x z)$" in src

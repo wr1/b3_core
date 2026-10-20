@@ -112,13 +112,16 @@ _XY_SWAP = {"Exx": "Eyy", "Eyy": "Exx", "Gxz": "Gyz", "Gyz": "Gxz"}
 
 
 def xy_symmetric(case: dict) -> bool:
-    """True when x and y are interchangeable (same pitch, same groove rows).
+    """True when the whole input is invariant under x ↔ y.
 
-    Then the (ky, kx) solve is the (kx, ky) solve with x and y swapped, so a
-    biaxial sweep needs only half the solves.
+    Geometry (pitch, groove rows) *and* materials (core, resin, face: Ex = Ey,
+    Gxz = Gyz, nuxz = nuyz) must match; see :mod:`b3_core.symmetry`. Only then
+    is the (ky, kx) solve the (kx, ky) solve with x and y swapped, which the
+    sweep uses purely to skip solves (recorded in the provenance).
     """
-    rows = lambda key: [[float(v) for v in r[:4]] for r in case.get(key) or []]  # noqa: E731
-    return float(case["dx"]) == float(case["dy"]) and rows("xgr") == rows("ygr")
+    from b3_core.symmetry import is_xy_symmetric
+
+    return is_xy_symmetric(case)
 
 
 def _swap_xy(f: dict) -> dict:
@@ -164,6 +167,8 @@ def load_calibration(calibration: Any, case: dict, solve: Solver):
 
     A spec holds ``measured`` (raw flat properties or averaged targets),
     ``knobs`` (default :data:`CAL_KNOBS`), optional ``bounds``, ``targets``,
+    ``average_xy`` (opt-in averaging of x/y pairs, honoured only for a case
+    detected as x/y symmetric),
     ``true``, ``label`` and ``note``. A saved fit (``ExactFit.to_dict()``) has
     ``fitted`` and is used as is.
     """
@@ -187,6 +192,7 @@ def load_calibration(calibration: Any, case: dict, solve: Solver):
         spec["measured"],
         spec.get("knobs", CAL_KNOBS),
         targets=spec.get("targets"),
+        average_xy=bool(spec.get("average_xy", False)),
         checks=spec.get("checks"),
         bounds=spec.get("bounds"),
         true=spec.get("true"),
@@ -259,12 +265,14 @@ def collect(
     )
     clamped = 0
     mirror = xy_symmetric(case)
+    n_mirrored = 0
     done: dict[tuple[float, float], dict] = {}
     for kx, ky in pairs:
         if kx == 0 and ky == 0:
             f = flat
         elif mirror and (ky, kx) in done:
             f = _swap_xy(done[(ky, kx)])
+            n_mirrored += 1
         else:
             f = solve(case, kx, ky)
         done[(kx, ky)] = f
@@ -289,7 +297,18 @@ def collect(
 
     ci, _ = normalize_case(copy.deepcopy(case))
     mesh_cells = int(prepare(ci).mesh.n_cells)
+    from b3_core.symmetry import symmetry_check, xy_asymmetry
+
     prov = provenance(case, ci, flat.get("_backend", backend), mesh_cells, continuity)
+    prov["x/y symmetry"] = (
+        f"input symmetric; {n_mirrored} sweep point(s) taken as x↔y mirrors "
+        "of solved points (optimisation only)"
+        if mirror
+        else "input not x/y symmetric ("
+        + "; ".join(xy_asymmetry(case))
+        + "); every sweep point solved, no mirroring"
+    )
+    prov["flat x/y check"] = symmetry_check(case, flat)["message"]
     return SheetData(
         case=case,
         flat=flat,
@@ -433,10 +452,12 @@ def fig_heatmaps(data: SheetData, out: Path) -> Path:
     return out
 
 
-def fig_line_cut(data: SheetData, out: Path) -> Path:
+def fig_line_cut(data: SheetData, out: Path, axis: str = "kx") -> Path:
+    """Single-curvature cut along ``axis`` (the other curvature is zero)."""
     _mpl_mod, plt = _mpl()
-    cut = sorted((r for r in data.sweep if r["ky"] == 0), key=lambda r: r["kx"])
-    x = np.array([r["kx"] for r in cut]) * 1000
+    other = "ky" if axis == "kx" else "kx"
+    cut = sorted((r for r in data.sweep if r[other] == 0), key=lambda r: r[axis])
+    x = np.array([r[axis] for r in cut]) * 1000
     fig, ax = plt.subplots(figsize=(3.6, 2.7), constrained_layout=True)
     colours = ["#3b4cc0", "#7b9ff9", "#b40426", "#f49a7b", "#555555", "#999999"]
     for (p, title), col in zip(MAP_PROPS, colours, strict=True):
@@ -449,7 +470,7 @@ def fig_line_cut(data: SheetData, out: Path) -> Path:
             label=title,
             color=col,
         )
-    kc = data.closure.get("kx")
+    kc = data.closure.get(axis)
     pad = 0.04 * float(np.ptp(x) or 1.0)
     ax.set_xlim(x.min() - pad, x.max() + pad)
     if kc is not None:
@@ -477,7 +498,7 @@ def fig_line_cut(data: SheetData, out: Path) -> Path:
                 transform=ax.transAxes,
             )
     ax.axhline(0, lw=0.5, color="k")
-    ax.set_xlabel("curvature $k_x$ [1/m]  (closing ←  → opening)")
+    ax.set_xlabel(f"curvature $k_{axis[1]}$ [1/m]  (closing ←  → opening)")
     ax.set_ylabel("% change vs flat card")
     sec = ax.secondary_xaxis("top")
     sec.set_xticks(
@@ -522,6 +543,10 @@ def fig_grooving(data: SheetData, out: Path) -> Path:
 
 
 _TARGET_TEX = {
+    "Exx": "$E_{xx}$",
+    "Eyy": "$E_{yy}$",
+    "Gxz": "$G_{xz}$",
+    "Gyz": "$G_{yz}$",
     "E_in": "$E_{in}$",
     "Ezz": "$E_{zz}$",
     "G_tr": "$G_{tr}$",
@@ -529,12 +554,30 @@ _TARGET_TEX = {
     "rho": "ρ",
 }
 _TARGET_TYP = {
+    "Exx": "$E_(x x)$",
+    "Eyy": "$E_(y y)$",
+    "Gxz": "$G_(x z)$",
+    "Gyz": "$G_(y z)$",
     "E_in": "$E_(i n)$",
     "Ezz": "$E_(z z)$",
     "G_tr": "$G_(t r)$",
     "Gxy": "$G_(x y)$",
     "rho": "infused ρ",
 }
+
+
+def _averaging_text(fit: Any) -> str:
+    chk = (getattr(fit, "extra", None) or {}).get("xy_check") or {}
+    if any(n in fit.measured for n in ("E_in", "G_tr")):
+        return (
+            "E_in = mean(Exx, Eyy), G_tr = mean(Gxz, Gyz): averaged because the "
+            "input (geometry and materials) was detected as x/y symmetric and "
+            "averaging was requested."
+            + (f" Flat check: {chk['message']}." if chk.get("message") else "")
+        )
+    return "Raw x/y properties fitted separately (no averaging)." + (
+        f" Flat check: {chk['message']}." if chk.get("message") else ""
+    )
 
 
 def _target_display(name: str, v: float) -> float:
@@ -960,11 +1003,7 @@ def build_typst(
 == Curvature: what the mould does to the core
 #image("{figs["heatmaps"]}", width: 100%)
 #text(7pt)[*Curvature map:* % change vs the flat card over $k_x$ × $k_y$, shared symmetric coolwarm scale. Ticks are mould radius R = 1/(1000 k) m; + opens top-mouth grooves, − closes them. *$k_x$ drives $E_(y y)$ and $G_(y z)$* (it opens/closes the x-grooves, whose walls carry y-direction stress); $k_y$ drives $E_(x x)$ and $G_(x z)$. Hatched = grooves closed (clamped).]
-#grid(columns: (1.1fr, 1fr), gutter: 10pt,
-image("{figs["line"]}", width: 100%),
-[#v(6pt)*Single-curvature cut ($k_y$ = 0).* Grey band: grooves closed, values are bounds. The k → 0 curved solve matches the flat card within {cont:.2f} %.
-#v(4pt)
-#table(columns: (auto, auto, auto, auto), [*R [m]*], [*$E_(y y)$*], [*$E_(z z)$*], [*$G_(y z)$*], {_cut_rows(data)})])
+{_cut_block(data, figs, cont)}
 """
     page3 = "\n#pagebreak()\n" + _stiffness_block(data)
     if data.calibration is not None:
@@ -1042,8 +1081,8 @@ def _calibration_block(data: SheetData, figs: dict[str, str]) -> str:
         (
             "Fit",
             f"{len(fit.knobs)} parameters ↔ {len(fit.measured)} targets: square, so exact. "
-            "E_in = mean(Exx, Eyy), G_tr = mean(Gxz, Gyz): equal by symmetry, so "
-            "averaged. Halo reach = resin seepage depth into the foam.",
+            + _averaging_text(fit)
+            + " Halo reach = resin seepage depth into the foam.",
         ),
         ("Max |residual|", f"{fit.max_abs_residual_pct:.3f} % ({stages})"),
         (
@@ -1128,15 +1167,56 @@ def _fmt_cut(c: dict, key: str, dim: str) -> str:
     return f"{between_grooves(c.get(key), float(c[dim])):.3g}"
 
 
-def _cut_rows(data: SheetData) -> str:
+_CUT_PROPS = {"kx": ("Eyy", "Ezz", "Gyz"), "ky": ("Exx", "Ezz", "Gxz")}
+
+
+def _cut_rows(data: SheetData, axis: str = "kx") -> str:
+    other = "ky" if axis == "kx" else "kx"
     rows = []
-    for r in sorted((r for r in data.sweep if r["ky"] == 0), key=lambda r: r["kx"]):
+    for r in sorted((r for r in data.sweep if r[other] == 0), key=lambda r: r[axis]):
         pct = lambda p: 100 * (r[p] / data.flat[p] - 1)  # noqa: E731,B023
         mark = " †" if r["clamped"] else ""
         rows.append(
-            f"[{radius_label(r['kx'])}{mark}], [{pct('Eyy'):+.1f} %], [{pct('Ezz'):+.1f} %], [{pct('Gyz'):+.1f} %]"
+            f"[{radius_label(r[axis])}{mark}], "
+            + ", ".join(f"[{pct(p):+.1f} %]" for p in _CUT_PROPS[axis])
         )
     return ", ".join(rows)
+
+
+def _cut_block(data: SheetData, figs: dict, cont: float) -> str:
+    """kx cut always; a ky cut too unless the input is x/y symmetric (then the
+    ky cut is the kx cut with x and y swapped, and saying so is a fact about
+    this input, not an assumption)."""
+    sym = xy_symmetric(data.case)
+    blocks = []
+    for axis in ("kx", "ky") if not sym else ("kx",):
+        a = axis[1]
+        o = "y" if a == "x" else "x"
+        heads = ", ".join(
+            "[*$"
+            + {
+                "Eyy": "E_(y y)",
+                "Exx": "E_(x x)",
+                "Ezz": "E_(z z)",
+                "Gyz": "G_(y z)",
+                "Gxz": "G_(x z)",
+            }[p]
+            + "$*]"
+            for p in _CUT_PROPS[axis]
+        )
+        note = (
+            " Input is x/y symmetric, so the $k_y$ cut is this cut with x and y swapped."
+            if sym
+            else ""
+        )
+        blocks.append(
+            f"""#grid(columns: (1.1fr, 1fr), gutter: 10pt,
+image("{figs.get("line_" + axis) or figs["line"]}", width: 100%),
+[#v(6pt)*Single-curvature cut ($k_{o}$ = 0).* Grey band: grooves closed, values are bounds. The k → 0 curved solve matches the flat card within {cont:.2f} %.{note}
+#v(4pt)
+#table(columns: (auto, auto, auto, auto), [*R [m]*], {heads}, {_cut_rows(data, axis)})])"""
+        )
+    return "\n".join(blocks)
 
 
 def compile_typst(src: str, root: Path, pdf: Path) -> None:
@@ -1189,7 +1269,12 @@ def generate_engineering(
         "cuts": fig_cuts(case_path, data.case, out / "fig_rve_cuts.png").name,
         "grooving": fig_grooving(data, out / "fig_grooving.png").name,
         "heatmaps": fig_heatmaps(data, out / "fig_curvature_map.png").name,
-        "line": fig_line_cut(data, out / "fig_kx_cut.png").name,
+        "line_kx": fig_line_cut(data, out / "fig_kx_cut.png").name,
+        **(
+            {}
+            if xy_symmetric(data.case)
+            else {"line_ky": fig_line_cut(data, out / "fig_ky_cut.png", "ky").name}
+        ),
     }
     if data.calibration is not None:
         figs["calibration"] = fig_calibration(data, out / "fig_calibration.png").name
