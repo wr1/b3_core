@@ -1,4 +1,6 @@
+import json
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -18,10 +20,16 @@ pytestmark = pytest.mark.skipif(
 def built(tmp_path_factory):
     """Generate the datasheet once (MFEM solve is slow) and share it."""
     d = tmp_path_factory.mktemp("datasheet")
+    # Coarse mesh: this checks the sheet plumbing, not convergence. The
+    # 1.5 mm default quadruples the build time and doubles peak memory.
+    case = json.loads(Path(CASE).read_text())
+    case["mesh_h_max"] = 4.0
+    case_path = d / "case.json"
+    case_path.write_text(json.dumps(case))
     out_pdf = d / "ds.pdf" if _HAVE_TYPST else None
     out_png = d / "ds.png" if _HAVE_TYPST else None
     spec = datasheet.generate(
-        CASE, out_pdf, out_png=out_png, workdir=d, skip_compile=not _HAVE_TYPST
+        case_path, out_pdf, out_png=out_png, workdir=d, skip_compile=not _HAVE_TYPST
     )
     return spec, d
 
