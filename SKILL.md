@@ -407,8 +407,8 @@ spec = generate("case.json", "report.pdf", out_png="report.png")
 # spec.engineering_constants, spec.c_eff_gpa available programmatically
 ```
 
-Needs `typst` on PATH. That command is the flat card. A curvature datasheet
-is `viz datasheet --full` (see Report a datasheet).
+Needs `typst` on PATH. That command is the flat, predicted card. Label it
+"predicted, not calibrated" unless a fit was applied.
 
 ### Terminal comparison table (parametric sweeps)
 
@@ -422,91 +422,11 @@ Response curves / gallery / GIFs: `examples/offline/`.
 b3_core viz view case.json --what gallery -o board.png
 ```
 
-## Calibrate to a sparse datasheet
+### Calibration and datasheet engineering
 
-Classify the measured rows, free the smallest parameter set the decision
-table allows, and stop when the fit is not inside two standard deviations.
-Do not put absolute customer moduli in the spec. Targets are the caller's
-numbers.
-
-**Procedure**
-
-1. Classify the data with `fit.split_basis`. Neat rows are fixed inputs.
-   Infused rows are targets. Record the test method and `axis_map` on each
-   target. Groove-parallel and groove-normal are not the machine axes until
-   that map says so.
-2. `b3_core fit bounds CASE --json`. Every parameter starts fixed.
-3. If infused density or resin uptake exists, `b3_core fit estimate-halo`.
-   Then fix `halo_cell_size` at the estimate, or leave it free inside that
-   interval at step 5. The estimate does not solve.
-4. Choose the free set from the table below.
-5. `b3_core fit sensitivity` at the prior mean. Drop a weak parameter. For
-   each collinear pair (`|corr| > 0.95`), fix the one later in this order:
-   `halo_cell_size` (when mass is known) > `foam_Ez_scale` > `foam_G_scale`
-   > `foam_E_scale` > `kerf_width` > `resin_E`.
-   Require `n_free ≤ n_targets_used`. When `n_free < 3`, call `fit refine`
-   and skip the response surface.
-6. `b3_core fit run FITSPEC --out DIR --json` when `n_free ≥ 3` (design,
-   quadratic surface, then refine). Exit is 0 only for `converged`,
-   `rsm_only`, or `no_free_params`.
-7. Accept only when `status` is `converged` and every `|z| ≤ 2`. Otherwise
-   print the residuals and stop. Do not widen bounds to force a pass.
-8. Pass `calibrated_case.json` to `b3_core sweep grid --fit-result`.
-
-Mass means infused density or resin uptake.
-
-| Data available | Free | Fixed | Status |
-|---|---|---|---|
-| Nothing tested | — | foam from `estimate_foam`, resin typical, halo at the case cell size | `no_free_params`. Label the sheet "predicted, not calibrated" |
-| Mass only | `halo_cell_size` via `estimate-halo` | foam neat or estimated, resin | Density and volume fractions only. Moduli stay predicted |
-| Neat foam card + mass | `halo_cell_size` | foam = neat card, resin | Same, with the neat card as the foam basis |
-| Infused Ez only | `foam_Ez_scale` | everything else; halo from mass when mass exists | One-parameter fit |
-| Infused Ez + Gxz or Gyz | `foam_Ez_scale`, `foam_G_scale` | in-plane foam, resin; halo from mass | Usually well conditioned |
-| Those plus mass | add `halo_cell_size` inside the estimate-halo interval | in-plane foam, resin | Mass separates halo from stiffness |
-| In-plane Ex or Ey, no mass | `halo_cell_size` or `foam_E_scale`, never both | the other one | Prefer `foam_E_scale` when no neat card exists; prefer the halo when it does |
-| In-plane + mass + neat foam | `halo_cell_size`, and `kerf_width` only if the groove was not measured | foam neat, resin | `resin_E` stays fixed unless a resin coupon exists |
-| Ex, Ey, Ez, Gxz, Gyz, and mass | at most four of `foam_E_scale`, `foam_Ez_scale`, `foam_G_scale`, `halo_cell_size` | resin and kerf width | Run sensitivity. Free `kerf_width` only with a measured groove section |
-
-**Axis map.** `Target.axis_map` rewrites a test-axis name onto the model
-axis (`Ex`, `Ey`, `Ez`, `Gxy`, `Gxz`, `Gyz`). A uniaxial groove pattern is
-anisotropic: the tested in-plane direction is groove-parallel or
-groove-normal, and the other in-plane modulus is predicted. The datasheet
-says which one was measured.
-
-`Material.source` is `neat`, `infused`, `estimated`, or `calibrated`.
-`Material.reference` is a short citation. Neither field enters the cache key.
-
-## Report a datasheet
-
-The agent writes only `prose.json`. It does not edit Typst, table cells, or
-copied numbers. Any check with `ok: false` stops the task.
-
-1. Sweep: `b3_core sweep grid CASE --backend fenicsx --out DIR --json`.
-   A nonzero `kx` with no x-grooves, or `ky` with no y-grooves, is an error
-   unless `--allow-inert-axis`.
-2. Figures: `b3_core viz figs DIR/manifest.json --out DIR`.
-3. `b3_core check accept project.yaml --json` before prose. Missing
-   artifacts fail closed. The library default does not load a customer
-   profile. Pass `--profile` only when the caller names one.
-4. Write `prose.json`: `title`, `summary` (≤ 400 characters),
-   `intended_use` and `limitations` (≤ 160 each), optional `notes`.
-5. `b3_core viz datasheet CASE --full --prose prose.json --sweep DIR/manifest.json --draft`
-   while the stamp is not ok. Drop `--draft` only after `check accept`
-   returns `ok`. A curved sheet that is not accepted carries the footnote
-   "cross-checked on flat; curved values FEniCSx".
-6. Confirm the PDF with `pdftotext -layout` and `pdfinfo`. A text session
-   cannot see the figures; say so.
-
-Curvature labels are `k (R = … m)` from `curvature_tick`. `k = 0` is
-`0 (flat)`. Signed radius in metres is `1/(1000·k)` with the sign of `k`.
-Read `opens_for` on each kerf row. Flat backend pairs fail above 0.01 %
-relative difference. Curved pairs above 0.1 % fail `check accept`; the
-halo mesh in the backends reference sits under that bar. Quote that table.
-Do not type moduli into the sheet.
-
-`b3_core report build project.yaml --out DIR` writes `report.md`,
-`report.typ`, and `version.json` from the project file. The skeleton is
-not a substitute for `prose.json`.
+The sheet above is the predicted, uncalibrated card. Fitting to test data,
+curvature datasheets and engineering sheets are advanced use and are covered
+by a separate private skill catalog, not this file.
 
 ## 5. Downstream FEA integration
 
@@ -578,8 +498,6 @@ b3_core check backends case.json --points "0,0 5e-5,0" --json
 b3_core check cross case.json
 b3_core check accept project.yaml --json
 b3_core sweep grid case.json --dry-run
-b3_core fit bounds case.json --json
-b3_core viz datasheet case.json --full --draft --prose prose.json
 ```
 
 **Units:** input geometry mm; Python output moduli Pa. Present a table from
