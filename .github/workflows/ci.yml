@@ -32,7 +32,7 @@ jobs:
   test:
     name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -68,10 +68,11 @@ jobs:
       # b3_mat is a git URL in [project].dependencies; treeparse from PyPI.
       # numba>=0.60 is a [tool.uv] override (mfem 4.8 still pins numba==0.53,
       # which cannot build on Python 3.12).
+      # The report extra brings typst: the full-sheet tests compile a PDF.
       - name: Install dependencies
-        run: uv sync --locked --extra dev
+        run: uv sync --locked --extra dev --extra report
 
-      # CalculiX / typst not installed — related tests self-skip.
+      # CalculiX not installed — related tests self-skip.
       # Coverage: pytest-cov via pyproject addopts (--cov-fail-under=90).
       - name: Import boundaries and skill sync
         run: |
@@ -82,7 +83,10 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest -q --tb=short --cov-report=term-missing:skip-covered
+          # A virtual X display: without one, PyVista's OpenGL probe aborts
+          # the whole pytest process (SIGABRT, exit 134) on the first plot.
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            pytest -q --tb=short --durations=15 --cov-report=term-missing:skip-covered
 
   pip-install-smoke:
     name: pip install smoke (3.12)

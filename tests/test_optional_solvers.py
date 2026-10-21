@@ -9,6 +9,9 @@ from b3_core.api import homogenize
 from b3_core.cases import grid_scored, plain, uniaxial
 from b3_core.pipeline import resolve_backend
 from b3_core.solvers import get_backend
+from b3_core.solvers.mfem import is_mfem_available
+
+needs_mfem = pytest.mark.skipif(not is_mfem_available(), reason="MFEM not installed")
 
 _KEYS = ("Exx", "Eyy", "Ezz", "Gxy", "Gxz", "Gyz")
 
@@ -33,6 +36,7 @@ def test_auto_leads_with_fenicsx():
 
 
 @pytest.mark.fenicsx
+@needs_mfem
 def test_fenicsx_plain_matches_mfem():
     if not get_backend("fenicsx").is_available():
         pytest.skip("FEniCSx is not installed")
@@ -40,6 +44,7 @@ def test_fenicsx_plain_matches_mfem():
 
 
 @pytest.mark.fenicsx
+@needs_mfem
 def test_fenicsx_uniaxial_matches_mfem():
     if not get_backend("fenicsx").is_available():
         pytest.skip("FEniCSx is not installed")
@@ -77,6 +82,7 @@ def test_fenicsx_halo_matches_numpy(caplog):
 
 
 @pytest.mark.fenicsx
+@needs_mfem
 def test_fenicsx_curved_halo_matches_mfem(caplog):
     """A tapered orthotropic halo matches MFEM. Both sit off numpy by O(kappa^2)."""
     if not get_backend("fenicsx").is_available():

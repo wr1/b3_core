@@ -15,9 +15,9 @@ from b3_core.cases import plain
 from b3_core.hashing import case_hash
 from b3_core.loaders import normalize_case
 
-# plain() isotropic case, resolved backend "mfem", CACHE_SCHEMA 2 + mfem stamp.
+# plain() isotropic case, resolved backend "mfem", CACHE_SCHEMA 3 + mfem stamp.
 # Recompute when CACHE_SCHEMA or the mfem stamp changes.
-GOLDEN_PLAIN_MFEM = "6fb7f93b185c2373d89cea2ca40b6d9b047011e806ba80254bee110d31f15590"
+GOLDEN_PLAIN_MFEM = "2edf2584b7e32e75f773243182b9ba36e81c6ca11e309b1dd45654f205236278"
 
 
 def test_homogenize_is_pure(monkeypatch, tmp_path):

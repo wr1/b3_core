@@ -96,6 +96,7 @@ def test_wall_nodes_track_analytical_taper():
         madd=[0.0],
         tface=0.0,
         kx=kx,
+        kerf_z_elems=4,
     )
     grooves = _physical_grooves([[c0, pitch, depth, width]], 50.0, kx)
     assert len(grooves) == 1

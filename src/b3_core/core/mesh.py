@@ -169,6 +169,19 @@ def _at_least_three_elements(vals, length: float) -> np.ndarray:
     return lines
 
 
+def _cap_spacing(lines: np.ndarray, h_max: float | None) -> np.ndarray:
+    """Split every interval longer than ``h_max`` into equal sub-intervals."""
+    if h_max is None or h_max <= 0:
+        return lines
+    out = [lines[0]]
+    for a, b in zip(lines[:-1], lines[1:], strict=True):
+        n = int(np.ceil((b - a) / h_max - 1e-9))
+        if n > 1:
+            out.extend(a + (b - a) * np.arange(1, n) / n)
+        out.append(b)
+    return np.asarray(out, dtype=float)
+
+
 def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
     """Groove instances that intersect the domain (including edge partials).
 
@@ -394,10 +407,17 @@ def create_grooved_mesh(
     s_halo=0.0,
     *,
     wall_morph: bool = True,
+    s_face_halo: float = 0.0,
+    h_max: float | None = None,
+    kerf_z_elems: int = 1,
 ):
     """Build a structured RVE; open/close via wall-aligned morph when κ ≠ 0.
 
     1. Rectangular flat grid (walls = grid faces, rectangular resin tags).
+       ``s_face_halo`` adds z lines inside the outer-face halo band and
+       ``h_max`` caps every element edge (mm); ``None`` keeps the coarse grid.
+       ``kerf_z_elems`` sets the elements over each groove depth (flat and
+       curved alike).
     2. If ``kx``/``ky`` nonzero, interval-affine morph so walls track ``hw(z)``.
        Foam bays become trapezoidal on the flat RVE (intended FEA geometry).
     """
@@ -422,25 +442,41 @@ def create_grooved_mesh(
         if roots:
             fz = np.append(fz, np.clip(np.concatenate(roots), 0.0, thickness + tface))
 
-    # Through-thickness stations so a morphed wall is piecewise-linear.
-    # An axis with κ = 0, or with no grooves, adds none: ky does not refine
-    # an x-only pattern, and the flat mesh stays the flat mesh.
-    n_z_taper = 9
+    # Through-thickness stations along every groove depth, identical for the
+    # flat and the curved mesh: the k -> 0 curved mesh must be the flat mesh,
+    # or the curved path shows a discretisation step at vanishing curvature.
+    # The tapered wall hw(z) is linear in z, so one element over the depth
+    # already represents the open/closed wedge exactly; ``kerf_z_elems`` only
+    # sets convergence. A groove that pinches shut has a kink where hw(z) hits
+    # MIN_HW, and only that groove gets one extra station at the kink.
+    n_elems = max(1, int(kerf_z_elems))
     taper_z = []
     for cuts, kappa in ((xcuts, kx), (ycuts, ky)):
-        if abs(float(kappa)) == 0.0:
-            continue
         for cut in cuts:
             d = float(cut[2])
             if d == 0.0:
                 continue
             if d > 0:
                 z0, z1 = 0.0, d
+                z_root, sign = d, -1.0
             else:
                 z0, z1 = thickness + d, thickness
-            taper_z.append(np.linspace(z0, z1, n_z_taper))
+                z_root, sign = thickness + d, 1.0
+            taper_z.append(np.linspace(z0, z1, n_elems + 1))
+            hw0 = 0.5 * float(cut[3])
+            slope = -float(np.sign(d)) * float(kappa) * float(cut[1]) / 2.0
+            if slope < 0.0:
+                zeta = (_MIN_HW - hw0) / slope
+                if 0.0 < zeta < abs(d):
+                    taper_z.append(np.array([z_root + sign * zeta]))
     if taper_z:
         fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
+
+    if s_face_halo > 0:
+        hf = np.linspace(0.0, 1.0, 3)[1:]
+        fz = np.append(
+            fz, np.concatenate([s_face_halo * hf, thickness - s_face_halo * hf])
+        )
 
     xc, xhw = 0.5 * (bx + tx), 0.5 * (tx - bx)
     yc, yhw = 0.5 * (by + ty), 0.5 * (ty - by)
@@ -492,9 +528,9 @@ def create_grooved_mesh(
         dy,
     )
     X, Y, Z = np.meshgrid(
-        _at_least_three_elements(xlines, dx),
-        _at_least_three_elements(ylines, dy),
-        _at_least_three_elements(fz, thickness + tface),
+        _cap_spacing(_at_least_three_elements(xlines, dx), h_max),
+        _cap_spacing(_at_least_three_elements(ylines, dy), h_max),
+        _cap_spacing(_at_least_three_elements(fz, thickness + tface), h_max),
     )
     grd = pv.StructuredGrid(X, Y, Z)
     c = grd.cell_centers().points

@@ -236,9 +236,13 @@ def prepare(case: CaseInput, *, wall_morph: bool = True) -> PreparedCase:
     kwargs = case.mesh_kwargs()
     kwargs["s_halo"] = reach
     kwargs["wall_morph"] = wall_morph
+    field = ScoreField(case.score_dict()) if reach > 0.0 else None
+    if field is not None and field.surfaces["face"]["enabled"]:
+        # Resolve the thin outer-face halo band in z so Gauss points do not
+        # jump in or out of it as the reach changes.
+        kwargs["s_face_halo"] = float(field.surfaces["face"]["reach"])
     mesh = create_grooved_mesh(**kwargs)
     geom = geom_analysis(mesh)
-    field = ScoreField(case.score_dict()) if reach > 0.0 else None
     eff, halo_vf = effective_resin_vf(mesh, field, geom["resin_vf"])
     rho = float(case.core.rho) * (1.0 - eff) + float(case.resin.rho) * eff
     report = GeometryReport(
