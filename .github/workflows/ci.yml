@@ -68,10 +68,11 @@ jobs:
       # b3_mat is a git URL in [project].dependencies; treeparse from PyPI.
       # numba>=0.60 is a [tool.uv] override (mfem 4.8 still pins numba==0.53,
       # which cannot build on Python 3.12).
+      # The report extra brings typst: the full-sheet tests compile a PDF.
       - name: Install dependencies
-        run: uv sync --locked --extra dev
+        run: uv sync --locked --extra dev --extra report
 
-      # CalculiX / typst not installed — related tests self-skip.
+      # CalculiX not installed — related tests self-skip.
       # Coverage: pytest-cov via pyproject addopts (--cov-fail-under=90).
       - name: Import boundaries and skill sync
         run: |
