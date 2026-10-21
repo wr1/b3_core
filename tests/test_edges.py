@@ -979,7 +979,9 @@ def test_sheet_compile_and_tensor_directions(tmp_path, monkeypatch):
     pdf = generate_full(tmp_path / "py", data, draft=True, compile=True)
     assert pdf.is_file()
 
-    monkeypatch.delitem(sys.modules, "typst", raising=False)
+    # None in sys.modules makes ``import typst`` fail even when the real
+    # package is installed (re-importing its native module is not safe).
+    monkeypatch.setitem(sys.modules, "typst", None)
     monkeypatch.setattr("b3_core.report.sheet.shutil.which", lambda _name: None)
     with pytest.raises(RuntimeError, match="not installed"):
         generate_full(tmp_path / "missing", data, draft=True, compile=True)
