@@ -89,3 +89,9 @@ backend: auto
 ```
 
 Python entry: `from b3_core import CpropInput, Material`.
+
+## Groove mouth and legacy negative depth
+
+Each `xgr` / `ygr` row is `[offset, spacing, depth, width]` (mm). `z = 0` is the
+mould face. A negative depth in that legacy list is only an input alias for
+`mouth: top` (the groove opens at `z = thickness`); `mouth: bottom` opens at `z = 0`.

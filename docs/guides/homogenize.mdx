@@ -146,3 +146,47 @@ same call is a flat-RVE kerf taper: `homogenize(case, kx=, ky=)` or
 [Resin halo](/docs/concepts/resin-halo) and
 [Halo + curvature](/docs/concepts/halo-curvature)
 ([Eyy / Vf vs κ × cell_size](/docs/concepts/halo-curvature#stiffness-vs-curvature-and-halo-width)).
+
+## Files and caching
+
+`homogenize(case)` and `run_case(case)` write nothing. `write=True` and
+`homogenize_to_disk(case)` write `run<hash12>.json` into `workdir`, or into
+the case file's directory when `case` is a path. `CoreCase.with_workdir(path)`
+sets that directory and does nothing until a write is requested.
+
+```python
+from b3_core import homogenize
+from b3_core.cache import DiskCache
+
+result = homogenize(case, cache=DiskCache(".b3cache"))
+```
+
+`cache=None` is a null cache. `MemoryCache` is process-local. `DiskCache`
+writes `root/<key[:2]>/<key>.json` atomically. The key is `CACHE_SCHEMA` (2),
+a per-backend `SOLVER_STAMP`, the resolved backend, and the canonical case
+JSON. It does not include the package version. A stored stamp that does not
+match the current backend stamp is a miss, never a hit. `b3_core cache stats`,
+`cache inspect` (`cache ls`), and `cache purge --stale` list entries and
+delete stale stamps. `cache export DEST` zips the JSON entries and a stamp
+manifest. `cache import BUNDLE` copies them and skips keys that already
+exist unless `--overwrite`. CalculiX scratch files go to a temporary directory unless
+the solve request names a workdir. `b3_core run` writes a run file and caches
+only when `--cache DIR` is set. `b3_core sweep` caches in `<study>/.b3cache`.
+
+## Surrogate sweeps
+
+```python
+from b3_core.cache import DiskCache
+from b3_core.physics_surrogate import fit_from_homogenization
+
+surrogate = fit_from_homogenization(
+    kx_values=[-0.01, 0.0, 0.01],
+    ky_values=[0.0, 0.005],
+    cell_sizes=[0.0, 0.6],
+    cache=DiskCache(".b3cache"),
+)
+surrogate.to_json("surrogate.json")
+```
+
+Features are `kx`, `ky`, and `cell_size` (schema 2). A 0.2 file with only
+`kx` and `cell_size` still loads.
