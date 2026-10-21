@@ -76,9 +76,7 @@ otherwise MFEM on flat cases. MFEM and CalculiX are flat cross-checks.
 
 `viz datasheet` gives the flat, predicted card: geometry, materials,
 constants and the `C_eff` heatmap. Label it "predicted, not calibrated"
-unless a fit was applied. Calibration to test data, curvature datasheets and
-engineering sheets are advanced use, covered by a separate private skill
-catalog, not this file.
+unless a fit was applied.
 
 ## Quick reference
 
