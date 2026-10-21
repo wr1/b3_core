@@ -7,6 +7,7 @@ from b3_core.core.mesh import create_grooved_mesh
 from b3_core.pipeline import resolve_backend
 from b3_core.solvers.calculix.writer import periodic_bcs
 from b3_core.solvers.fenicsx import FenicsxBackend
+from b3_core.solvers.mfem import is_mfem_available
 from b3_core.solvers.protocol import BackendCapabilityError
 
 
@@ -25,6 +26,7 @@ def test_curved_auto_errors_without_fenicsx(monkeypatch):
         resolve_backend(_curved())
 
 
+@pytest.mark.skipif(not is_mfem_available(), reason="MFEM not installed")
 def test_flat_auto_still_resolves_without_fenicsx(monkeypatch):
     monkeypatch.setattr(FenicsxBackend, "is_available", lambda self: False)
     assert resolve_backend(plain().input) == "mfem"
