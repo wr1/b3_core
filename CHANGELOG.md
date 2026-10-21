@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- FEniCSx curved periodicity: interpolated z-face ties whose masters were
+  themselves x/y-periodic slaves are now flattened before the MPC is built.
+  dolfinx_mpc does not resolve such chains, which made opening curvature
+  over-stiff when no grid lines sat near the cell boundary (#3). FEniCSx
+  stamp bumped.
 - Mesh consistency of the grooved RVE (results change; `CACHE_SCHEMA` 2 → 3):
   - Flat and curved meshes now use the same z stations: `kerf_z_elems`
     (default 4) equal elements over each groove depth, plus one station only
