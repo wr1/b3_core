@@ -75,7 +75,11 @@ def test_training_frame_keeps_ky(monkeypatch):
             ),
         )
 
-    monkeypatch.setattr("b3_core.sweep.curvature_grid.run_case", fake_run)
+    # Patch the module object: ``b3_core.sweep`` is also a function exported
+    # from ``b3_core``, so the dotted-string form can resolve to it.
+    import b3_core.sweep.curvature_grid as curvature_grid_mod
+
+    monkeypatch.setattr(curvature_grid_mod, "run_case", fake_run)
     frame = build_training_frame(
         kx_values=[0.0, 0.01],
         ky_values=[0.005],

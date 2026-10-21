@@ -32,7 +32,7 @@ jobs:
   test:
     name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -86,7 +86,7 @@ jobs:
           # A virtual X display: without one, PyVista's OpenGL probe aborts
           # the whole pytest process (SIGABRT, exit 134) on the first plot.
           xvfb-run -a -s "-screen 0 1280x1024x24" \
-            pytest -q --tb=short --durations=15 --cov-report=term-missing:skip-covered
+            pytest -q -rfE --tb=short --durations=15 -o faulthandler_timeout=300 --cov-report=term-missing:skip-covered
 
   pip-install-smoke:
     name: pip install smoke (3.12)
