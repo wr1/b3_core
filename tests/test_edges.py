@@ -611,10 +611,33 @@ def test_cli_callbacks_do_not_solve(tmp_path, monkeypatch, capsys):
 
     case = tmp_path / "case.json"
     uniaxial().to_json(case)
+    # Stub the doctor so the result does not depend on whether FEniCSx is
+    # installed (a real doctor() runs a small solve when it is).
+    failing = {
+        "ok": False,
+        "imports": {"dolfinx": None},
+        "mpi_size": 1,
+        "mumps": False,
+        "factorisation": None,
+        "solve": None,
+        "error": "dolfinx missing",
+    }
+    passing = dict(
+        failing,
+        ok=True,
+        imports={"dolfinx": "0.0"},
+        error=None,
+        solve={"ok": True, "cells": 8, "Ex": 1.0, "rel_error": 0.0},
+    )
+    monkeypatch.setattr("b3_core.doctor.doctor", lambda: failing)
     with pytest.raises(SystemExit):
         run_mod.cmd_doctor(as_json=True)
     with pytest.raises(SystemExit):
         run_mod.cmd_doctor(as_json=False)
+    monkeypatch.setattr("b3_core.doctor.doctor", lambda: passing)
+    run_mod.cmd_doctor(as_json=True)
+    run_mod.cmd_doctor(as_json=False)
+    assert "solve: 8 cells" in capsys.readouterr().out
     run_mod.cmd_skill(stdout=False)
     text = capsys.readouterr().out
     assert "SKILL.md" in text or text
