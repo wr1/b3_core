@@ -34,7 +34,11 @@ logger = logging.getLogger(__name__)
 PROPS = ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "Gxy")
 CAL_PROPS = (*PROPS, "rho_infused")
 # Exact-fit knobs, one per identifiable flat target (see b3_core.fit.exact).
+# The default is chosen per case by b3_core.fit.exact.fit_plan: these 4 only
+# for a symmetric input that passes the flat symmetry check (averaged targets),
+# else CAL_KNOBS_XY against the 6 raw targets.
 CAL_KNOBS = ("halo_reach", "core_E", "core_G", "resin_E")
+CAL_KNOBS_XY = ("halo_reach", "core_Ex", "core_Ey", "core_Gxz", "core_Gyz", "resin_E")
 MAP_PROPS = (
     ("Exx", "$E_{xx}$"),
     ("Eyy", "$E_{yy}$"),
@@ -166,9 +170,9 @@ def load_calibration(calibration: Any, case: dict, solve: Solver):
     """``ExactFit`` from a fit object, a saved fit, or a spec that is solved here.
 
     A spec holds ``measured`` (raw flat properties or averaged targets),
-    ``knobs`` (default :data:`CAL_KNOBS`), optional ``bounds``, ``targets``,
-    ``average_xy`` (opt-in averaging of x/y pairs, honoured only for a case
-    detected as x/y symmetric),
+    ``knobs`` (default: chosen by :func:`b3_core.fit.exact.fit_plan`),
+    optional ``bounds``, ``targets``, ``average_xy`` (None = auto: average
+    only a detected-symmetric case that passes the flat symmetry check),
     ``true``, ``label`` and ``note``. A saved fit (``ExactFit.to_dict()``) has
     ``fitted`` and is used as is.
     """
@@ -190,9 +194,9 @@ def load_calibration(calibration: Any, case: dict, solve: Solver):
         solve,
         case,
         spec["measured"],
-        spec.get("knobs", CAL_KNOBS),
+        spec.get("knobs"),
         targets=spec.get("targets"),
-        average_xy=bool(spec.get("average_xy", False)),
+        average_xy=spec.get("average_xy"),
         checks=spec.get("checks"),
         bounds=spec.get("bounds"),
         true=spec.get("true"),

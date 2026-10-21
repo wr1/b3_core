@@ -102,6 +102,15 @@ ALL_TARGETS: dict[str, tuple[str, ...]] = {**TARGETS, **SYM_TARGETS}
 FIT_TARGETS: tuple[str, ...] = ("Exx", "Eyy", "Ezz", "Gxz", "Gyz", "rho")
 FIT_TARGETS_SYM: tuple[str, ...] = ("E_in", "Ezz", "G_tr", "rho")
 FIT_KNOBS: tuple[str, ...] = ("halo_reach", "core_E", "core_G", "resin_E")
+# Per-component knobs for the raw (non-averaged) targets, one per target.
+FIT_KNOBS_XY: tuple[str, ...] = (
+    "halo_reach",
+    "core_Ex",
+    "core_Ey",
+    "core_Gxz",
+    "core_Gyz",
+    "resin_E",
+)
 TARGET_LABELS = {
     "Exx": "Exx",
     "Eyy": "Eyy",
@@ -123,6 +132,53 @@ def default_targets(case: Mapping[str, Any], average_xy: bool = False) -> tuple:
     if average_xy and is_xy_symmetric(case):
         return FIT_TARGETS_SYM
     return FIT_TARGETS
+
+
+def fit_plan(
+    solve: Solver | None,
+    case: Mapping[str, Any],
+    average_xy: bool | None = None,
+) -> dict[str, Any]:
+    """Default knobs and targets for a flat exact fit, without assuming symmetry.
+
+    ``average_xy=None`` (auto): the 4 averaged targets with :data:`FIT_KNOBS`
+    only when the input is detected as x/y symmetric *and* a flat solve passes
+    :func:`b3_core.symmetry.symmetry_check`; otherwise the 6 raw targets with
+    :data:`FIT_KNOBS_XY`. ``False`` always gives the raw 6. ``True`` behaves
+    like auto (averaging is never forced on an asymmetric or failing input);
+    the returned ``reason`` says what was done and why.
+    ``solve`` may be None only when no flat check is needed.
+    """
+    from b3_core.symmetry import is_xy_symmetric, symmetry_check, xy_asymmetry
+
+    raw = {"knobs": FIT_KNOBS_XY, "targets": FIT_TARGETS, "average_xy": False}
+    if average_xy is False:
+        return {**raw, "reason": "raw x/y targets (averaging switched off)"}
+    if not is_xy_symmetric(case):
+        why = "; ".join(xy_asymmetry(case))
+        ask = " (averaging requested but ignored)" if average_xy else ""
+        return {
+            **raw,
+            "reason": f"raw x/y targets: input is not x/y symmetric ({why}){ask}",
+        }
+    if solve is None:
+        raise ValueError("fit_plan needs a solver to check a symmetric input")
+    check = symmetry_check(case, solve(dict(case), 0.0, 0.0))
+    if not check["ok"]:
+        return {
+            **raw,
+            "reason": "raw x/y targets: symmetric input failed the flat "
+            f"symmetry check ({check['message']})",
+            "check": check,
+        }
+    return {
+        "knobs": FIT_KNOBS,
+        "targets": FIT_TARGETS_SYM,
+        "average_xy": True,
+        "reason": "x/y pairs averaged: input detected as x/y symmetric and the "
+        "flat symmetry check passed",
+        "check": check,
+    }
 
 
 def knob(name: str, bounds: Mapping[str, Sequence[float]] | None = None) -> Knob:
@@ -489,10 +545,10 @@ def exact_fit(
     solve: Solver,
     case: Mapping[str, Any],
     measured: Mapping[str, float],
-    knobs: Sequence[str],
+    knobs: Sequence[str] | None = None,
     *,
     targets: Sequence[str] | None = None,
-    average_xy: bool = False,
+    average_xy: bool | None = None,
     checks: Sequence[str] | None = None,
     bounds: Mapping[str, Sequence[float]] | None = None,
     tol_pct: float = 0.01,
@@ -506,9 +562,11 @@ def exact_fit(
 
     ``measured`` may hold raw test properties (Exx, Eyy, ...) or averaged
     targets (``E_in``...). ``targets`` defaults to the raw
-    :data:`FIT_TARGETS`; with ``average_xy=True`` *and* a case detected as
-    x/y symmetric it is :data:`FIT_TARGETS_SYM` instead. Naming ``E_in`` or
-    ``G_tr`` for an asymmetric case raises.
+    With ``targets`` and ``knobs`` omitted, :func:`fit_plan` picks them:
+    the 4 averaged targets/knobs only for a detected-symmetric input whose flat
+    solve passes the symmetry check, else the 6 raw targets with
+    :data:`FIT_KNOBS_XY`. Naming ``E_in`` or ``G_tr`` for an asymmetric case
+    raises.
     ``checks`` (default: the other targets the test has) are not fitted and
     are reported as held-out predictions. ``tol_pct`` is the max |residual|
     that stops the true-solve polish.
@@ -516,7 +574,16 @@ def exact_fit(
     from b3_core.symmetry import is_xy_symmetric, symmetry_check, xy_asymmetry
 
     symmetric = is_xy_symmetric(case)
-    targets = list(targets or default_targets(case, average_xy))
+    reason = None
+    if targets is None:
+        plan = fit_plan(solve, case, average_xy)
+        targets, reason = list(plan["targets"]), plan["reason"]
+        if knobs is None:
+            knobs = list(plan["knobs"])
+    elif knobs is None:
+        raise ValueError("explicit targets need explicit knobs")
+    targets = list(targets)
+    knobs = list(knobs)
     averaged = [n for n in targets if len(ALL_TARGETS[n]) > 1]
     if averaged and not symmetric:
         raise ValueError(
@@ -583,10 +650,10 @@ def exact_fit(
     start_model = targets_of(ev.props(x_start), targets)
     xy_check = symmetry_check(apply_knobs(case, ev.values(x)), ev.props(x))
     xy_check["averaged"] = averaged
-    xy_check["averaging"] = (
-        "x/y pairs averaged: input detected as x/y symmetric and averaging requested"
+    xy_check["averaging"] = reason or (
+        "x/y pairs averaged (explicit targets)"
         if averaged
-        else "raw x/y targets (no averaging)"
+        else "raw x/y targets (explicit targets)"
     )
     return ExactFit(
         knobs=list(knobs),

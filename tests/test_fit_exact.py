@@ -180,9 +180,31 @@ def test_default_fit_is_four_by_four_with_gxy_held_out():
     assert fit.max_abs_residual_pct < 0.01 and fit.n_design == 25
     with pytest.raises(KeyError, match="lacks"):
         X.exact_fit(fake, CASE, {"Exx": 1.0}, X.FIT_KNOBS, average_xy=True)
-    # Without the opt-in the default targets are the raw six: not square here.
+    # Auto (the default): symmetric input + passing flat check -> averaged 4x4.
+    auto = X.exact_fit(fake, CASE, meas)
+    assert auto.knobs == list(X.FIT_KNOBS)
+    assert list(auto.measured) == list(X.FIT_TARGETS_SYM)
+    assert "symmetry check passed" in auto.extra["xy_check"]["averaging"]
+    # Averaging switched off: raw six targets, so 4 knobs are not square.
     with pytest.raises(ValueError, match="as many knobs"):
-        X.exact_fit(fake, CASE, meas, X.FIT_KNOBS)
+        X.exact_fit(fake, CASE, meas, X.FIT_KNOBS, average_xy=False)
+
+
+def test_fit_plan_never_imposes_symmetry():
+    sym = X.fit_plan(fake, CASE)
+    assert sym["average_xy"] and sym["knobs"] == X.FIT_KNOBS
+    assert X.fit_plan(fake, CASE, average_xy=False)["knobs"] == X.FIT_KNOBS_XY
+    asym = X.fit_plan(fake_xy, ACASE, average_xy=True)
+    assert not asym["average_xy"] and asym["targets"] == X.FIT_TARGETS
+    assert asym["knobs"] == X.FIT_KNOBS_XY and "ignored" in asym["reason"]
+
+    def broken(case, kx, ky):  # symmetric input, solver breaks the symmetry
+        out = dict(fake(case, kx, ky))
+        out["Eyy"] = out["Exx"] * 1.01
+        return out
+
+    bad = X.fit_plan(broken, CASE)
+    assert not bad["average_xy"] and "failed the flat symmetry check" in bad["reason"]
 
 
 # --------------------------------------------------------------------------- #
