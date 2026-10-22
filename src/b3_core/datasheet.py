@@ -140,7 +140,9 @@ def collect_spec(
     def _mat(label, m):
         modulus = m.get("E") if m.get("E") else m.get("Ex")
         nu = m.get("nu") if m.get("nu") is not None else m.get("nuxy")
-        return (label, f"E {modulus / 1e9:.3g} GPa, ν {nu:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
+        from b3_core.report.engineering import fmt_modulus
+
+        return (label, f"E {fmt_modulus(modulus)}, ν {nu:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
 
     material_rows = [
         _mat("core", inp["core"]),
@@ -235,15 +237,17 @@ def build_typst(spec: DatasheetSpec) -> str:
         eng_block = (
             '#text(weight: "bold", size: 7pt)[Engineering constants]\n'
             "#text(size: 6.5pt)["
-            f"$E$ = ({ec['E_x'] / 1e9:.1f}, {ec['E_y'] / 1e9:.1f}, {ec['E_z'] / 1e9:.1f}) GPa; "
-            f"$G$ = ({ec['G_xy'] / 1e9:.2f}, {ec['G_xz'] / 1e9:.2f}, {ec['G_yz'] / 1e9:.2f}) GPa; "
+            f"$E$ = ({ec['E_x'] / 1e6:.3g}, {ec['E_y'] / 1e6:.3g}, {ec['E_z'] / 1e6:.3g}) MPa; "
+            f"$G$ = ({ec['G_xy'] / 1e6:.3g}, {ec['G_xz'] / 1e6:.3g}, {ec['G_yz'] / 1e6:.3g}) MPa; "
             f"$nu$ = ({ec['nu_xy']:.2f}, {ec['nu_xz']:.2f}, {ec['nu_yz']:.2f})]\n"
         )
         labels = ["11", "22", "33", "23", "13", "12"]
         c = spec.c_eff_gpa
         matrix_rows = [("", *labels)]
         for i in range(6):
-            matrix_rows.append((labels[i], *(f"{c[i, j]:.2f}" for j in range(6))))
+            matrix_rows.append(
+                (labels[i], *(f"{1000 * c[i, j]:.3g}" for j in range(6)))
+            )
         mcells = ", ".join(
             f"[#text(size: 6pt)[{_typst_escape(str(x))}]]"
             for row in matrix_rows
@@ -257,7 +261,7 @@ def build_typst(spec: DatasheetSpec) -> str:
             "#grid(\n  columns: (1fr, 1fr),\n  column-gutter: 0.25cm,\n"
             "  align: (left + top, left + top),\n"
             f"  [{eng_block}],\n"
-            f'  [#text(weight: "bold", size: 7pt)[$C_"eff"$ [GPa]] #v(0.5pt) {matrix_block}],\n)\n'
+            f'  [#text(weight: "bold", size: 7pt)[$C_"eff"$ [MPa]] #v(0.5pt) {matrix_block}],\n)\n'
         )
     else:
         footer = '#text(size: 7pt)[(homogenisation skipped — no $C_"eff"$)]\n'
@@ -347,8 +351,43 @@ def generate(
     name: str | None = None,
     workdir: str | Path | None = None,
     skip_compile: bool = False,
-) -> DatasheetSpec:
-    """Build a datasheet for a CpropInput JSON case (figures via b3_core.viz)."""
+    engineering: bool = False,
+    calibration=None,
+    radii_m=None,
+    subtitle: str = "",
+    backend: str = "fenicsx",
+):
+    """Build a datasheet for a CpropInput JSON case (figures via b3_core.viz).
+
+    ``engineering=True`` writes the multi-page engineering sheet instead
+    (:mod:`b3_core.report.engineering`): plain-foam baseline, curvature map
+    over ``radii_m``, provenance, and an optional ``calibration`` page. It
+    returns the PDF path; ``workdir`` (or the PDF's folder) gets the figures
+    and ``numbers.json``.
+    """
+    if engineering:
+        from b3_core.report.engineering import DEFAULT_RADII_M, generate_engineering
+
+        folder = (
+            Path(workdir)
+            if workdir
+            else Path(out_pdf or "datasheet.pdf").with_suffix("")
+        )
+        pdf = generate_engineering(
+            json_path,
+            folder,
+            title=name,
+            subtitle=subtitle,
+            radii_m=radii_m or DEFAULT_RADII_M,
+            calibration=calibration,
+            backend=backend,
+            compile=not skip_compile,
+        )
+        if out_pdf is not None and not skip_compile and Path(out_pdf) != pdf:
+            Path(out_pdf).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(pdf, out_pdf)
+            return Path(out_pdf)
+        return pdf
     model = CoreModel.from_json(json_path)
     if name:
         model.name = name

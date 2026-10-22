@@ -209,3 +209,23 @@ src/b3_core/viz/
 ```
 
 Datasheet and deformed CLIs build on this layer; they do not reimplement meshing.
+
+## Engineering datasheet (multi-page, FEniCSx)
+
+```bash
+b3_core viz datasheet case.json --engineering [--calibration measured.json] -o sheet.pdf
+```
+
+`datasheet.generate(case, out, engineering=True, calibration=..., radii_m=...)` runs every solve itself (mesh_h_max 1.0 unless the case sets one) and writes:
+
+- Page 1: key numbers against plain foam (absolute and per unit density), inputs and assumptions, provenance (backend, commit, mesh, convergence status, k→0 continuity), an RVE iso view with the halo band and a true-scale inset, and phase cuts between the grooves.
+- Page 2: curvature map in % vs the flat card. It uses a shared symmetric coolwarm scale, with R = 1/(1000 k) m ticks. Closed-groove cells are hatched, and a warning is printed on the closure clamp. A kx line cut with the closure band follows. kx drives Eyy and Gyz.
+- Page 3: the constants, the 6×6 matrix, and the optional exact calibration: a parity plot (test vs model, with held-out checks), the free parameters inside their bounds (nominal, fitted, truth for mock data, and an optional noisy-fit column), residuals, the condition number and the FE-solve history.
+
+### Exact calibration
+
+The calibration is square: as many bounded material knobs as identifiable flat targets, so the fit is exact rather than a least-squares compromise (`b3_core.fit.exact`). Targets are the raw flat properties (`Exx`, `Eyy`, `Ezz`, `Gxz`, `Gyz`, `Gxy`, infused `rho`); x/y symmetry is never assumed. Averaging into `E_in` = mean(Exx, Eyy) and `G_tr` = mean(Gxz, Gyz) is an opt-in (`average_xy: true` in the calibration spec) that only applies when the case is detected as x/y symmetric in geometry *and* materials (`b3_core.symmetry`: dx = dy, identical groove rows, core/resin/face Ex = Ey, Gxz = Gyz, nuxz = nuyz). For the symmetric generic core that gives the 4 × 4 fit `halo_reach`, `core_E`, `core_G`, `resin_E` against `E_in`, `Ezz`, `G_tr`, `rho`, with `Gxy` held out; the flat solve's x/y pairs are reported as a check. Core knobs scale the existing core (`core_E` multiplies Ex, Ey, Ez; `core_G` multiplies the shear moduli), so an orthotropic core keeps its anisotropy; `core_Ex`, `core_Ey`, `core_Gxz`, `core_Gyz` set single components. The curvature sweep mirrors (kx, ky) ↔ (ky, kx) only for symmetric input, as an optimisation recorded in the provenance; an asymmetric sheet also gets a k_y cut.
+
+Steps: a face-centred CCD of FE solves (25 for 4 knobs), a full quadratic in ln(property), a bounded Newton solve on the surface, then a polish on FE solves that shifts the target by the surface error (output space mapping). One or two polish solves usually bring max |residual| below 0.01 %. `jacobian`, `identifiability` and `rank_subsets` screen candidate knob sets by rank and condition number.
+
+The calibration JSON is either a spec, `{"measured": {...}, "knobs": [...], "bounds": {...}, "targets": [...], "true": [...], "label": ..., "note": ...}` (`measured` holds raw flat properties in Pa plus `rho_infused`, or the averaged targets), or a saved fit (`ExactFit.to_dict()`), which is applied without re-solving. Old single-parameter specs (`param`) are rejected.

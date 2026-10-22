@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `b3_core.symmetry`: x/y symmetry is detected (geometry and core/resin/face
+  materials: Ex = Ey, Gxz = Gyz, nuxz = nuyz), never assumed. Exact-fit targets
+  default to the raw properties; averaging (`average_xy`) is opt-in and only
+  for detected-symmetric input; the flat x/y pairs are reported as a check.
+  Core knobs scale the existing core and keep its anisotropy. The engineering
+  sweep mirrors only symmetric input and records it in the provenance;
+  asymmetric sheets add a k_y cut.
+- `b3_core.fit.exact`: square, bounded, exact calibration of material knobs
+  (halo reach / resin seepage, core E, core G, resin E, resin ν, resin ρ,
+  core ρ) to flat-test targets. It includes log-Jacobian identifiability
+  (rank, condition number, subset ranking), a face-centred CCD, a log-quadratic
+  response surface with LOO error, a bounded Newton solve on the surface, an
+  output-space-mapping polish on FE solves, mock-test generation and a
+  resumable JSON-lines solve store.
+- The engineering sheet's calibration page shows the exact fit: a parity plot,
+  the parameters inside their bounds, residuals, cond(J) and the FE-solve
+  history. Biaxial sweeps of x/y-interchangeable cells mirror (ky, kx) from
+  (kx, ky), which halves the solves.
+
+### Changed
+- The engineering-sheet calibration replaces the single-parameter weighted
+  least squares (`param`/`sigma_rel` specs are rejected).
+
 ### Fixed
 - FEniCSx curved periodicity: interpolated z-face ties whose masters were
   themselves x/y-periodic slaves are now flattened before the MPC is built.
