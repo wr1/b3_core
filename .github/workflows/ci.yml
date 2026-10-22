@@ -170,7 +170,20 @@ jobs:
       # below is its own process. The biaxial file joins this list in A8.
       - name: Compare fenicsx with MFEM
         shell: bash -l {0}
-        run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_optional_solvers.py
+        # Diagnostic for the intermittent exit 143 (SIGTERM ~1 s after start):
+        # record who sends kill signals, plus the kernel log for OOM kills.
+        run: |
+          sudo apt-get install -y -qq strace >/dev/null
+          set +e
+          strace -f -qq -e trace=kill,tkill,tgkill,exit_group -e signal=SIGTERM,SIGKILL \
+            -o /tmp/strace.log \
+            pytest -m fenicsx -o addopts= -q --tb=short tests/test_optional_solvers.py
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "pytest rc=$rc"; grep -E "kill|SIGTERM|SIGKILL" /tmp/strace.log | tail -40
+            sudo dmesg | tail -20
+          fi
+          exit $rc
 
       - name: Periodic z faces
         shell: bash -l {0}
