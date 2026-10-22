@@ -222,3 +222,29 @@ b3_core skill --stdout     # dump full agent skill text
 
 Treeparse-style: `--json` / `-j`, `--help` / `-h`, `--version` / `-V`, plus
 `--hv` and `--stub` for help/layout inspection.
+
+## Agent JSON payload
+
+Do not scale pascals by hand. `b3_core run --json` returns moduli and stiffness
+already in the requested unit:
+
+```bash
+b3_core run path/to/case.json --json --units GPa --no-write
+```
+
+Read `properties.<name>.value` and `properties.<name>.unit`. Moduli (`Ex`, `Ey`,
+`Ez`, `Gxy`, `Gxz`, `Gyz`, and the `Exx` aliases) use `GPa` when `--units GPa`
+is set. Poisson ratios stay dimensionless (`unit` is `-`). `stiffness` matches
+`stiffness_unit`. `geometry.rho_infused` is `{value, unit: "kg/m^3"}`. The
+payload also has `case_hash`, `backend`, `provenance`, `cache_hit`,
+`elapsed_s`, `diagnostics`, and `written` (`null` with `--no-write`).
+`diagnostics.checks` lists `{id, status, value}` (`ok`, `warn`, or `fail`).
+`diagnostics.ties` lists `{face, top_nodes, slaves, identity, multi_node_rows, ok}`.
+`b3_core run --strict` exits 1 when a check is warn or fail, or a tie is not ok.
+`b3_core report ties CASE --kx --ky [--unit 1/mm|1/m|R-mm|R-m] --json` prints
+the coordinate ties and does not solve. `kx` and `ky` in that payload are
+1/mm, with `kx_tick` / `ky_tick` as `k (R = … m)`. The same `--unit` is on
+`check backends`, `surrogate lookup`, `viz halo-curvature`, and `viz sign`.
+
+A failure prints `{"error": {"type", "message", "hint"}}` and exits non-zero.
+`homogenize()` still returns SI pascals on `CoreResult` for Python callers.
