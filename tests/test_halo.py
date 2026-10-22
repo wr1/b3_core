@@ -92,11 +92,16 @@ def test_distribution_cell_size_stiffer():
 
 
 # -- pipeline ---------------------------------------------------------------
-@pytest.mark.slow
-def test_pipeline_routes_and_reports_vf():
+def test_pipeline_routes_and_reports_vf(tmp_path):
+    import json
+
     from b3_core.viz.model import CoreModel
 
-    m = CoreModel.from_json("examples/grid_scored_halo.json")
+    # Routing and Vf reporting, not accuracy: coarse mesh.
+    data = json.load(open("examples/grid_scored_halo.json"))
+    case = tmp_path / "grid_scored_halo.json"
+    case.write_text(json.dumps({**data, "mesh_h_max": 4.0}))
+    m = CoreModel.from_json(str(case))
     g = m.geom
     assert "effective_resin_vf" in g and "halo_vf" in g
     assert g["effective_resin_vf"] > g["resin_vf"]  # halo adds resin

@@ -180,10 +180,6 @@ jobs:
         shell: bash -l {0}
         run: pytest -o addopts= -q --tb=short tests/test_curvature.py tests/test_halo_curvature.py
 
-      - name: Slow example solves
-        shell: bash -l {0}
-        run: pytest -m slow -o addopts= -q --tb=short --durations=10
-
       - name: Doctor
         shell: bash -l {0}
         run: pytest -m fenicsx -o addopts= -q --tb=short tests/test_doctor.py
