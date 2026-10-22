@@ -72,13 +72,13 @@ def test_mfem_matches_numpy_for_orthotropic_kerfs():
     """Orthotropic core, sharp kerfs: the per-GP stiffness path reproduces numpy."""
     ref = np.asarray(
         homogenize(
-            grid_scored(cell_size=None, with_halo=False), backend="numpy"
+            _coarse(grid_scored(cell_size=None, with_halo=False)), backend="numpy"
         ).stiffness,
         dtype=float,
     )
     got = np.asarray(
         homogenize(
-            grid_scored(cell_size=None, with_halo=False), backend="mfem"
+            _coarse(grid_scored(cell_size=None, with_halo=False)), backend="mfem"
         ).stiffness,
         dtype=float,
     )

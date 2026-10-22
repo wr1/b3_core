@@ -17,7 +17,7 @@ def test_doctor_reports_a_missing_stack():
     assert report["imports"]["dolfinx"] is None
     assert report["solve"] is None
     assert report["error"]
-    assert report["factorisation"] == "lu/mumps"
+    assert report["factorisation"] == "/".join(fenicsx.DIRECT[:2])
 
 
 def test_cmd_doctor_json_exits_when_stack_is_missing(capsys):
