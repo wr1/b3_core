@@ -92,6 +92,7 @@ def test_distribution_cell_size_stiffer():
 
 
 # -- pipeline ---------------------------------------------------------------
+@pytest.mark.slow
 def test_pipeline_routes_and_reports_vf():
     from b3_core.viz.model import CoreModel
 

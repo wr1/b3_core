@@ -11,6 +11,13 @@ from b3_core.pipeline import resolve_backend
 from b3_core.solvers import get_backend
 
 
+def _coarse(t, h=4.0):
+    """Same case on a coarse mesh: these tests check agreement, not accuracy."""
+    from dataclasses import replace
+
+    return replace(t, input=t.input.model_copy(update={"mesh_h_max": h}))
+
+
 def test_mfem_reports_missing_dependency():
     if mfem_backend.is_mfem_available():
         pytest.skip("MFEM is installed in this environment")
@@ -81,8 +88,10 @@ def test_mfem_matches_numpy_for_orthotropic_kerfs():
 @pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
 def test_mfem_matches_numpy_for_orthotropic_halo():
     """Graded resin halo: the per-GP stiffness path reproduces numpy."""
-    ref = np.asarray(homogenize(grid_scored(), backend="numpy").stiffness, dtype=float)
-    got = np.asarray(homogenize(grid_scored(), backend="mfem").stiffness, dtype=float)
+    # Backend agreement on the same mesh, so a coarse mesh is enough.
+    case = _coarse(grid_scored())
+    ref = np.asarray(homogenize(case, backend="numpy").stiffness, dtype=float)
+    got = np.asarray(homogenize(case, backend="mfem").stiffness, dtype=float)
     assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
 
 
