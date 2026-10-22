@@ -63,6 +63,8 @@ environment is installed, otherwise on `mfem`.
 | Field | Values | Notes |
 |-------|--------|-------|
 | `element_type` | `"C3D8"` \| `"C3D20"` | Default C3D8 (ccx decks) |
+| `mesh_h_max` | number (mm) \| `null` | Default `1.5`. Largest element edge; `null` = deprecated legacy coarse grid. See [convergence](/docs/reference/convergence) |
+| `kerf_z_elems` | int ≥ 1 | Default `4`. Elements over each groove depth |
 | `backend` | `"auto"` \| `"fenicsx"` \| `"mfem"` \| `"ccx"` \| `"numpy"` | Default `auto` |
 | `validate_with_ccx` | bool | Cross-check against CalculiX |
 

@@ -37,7 +37,7 @@ uv run b3_core viz view case.json --what all -o out_dir/
 
 One-page report: RVE/geometry, materials, analysis settings, groove figures with
 mesh, 3D isometric of resin, engineering constants, and 6×6 `C_eff`. Uses the
-Uses the default **MFEM** backend for figures (no CalculiX solve for the report). Needs `typst`
+Uses the default backend (`auto`: **FEniCSx** when installed, else MFEM) for figures (no CalculiX solve for the report). Needs `typst`
 on PATH.
 
 ```bash

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from b3_core.models import CaseInput
 from b3_core.solvers.stamps import stamp_for
 
-CACHE_SCHEMA = 3
+CACHE_SCHEMA = 4
 
 
 def _strip_material_provenance(node: object) -> None:

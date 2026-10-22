@@ -14,6 +14,13 @@ from b3_core.solvers import available_backends
 from b3_core.viz.model import CoreModel
 
 
+def _coarse(t, h=6.0):
+    """Same case on a coarse mesh: these tests check agreement, not accuracy."""
+    from dataclasses import replace
+
+    return replace(t, input=t.input.model_copy(update={"mesh_h_max": h}))
+
+
 def _ready() -> list[str]:
     return [name for name, ok in available_backends().items() if ok]
 
@@ -21,7 +28,7 @@ def _ready() -> list[str]:
 @pytest.mark.parametrize("name", _ready())
 def test_shared_cache_is_the_same_solve(name):
     cache = MemoryCache()
-    case = plain()
+    case = _coarse(plain())  # agreement, not accuracy
     model = CoreModel(case, backend=name, cache=cache)
     result = homogenize(case, backend=name, cache=cache)
     np.testing.assert_allclose(model.stiffness, result.stiffness, rtol=0, atol=0)
@@ -29,7 +36,7 @@ def test_shared_cache_is_the_same_solve(name):
 
 @pytest.mark.parametrize("name", _ready())
 def test_separate_solves_agree(name):
-    case = plain()
+    case = _coarse(plain())  # agreement, not accuracy
     model = CoreModel(case, backend=name)
     result = homogenize(case, backend=name)
     np.testing.assert_allclose(model.stiffness, result.stiffness, rtol=1e-10, atol=0)
@@ -75,7 +82,11 @@ def test_training_frame_keeps_ky(monkeypatch):
             ),
         )
 
-    monkeypatch.setattr("b3_core.sweep.curvature_grid.run_case", fake_run)
+    # Patch the module object: ``b3_core.sweep`` is also a function exported
+    # from ``b3_core``, so the dotted-string form can resolve to it.
+    import b3_core.sweep.curvature_grid as curvature_grid_mod
+
+    monkeypatch.setattr(curvature_grid_mod, "run_case", fake_run)
     frame = build_training_frame(
         kx_values=[0.0, 0.01],
         ky_values=[0.005],

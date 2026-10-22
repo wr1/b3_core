@@ -113,6 +113,14 @@ def _needs_general(core, resin, face, score_field) -> bool:
     return score_field is not None and bool(getattr(score_field, "active", False))
 
 
+def _geometry_dofmap(domain) -> np.ndarray:
+    """Geometry node indices per cell (``dofmaps[0]`` on 0.10+, ``dofmap`` before)."""
+    geometry = domain.geometry
+    if hasattr(geometry, "dofmaps"):
+        return np.asarray(geometry.dofmaps[0])
+    return np.asarray(geometry.dofmap)
+
+
 def _dolfinx_cell_order(domain, grid) -> np.ndarray:
     """PyVista cell index of each local dolfinx cell, matched by centre.
 
@@ -123,15 +131,20 @@ def _dolfinx_cell_order(domain, grid) -> np.ndarray:
     from scipy.spatial import cKDTree
 
     tdim = domain.topology.dim
-    domain.topology.create_connectivity(tdim, 0)
-    cell_vertices = domain.topology.connectivity(tdim, 0)
-    geometry = domain.geometry.x
     local_cells = domain.topology.index_map(tdim).size_local
-    centers = np.array(
-        [geometry[cell_vertices.links(i)].mean(axis=0) for i in range(local_cells)]
-    )
+    dofmap = _geometry_dofmap(domain)[:local_cells]
+    centers = np.asarray(domain.geometry.x)[dofmap].mean(axis=1)
     pyvista_centers = np.asarray(grid.cell_centers().points, dtype=centers.dtype)
     scale = float(np.abs(pyvista_centers).max()) or 1.0
+    # create_mesh keeps each cell's input index; verify it and fall back to a
+    # nearest-neighbour match only if it does not line up.
+    original = getattr(domain.topology, "original_cell_index", None)
+    if original is not None and len(original) >= local_cells:
+        idx = np.asarray(original[:local_cells], dtype=np.int64)
+        if idx.min() >= 0 and idx.max() < len(pyvista_centers):
+            gap = np.linalg.norm(centers - pyvista_centers[idx], axis=1).max()
+            if float(gap) <= 1e-9 * scale:
+                return idx
     dist, idx = cKDTree(pyvista_centers).query(centers, k=1)
     if float(dist.max()) > 1e-9 * scale:
         raise RuntimeError(
@@ -187,17 +200,26 @@ def _voigt_to_tensor(c6: np.ndarray) -> np.ndarray:
 def _physical_quadrature(domain, ref_points: np.ndarray) -> np.ndarray:
     """Map reference quadrature points to physical coordinates, metres."""
     tdim = domain.topology.dim
-    domain.topology.create_connectivity(tdim, 0)
-    conn = domain.topology.connectivity(tdim, 0)
-    geometry = np.asarray(domain.geometry.x)
+    n_cells = domain.topology.index_map(tdim).size_local
     cmap = domain.geometry.cmaps[0]
     pts = np.ascontiguousarray(ref_points, dtype=np.float64)
-    n_cells = domain.topology.index_map(tdim).size_local
-    out = np.empty((n_cells, len(pts), 3), dtype=np.float64)
-    for cell in range(n_cells):
-        nodes = np.ascontiguousarray(geometry[conn.links(cell)], dtype=np.float64)
-        out[cell] = cmap.push_forward(pts, nodes)
-    return out
+    # Geometry basis at the reference points, (n_points, n_nodes); the
+    # geometry dofmap orders nodes the same way, so one einsum maps all cells.
+    # push_forward is linear in the node coordinates, so pushing unit node
+    # vectors (three basis functions per call) recovers the basis exactly.
+    dofmap = _geometry_dofmap(domain)[:n_cells]
+    n_nodes = dofmap.shape[1]
+    basis = np.empty((len(pts), n_nodes), dtype=np.float64)
+    for start in range(0, n_nodes, 3):
+        unit = np.zeros((n_nodes, 3), dtype=np.float64)
+        cols = range(start, min(start + 3, n_nodes))
+        for k, j in enumerate(cols):
+            unit[j, k] = 1.0
+        mapped = np.asarray(cmap.push_forward(pts, unit))
+        for k, j in enumerate(cols):
+            basis[:, j] = mapped[:, k]
+    nodes = np.asarray(domain.geometry.x)[dofmap]
+    return np.einsum("qn,cnd->cqd", basis, nodes)
 
 
 def _quadrature_stiffness(
@@ -393,70 +415,130 @@ def _periodic_constraint(function_space, points, *, z_master: str = "bottom"):
             scale=1.0,
             tol=tol,
         )
+    mpc.finalize()
     flat = _flatten_master_chains(function_space, mpc)
     flat.finalize()
     return flat, pin_bc, bounds
 
 
-def _flatten_master_chains(function_space, staged):
-    """Rebuild the staged MPC so no master is itself a slave.
+_MPC_TESTED = ("0.10", "0.11")
 
-    An interpolated tie on a morphed z face can land in a low-face cell that
-    touches a high x/y face, so some of its masters are x/y slaves. dolfinx_mpc
-    does not resolve such chains: the slave-master keeps its own row in the
-    condensed system and the tie couples to an unconstrained copy of it, which
-    over-stiffens opening curvature (wr1/b3_core#3). Each slave-master is
-    replaced by its own masters, recursively. Serial only, so global and
-    local dof numbers coincide.
-    """
-    _basix, dolfinx_mpc, _ufl, _fem, _dmesh, _MPI = _require_fenicsx()
-    slaves = np.asarray(staged._slaves, dtype=np.int64)
-    masters = np.asarray(staged._masters, dtype=np.int64)
-    coeffs = np.asarray(staged._coeffs, dtype=np.float64)
-    offsets = np.asarray(staged._offsets, dtype=np.int64)
-    rows = {
-        int(s): dict(
-            zip(
-                masters[offsets[i] : offsets[i + 1]].tolist(),
-                coeffs[offsets[i] : offsets[i + 1]].tolist(),
-                strict=True,
-            )
+
+def _check_mpc_version() -> None:
+    """Warn once when dolfinx_mpc is outside the versions the tie code is tested on."""
+    from importlib import metadata
+
+    version = None
+    for dist in ("dolfinx_mpc", "dolfinx-mpc", "fenics-dolfinx-mpc"):
+        try:
+            version = metadata.version(dist)
+            break
+        except metadata.PackageNotFoundError:
+            continue
+    if version is None:
+        try:
+            import dolfinx
+
+            version = dolfinx.__version__  # dolfinx_mpc releases track dolfinx
+        except Exception:
+            return
+    if not version.startswith(_MPC_TESTED):
+        import warnings
+
+        warnings.warn(
+            f"dolfinx_mpc {version} is untested with b3_core's periodic tie "
+            f"flattening (tested: {', '.join(_MPC_TESTED)}); the structural "
+            "checks will raise if the read-out API changed",
+            RuntimeWarning,
+            stacklevel=3,
         )
-        for i, s in enumerate(slaves)
-    }
 
+
+def _mpc_rows(mpc) -> dict[int, dict[int, float]]:
+    """Slave dof -> {master dof: weight} from a finalized MPC (public API).
+
+    ``slaves``, ``masters`` (adjacency keyed by local dof) and
+    ``coefficients()`` are the documented read-out of a finalized constraint.
+    Serial only, so global and local dof numbers coincide.
+    """
+    masters = mpc.masters
+    if not hasattr(masters, "links"):
+        raise RuntimeError(
+            "dolfinx_mpc MultiPointConstraint.masters is not an adjacency list; "
+            f"b3_core's periodic tie flattening is tested on dolfinx_mpc "
+            f"{', '.join(_MPC_TESTED)}"
+        )
+    coeffs, offsets = mpc.coefficients()
+    coeffs = np.asarray(coeffs, dtype=np.float64)
+    offsets = np.asarray(offsets, dtype=np.int64)
+    rows: dict[int, dict[int, float]] = {}
+    for slave in np.asarray(mpc.slaves, dtype=np.int64).tolist():
+        links = np.asarray(masters.links(slave), dtype=np.int64)
+        weights = coeffs[offsets[slave] : offsets[slave + 1]]
+        if len(links) != len(weights):
+            raise RuntimeError(
+                "dolfinx_mpc masters/coefficients layout changed; b3_core's "
+                f"periodic tie flattening is tested on dolfinx_mpc "
+                f"{', '.join(_MPC_TESTED)}"
+            )
+        row: dict[int, float] = {}
+        for master, weight in zip(links.tolist(), weights.tolist(), strict=True):
+            row[master] = row.get(master, 0.0) + weight
+        rows[int(slave)] = row
+    return rows
+
+
+def flatten_rows(rows: dict[int, dict[int, float]]) -> dict[int, dict[int, float]]:
+    """Substitute every master that is itself a slave by its own masters."""
     resolved: dict[int, dict[int, float]] = {}
 
-    def resolve(dof: int, depth: int = 0) -> dict[int, float]:
+    def resolve(dof: int, stack: tuple[int, ...]) -> dict[int, float]:
         if dof in resolved:
             return resolved[dof]
-        if depth > len(rows):
-            raise RuntimeError("cyclic periodic constraint")
+        if dof in stack:
+            raise RuntimeError(f"cyclic periodic constraint at dof {dof}")
         out: dict[int, float] = {}
         for master, weight in rows[dof].items():
             if master in rows:
-                for leaf, w in resolve(master, depth + 1).items():
+                for leaf, w in resolve(master, (*stack, dof)).items():
                     out[leaf] = out.get(leaf, 0.0) + weight * w
             else:
                 out[master] = out.get(master, 0.0) + weight
         resolved[dof] = {m: w for m, w in out.items() if abs(w) > 1e-14}
         return resolved[dof]
 
-    new_slaves, new_masters, new_coeffs, new_offsets = [], [], [], [0]
-    for s in slaves.tolist():
-        row = resolve(int(s))
-        new_slaves.append(int(s))
-        new_masters.extend(row.keys())
-        new_coeffs.extend(row.values())
-        new_offsets.append(len(new_masters))
+    return {dof: resolve(dof, ()) for dof in rows}
+
+
+def _flatten_master_chains(function_space, raw):
+    """New MPC from a finalized one, with no master that is itself a slave.
+
+    An interpolated tie on a morphed z face can land in a low-face cell that
+    touches a high x/y face, so some of its masters are x/y slaves. dolfinx_mpc
+    does not resolve such chains: the slave-master keeps its own row in the
+    condensed system and the tie couples to an unconstrained copy of it, which
+    over-stiffens opening curvature (wr1/b3_core#3). The rows are read through
+    the public API, flattened, and re-added with ``add_constraint``.
+    """
+    _basix, dolfinx_mpc, _ufl, _fem, _dmesh, _MPI = _require_fenicsx()
+    _check_mpc_version()
+    rows = flatten_rows(_mpc_rows(raw))
+    slaves = sorted(rows)
+    new_masters: list[int] = []
+    new_coeffs: list[float] = []
+    offsets = [0]
+    for s in slaves:
+        new_masters.extend(rows[s].keys())
+        new_coeffs.extend(rows[s].values())
+        offsets.append(len(new_masters))
     flat = dolfinx_mpc.MultiPointConstraint(function_space)
     flat.add_constraint(
         function_space,
-        np.asarray(new_slaves, dtype=np.int32),
+        np.asarray(slaves, dtype=np.int32),
         np.asarray(new_masters, dtype=np.int64),
         np.asarray(new_coeffs, dtype=np.float64),
         np.zeros(len(new_masters), dtype=np.int32),
-        np.asarray(new_offsets, dtype=np.int32),
+        np.asarray(offsets, dtype=np.int32),
     )
     return flat
 
@@ -536,7 +618,9 @@ def _mpc_face(
 # On the curved grid-scored mesh (~19k dofs) MUMPS LU took 5.9 s, UMFPACK 13 s,
 # and PETSc's own LU 63 s. The three agreed to 1e-12. CHOLMOD rejects the
 # matrix: the MPC system is not positive definite.
-DIRECT = ("lu", "mumps")
+# K is symmetric (the MPC reduction is a congruence and the pin is diagonal),
+# so a Cholesky (LDLᵀ) factorisation halves the factor work against LU.
+DIRECT = ("cholesky", "mumps")
 
 
 def _solve_fluctuations(
@@ -561,6 +645,14 @@ def _solve_fluctuations(
     pc = ksp.getPC()
     pc.setType(pc_type)
     pc.setFactorSolverType(package)
+    if package == "mumps":
+        # METIS ordering: about 30 % faster factorisation than MUMPS' default
+        # on these grids, same answers to round-off.
+        try:
+            pc.setFactorSetUpSolverType()
+            pc.getFactorMatrix().setMumpsIcntl(7, 5)
+        except Exception:  # pragma: no cover - MUMPS built without METIS
+            pass
     try:
         ksp.setUp()
     except Exception as exc:
@@ -595,12 +687,9 @@ def _solve_fluctuations(
             fluctuation = fem.Function(function_space)
             assign(unknown, fluctuation)
             mpc.homogenize(fluctuation)
-            # A z-face image can land on a node that is still an x or y slave.
-            # dolfinx_mpc back-substitutes once, in creation order, so that
-            # chain is stale on the first pass. A second pass sees the updated
-            # master. Two passes close a chain; the third is a check.
-            for _ in range(3):
-                mpc.backsubstitution(fluctuation)
+            # Master chains are flattened when the constraint is built, so
+            # every master is a free dof and one pass is exact.
+            mpc.backsubstitution(fluctuation)
             total = fem.Function(function_space)
             total.x.array[:] = fluctuation.x.array + macro.x.array
             totals[case] = total

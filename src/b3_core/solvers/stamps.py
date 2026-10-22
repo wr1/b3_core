@@ -13,7 +13,7 @@ import hashlib
 from pathlib import Path
 
 STAMPS: dict[str, str] = {
-    "fenicsx": "fenicsx/2026-10-16-flat-mpc-chains",
+    "fenicsx": "fenicsx/2026-10-16-public-mpc-gauss-halo",
     "mfem": "mfem/2026-10-10-uniform-master",
     "numpy": "numpy/2026-10-10-uniform-master",
     "ccx": "ccx/2026-10-10-uniform-master",
@@ -21,7 +21,7 @@ STAMPS: dict[str, str] = {
 
 # sha256 of solvers/**/*.py except this file. Update in the same commit as a
 # numerics change. Placeholder replaced after the first hash is computed.
-SOURCE_DIGEST = "e6152d88ce3bad569d8e5886bfc63a8019314f739278763cf0cc845714dba7b2"
+SOURCE_DIGEST = "fddc2fa32daa192a35d7a6160b3f3632d7c9555373cbc34a64490efbcb927334"
 
 
 def stamp_for(backend: str) -> str:

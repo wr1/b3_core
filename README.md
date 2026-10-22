@@ -91,7 +91,8 @@ density. Mould curvature (`kx`, `ky`, via `.with_curvature` or
 **resin halo** grades stiffness with distance to the cut surface
 (`core.cell_size`); see the [docs graphics](https://wr1.github.io/b3_core/docs/concepts/resin-halo/).
 
-**Default backend: `auto`.** FEniCSx leads when that environment is installed.
+**Default backend: FEniCSx** (`auto` picks it when that environment is installed;
+it is the recommended and only curved-capable solver).
 Its periodic constraint is the finite-element projection of the image, including
 a face that is not a tensor grid, and it covers the same maps as MFEM
 (isotropic, orthotropic, graded halo) and returns displacements. Without

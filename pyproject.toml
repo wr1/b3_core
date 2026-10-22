@@ -28,7 +28,7 @@ dependencies = [
     "scipy",
     "pandas",
     "matplotlib~=3.9",
-    "pyvista>=0.44,<0.45",
+    "pyvista>=0.44,<0.50",
     "pydantic>=2.0",
     "pyyaml",
     "treeparse>=0.3.4,<0.4",
@@ -117,6 +117,7 @@ addopts = [
 markers = [
     "fenicsx: needs a conda-forge FEniCSx environment",
     "ccx: needs the calculix-ccx binary on PATH",
+    "slow: full example solves (>2 min); run in the fenicsx job, not the py matrix",
 ]
 
 [tool.coverage.run]
