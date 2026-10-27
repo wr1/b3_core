@@ -1,0 +1,4 @@
+# Per-case solver artifacts (run<HASH>.json + per-loadcase files, logs, case.json).
+# Regenerate with sweep_*.py / run_all.py. Committed renders live in img/.
+out/
+spooles.out

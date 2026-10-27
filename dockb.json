@@ -1,0 +1,6 @@
+{
+  "name": "b3_core",
+  "title": "b3_core — homogenized properties for grooved sandwich cores",
+  "description": "Periodic-BC homogenization of sawcut and machined-groove sandwich cores (PVC foam, balsa). Effective orthotropic stiffness, infused density, resin-halo grading, FEA-ready material cards.",
+  "github": { "url": "https://github.com/wr1/b3_core", "branch": "master" }
+}

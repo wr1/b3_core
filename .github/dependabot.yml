@@ -1,0 +1,24 @@
+# Dependabot: Actions + uv lockfile. Weekly; cap concurrent PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 8
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # pip (not uv): uv.lock is gitignored — a committed lock previously
+  # tripped Dependabot's uv dependency-graph job.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 8
