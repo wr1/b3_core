@@ -1,0 +1,47 @@
+---
+title: Mesh convergence
+description: FEniCSx convergence of mesh_h_max and kerf_z_elems, and the chosen defaults.
+---
+
+Study case: 30 × 30 mm cell, 20 mm thick PVC foam (E 70 MPa), one 2 mm wide,
+18 mm deep groove per direction centred in the cell, resin halo
+`core.cell_size = 0.81` mm. FEniCSx backend. Each row is flat, opening
+(`kx = +3e-3 /mm`) and closing (`kx = −3e-3 /mm`). The h → 0 value is a linear
+fit over `mesh_h_max` ∈ {2, 1.5, 1, 0.75} at `kerf_z_elems = 4`.
+
+Deviation from the h → 0 extrapolation (%):
+
+| quantity | h 2.0 | **h 1.5** | h 1.0 | h 0.75 |
+|---|---|---|---|---|
+| flat Exx = Eyy | +0.56 | **+0.47** | +0.32 | +0.19 |
+| flat Ezz | +2.85 | **+2.40** | +1.70 | +0.89 |
+| flat Gxz = Gyz | +1.27 | **+1.01** | +0.67 | +0.45 |
+| flat Gxy | +0.91 | **+0.74** | +0.49 | +0.32 |
+| opening Eyy | +0.34 | **+0.30** | +0.21 | +0.10 |
+| opening Gyz | +0.00 | **−0.11** | −0.30 | +0.20 |
+| opening Ezz | −1.95 | **−2.24** | −2.68 | +0.38 |
+| closing Eyy | +0.61 | **+0.52** | +0.34 | +0.20 |
+| closing Gyz | +0.62 | **+0.55** | +0.37 | +0.19 |
+| closing Ezz | +1.00 | **+1.14** | +0.90 | +0.12 |
+| cells | 10 944 | **14 896** | 34 992 | 67 712 |
+| solve time, s | ~6 | **~8** | ~21 | ~45–60 |
+
+`kerf_z_elems` at `mesh_h_max = 2`: 2 → 4 → 8 moves every modulus by less
+than 0.3 % (at 1.0 mm, 4 → 8 moves it by less than 0.1 %), because
+`mesh_h_max` already caps the z spacing.
+
+**Defaults: `mesh_h_max = 1.5`, `kerf_z_elems = 4`.** In-plane moduli, the
+curvature-driven Eyy and Gyz and all shears are within about 1 % of the
+extrapolation. Ezz converges more slowly (about O(h)) and reads about 2.4 % high
+on the flat card. The engineering datasheet (`datasheet.generate(...,
+engineering=True)`) uses `mesh_h_max = 1.0`: Ezz +1.7 %, everything else within
+0.7 %, at about 2.5× the solve time. Opening Ezz is not monotone in h (±3 %,
+with or without a halo), so read it to about ±3 %. Use 0.75 mm or less for a
+reference Ezz.
+
+Every kerf gets at least two elements across its width. With one linear hex
+across a 2 mm kerf (any `mesh_h_max ≥ 2` before this guard), opening Ezz was
+about 10 % off.
+
+`mesh_h_max: null` (the legacy groove-wall-only grid) is deprecated, warns, and
+will be removed in 1.0.

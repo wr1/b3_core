@@ -13,7 +13,8 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from b3_core.core.cprop import cprop
+from b3_core.api import homogenize_to_disk
+from b3_core.cache import DiskCache
 
 MODULI = ["Exx", "Eyy", "Ezz", "Gxy"]
 PATTERNS = ["plain", "uniaxial", "crossed", "two_sided"]
@@ -30,6 +31,11 @@ def default_root() -> Path:
 @dataclass(frozen=True)
 class SweepContext:
     root: Path
+    cache_dir: Path | None = None
+
+    def disk_cache(self) -> DiskCache:
+        """Shared sweep cache. Default directory is ``<root>/.b3cache``."""
+        return DiskCache(self.cache_dir or (self.root / ".b3cache"))
 
     @property
     def out(self) -> Path:
@@ -73,7 +79,18 @@ def tag_pattern(name: str) -> str:
     return f"pattern_{name}"
 
 
-def run_case(base: dict, overrides: dict, out_dir: Path) -> dict:
+def run_case(
+    base: dict,
+    overrides: dict,
+    out_dir: Path,
+    *,
+    cache: DiskCache | None = None,
+) -> dict:
+    """Write ``case.json``, solve through the shared disk cache, return the flat record.
+
+    An existing ``run<hash12>.json`` is overwritten. The solve itself is cached
+    under ``<study>/.b3cache`` unless ``cache`` is passed.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     case = copy.deepcopy(base)
     for key, val in overrides.items():
@@ -83,13 +100,11 @@ def run_case(base: dict, overrides: dict, out_dir: Path) -> dict:
             case[key] = val
     case_path = out_dir / "case.json"
     case_path.write_text(json.dumps(case, indent=2))
-    try:
-        return cprop(str(case_path))
-    except FileExistsError:
-        cached = glob.glob(str(out_dir / "run*.json"))
-        if not cached:
-            raise
-        return json.loads(Path(cached[0]).read_text())
+    store = (
+        cache if cache is not None else DiskCache(out_dir.parent.parent / ".b3cache")
+    )
+    _result, path = homogenize_to_disk(str(case_path), cache=store, legacy_layout=True)
+    return json.loads(path.read_text())
 
 
 def scale_groove_depth(

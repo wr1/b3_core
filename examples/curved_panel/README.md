@@ -39,7 +39,7 @@ right = FEA `hw(z)` morph with `slope = −sign(d)·κ·p/2`.*
 
 ## Running
 
-Requires the optional MFEM stack (`uv sync --extra mfem`) for sweep/curve_field;
+Requires PyMFEM (a package dependency, `uv sync`) for sweep/curve_field;
 `render.py` only needs the core + viz stack:
 
 ```bash

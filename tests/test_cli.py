@@ -35,12 +35,30 @@ def test_cli_help_exits_zero():
     assert "homogen" in combined.lower() or "b3_core" in combined or "run" in combined
 
 
-def test_bind_and_sweep_context_default(tmp_path, monkeypatch):
-    # Point default_root away from repo if needed; just exercise binders.
-    run_mod._bind_sweep_root(str(tmp_path))
-    assert run_mod._SWEEP_ROOT_STATE[0] == str(tmp_path)
+def test_resolve_sweep_root_explicit(tmp_path):
+    assert run_mod.resolve_sweep_root(str(tmp_path)) == tmp_path
     ctx = run_mod._sweep_context(str(tmp_path))
     assert ctx.root == tmp_path
+
+
+def test_resolve_sweep_root_cwd_with_bases(tmp_path, monkeypatch):
+    (tmp_path / "bases").mkdir()
+    monkeypatch.chdir(tmp_path)
+    assert run_mod.resolve_sweep_root("") == tmp_path
+
+
+def test_resolve_sweep_root_cwd_with_patterns(tmp_path, monkeypatch):
+    (tmp_path / "mfem_patterns").mkdir()
+    monkeypatch.chdir(tmp_path)
+    assert run_mod.resolve_sweep_root("") == tmp_path
+
+
+def test_resolve_sweep_root_missing(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as ei:
+        run_mod.resolve_sweep_root("")
+    assert ei.value.code == 2
+    assert "no study root found; pass --root" in capsys.readouterr().err
 
 
 def test_sweep_exit_raises_system_exit():
@@ -71,11 +89,182 @@ def test_main_builds_and_runs_cli(monkeypatch):
     assert seen.get("subgroups")
 
 
-def test_cmd_run_delegates_to_cprop(monkeypatch):
-    calls: list[str] = []
-    monkeypatch.setattr(run_mod, "cprop", lambda p: calls.append(p))
-    run_mod.cmd_run("case.json")
-    assert calls == ["case.json"]
+def test_cmd_run_writes_ccx_ortho(tmp_path, capsys):
+    from tests.fakes import fake_backend, unregister
+
+    from b3_core.cases import plain
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = tmp_path / "case.json"
+    dest = tmp_path / "core.inp"
+    try:
+        plain(backend="fake").to_json(case)
+        run_mod.cmd_run(str(case), backend="fake", ccx_ortho=str(dest))
+    finally:
+        unregister("fake")
+    text = dest.read_text()
+    assert "*elastic,type=ortho" in text
+    assert "*density" in text
+    assert "Wrote" in capsys.readouterr().out
+
+
+def test_cmd_run_json_scales_moduli_and_skips_disk(tmp_path, capsys):
+    import json
+
+    from tests.fakes import fake_backend, unregister
+
+    from b3_core.cases import plain
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = tmp_path / "case.json"
+    try:
+        plain(backend="fake").to_json(case)
+        run_mod.cmd_run(
+            str(case),
+            backend="fake",
+            as_json=True,
+            units="GPa",
+            no_write=True,
+        )
+    finally:
+        unregister("fake")
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["properties"]["Ex"]["value"] == pytest.approx(1.0)
+    assert payload["properties"]["Ex"]["unit"] == "GPa"
+    assert payload["properties"]["nuxy"]["value"] == pytest.approx(0.3)
+    assert payload["properties"]["nuxy"]["unit"] == "-"
+    assert payload["stiffness_unit"] == "GPa"
+    assert payload["written"] is None
+    assert payload["cache_hit"] is False
+    checks = {row["id"]: row["status"] for row in payload["diagnostics"]["checks"]}
+    assert "raw_asymmetry" in checks
+    assert "positive_definite" in checks
+    assert "voigt_reuss" in checks
+    assert "kerf_pinch" in checks
+    assert {row["face"] for row in payload["diagnostics"]["ties"]} == {"x", "y", "z"}
+    assert payload["geometry"]["rho_infused"]["unit"] == "kg/m^3"
+    assert "provenance" in payload
+    assert list(tmp_path.glob("run*.json")) == []
+
+
+def test_cmd_run_json_error_on_curved_auto(monkeypatch, tmp_path, capsys):
+    import json
+
+    from b3_core.cases import plain
+
+    monkeypatch.setattr(
+        "b3_core.solvers.fenicsx.FenicsxBackend.is_available",
+        lambda self: False,
+    )
+    case = tmp_path / "case.json"
+    plain().with_curvature(kx=1e-3).to_json(case)
+    with pytest.raises(SystemExit) as ei:
+        run_mod.cmd_run(str(case), as_json=True, no_write=True)
+    assert ei.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"]["type"] == "BackendCapabilityError"
+    assert "doctor" in payload["error"]["hint"] or "numpy" in payload["error"]["hint"]
+
+
+def test_report_ties_unit_is_stored_as_per_mm(tmp_path, capsys):
+    from b3_core.cases import uniaxial
+
+    case = tmp_path / "case.json"
+    uniaxial().to_json(case)
+    run_mod.cmd_report_ties(str(case), kx="2", unit="1/m", as_json=True)
+    payload = __import__("json").loads(capsys.readouterr().out)
+    assert payload["unit"] == "1/m"
+    assert payload["kx"] == pytest.approx(0.002)
+    assert "R = 0.5 m" in payload["kx_tick"]
+
+
+def test_check_points_honor_the_curvature_unit(tmp_path, capsys, monkeypatch):
+    case = tmp_path / "case.json"
+    case.write_text("{}", encoding="utf-8")
+    seen = {}
+
+    def fake_check(path, **kwargs):
+        seen["points"] = kwargs["points"]
+        return {
+            "ok": True,
+            "rtol": 1e-4,
+            "worst_rel_pct": 0.0,
+            "wall_s": 0.0,
+            "rows": [],
+        }
+
+    monkeypatch.setattr("b3_core.checks.backends.check_backends", fake_check)
+    run_mod.cmd_check_backends(str(case), points="2,0", unit="1/m", as_json=True)
+    assert seen["points"] == [(pytest.approx(0.002), 0.0)]
+    assert __import__("json").loads(capsys.readouterr().out)["unit"] == "1/m"
+
+
+def test_payload_json_is_not_rewritten_when_it_asks_for_the_schema():
+    from b3_core.core.run import _rewrite_payload_json
+
+    assert _rewrite_payload_json(["--json"]) == ["--json"]
+    assert _rewrite_payload_json(["run", "case.json", "--json", "--no-write"]) == [
+        "run",
+        "case.json",
+        "--agent-json",
+        "--no-write",
+    ]
+
+
+def test_run_json_flag_reaches_the_command(tmp_path):
+    case = tmp_path / "missing.json"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "b3_core.core.run",
+            "run",
+            str(case),
+            "--json",
+            "--no-write",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert '"type": "cli"' not in combined
+    assert proc.returncode != 0
+
+
+def test_run_help_lists_agent_json_flags():
+    proc = subprocess.run(
+        [sys.executable, "-m", "b3_core.core.run", "run", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert proc.returncode in (0, 1)
+    assert "--json" in combined
+    assert "--units" in combined
+    assert "--no-write" in combined
+    assert "--strict" in combined
+
+
+def test_cmd_run_writes_run_json(tmp_path, capsys):
+    from tests.fakes import fake_backend, unregister
+
+    from b3_core.cases import plain
+
+    register, cls = fake_backend("fake")
+    register(cls)
+    case = tmp_path / "case.json"
+    try:
+        plain(backend="fake").to_json(case)
+        run_mod.cmd_run(str(case), backend="fake")
+    finally:
+        unregister("fake")
+    written = list(tmp_path.glob("run*.json"))
+    assert len(written) == 1
+    assert "Wrote" in capsys.readouterr().out
 
 
 def test_sharp_sibling_from_halo_name(tmp_path):
@@ -169,25 +358,51 @@ def test_cmd_viz_view_and_datasheet_and_deformed(monkeypatch, tmp_path, capsys):
     assert "Wrote" in out
 
 
-def test_sweep_cmd_wrappers(monkeypatch):
+def test_homogenise_chain_runs_every_stage(monkeypatch, tmp_path):
+    from treeparse.models.cli import chain_runner
+
+    seen: list[tuple] = []
+
+    monkeypatch.setattr(
+        "b3_core.sweep.homogenize.run_thickness",
+        lambda ctx: seen.append(("thickness", ctx.root)) or 0,
+    )
+    monkeypatch.setattr(
+        "b3_core.sweep.homogenize.run_curvature",
+        lambda ctx: seen.append(("curvature", ctx.root)) or 0,
+    )
+    monkeypatch.setattr(
+        "b3_core.sweep.homogenize.run_patterns",
+        lambda ctx: seen.append(("patterns", ctx.root)) or 0,
+    )
+    monkeypatch.setattr(run_mod, "_sweep_exit", lambda c: seen.append(("exit", c)))
+
+    grp = run_mod._sweep_subgroup()
+    chained = next(c for c in grp.commands if getattr(c, "name", None) == "homogenise")
+    chain_runner(chained, root=str(tmp_path), cache="")
+    assert [step[0] for step in seen] == ["thickness", "curvature", "patterns", "exit"]
+    assert seen[0][1] == tmp_path
+    assert seen[-1] == ("exit", 0)
+
+
+def test_sweep_cmd_wrappers(monkeypatch, tmp_path):
     codes: list[int] = []
 
     monkeypatch.setattr(
-        "b3_core.sweep.homogenise.run_thickness", lambda ctx: codes.append(0) or 0
+        "b3_core.sweep.homogenize.run_thickness", lambda ctx: codes.append(0) or 0
     )
     monkeypatch.setattr(
-        "b3_core.sweep.homogenise.run_curvature", lambda ctx: codes.append(1) or 0
+        "b3_core.sweep.homogenize.run_curvature", lambda ctx: codes.append(1) or 0
     )
     monkeypatch.setattr(
-        "b3_core.sweep.homogenise.run_patterns", lambda ctx: codes.append(2) or 0
+        "b3_core.sweep.homogenize.run_patterns", lambda ctx: codes.append(2) or 0
     )
     monkeypatch.setattr(run_mod, "_sweep_exit", lambda c: codes.append(100 + c))
 
-    run_mod.cmd_sweep_thickness("")
-    run_mod.cmd_sweep_curvature("")
-    run_mod.cmd_sweep_patterns("")
-    run_mod.cmd_sweep_curvature_chained()
-    run_mod.cmd_sweep_patterns_chained()
+    root = str(tmp_path)
+    run_mod.cmd_sweep_thickness(root, "")
+    run_mod.cmd_sweep_curvature(root, "")
+    run_mod.cmd_sweep_patterns(root, "")
     assert 100 in codes  # _sweep_exit called
 
 
@@ -214,6 +429,11 @@ def test_surrogate_cli_cmds(monkeypatch, tmp_path, capsys):
     out = tmp_path / "surr.json"
     run_mod.cmd_surrogate_fit(str(out), str(tmp_path / "cache.json"))
     assert "Wrote" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as ei:
+        run_mod.cmd_surrogate_fit("", "")
+    assert ei.value.code == 2
+    assert "--output" in capsys.readouterr().err
 
     monkeypatch.setattr(
         "b3_core.physics_surrogate.CorePhysicsSurrogate",

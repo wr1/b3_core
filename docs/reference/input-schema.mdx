@@ -19,6 +19,7 @@ All geometry fields are **mm**. Material moduli are **Pa**, densities **kg/m³**
 | `face` | `{"thickness": mm}` | Optional stabilising face layer (default off) |
 | `curvature` | `{"kx": 1/mm, "ky": 1/mm}` | Optional groove taper for curved panels |
 | `madd` | list[float] | Extra mesh-density knob (default `[0]`) |
+| `allow_non_periodic` | bool | Keep a pitch that does not divide `dx` (x-grooves) or `dy` (y-grooves). Default rejects it. The flag is part of the cache key |
 
 ## Materials
 
@@ -54,18 +55,25 @@ stochastic resin halo. See [Resin halo](/docs/concepts/resin-halo). Combined wit
 | `scoring.surfaces.saw_cut` / `face` | Per-surface overrides (`cell_size`, `scale`, `enabled`) |
 | `scoring.sampling` | `strategy`: `exact` \| `local_cloud`; `resolution`; `idw_power` |
 
-Requires `core.cell_size`. Auto-routes backend to `numpy`.
+Requires `core.cell_size`. `auto` keeps the graded halo on FEniCSx when that
+environment is installed, otherwise on `mfem`.
 
 ## Solver
 
 | Field | Values | Notes |
 |-------|--------|-------|
 | `element_type` | `"C3D8"` \| `"C3D20"` | Default C3D8 (ccx decks) |
-| `backend` | `"mfem"` \| `"ccx"` \| `"fenicsx"` \| `"numpy"` | Default `mfem` |
+| `mesh_h_max` | number (mm) \| `null` | Default `1.5`. Largest element edge; `null` = deprecated legacy coarse grid. See [convergence](/docs/reference/convergence) |
+| `kerf_z_elems` | int ≥ 1 | Default `4`. Elements over each groove depth |
+| `backend` | `"auto"` \| `"fenicsx"` \| `"mfem"` \| `"ccx"` \| `"numpy"` | Default `auto` |
 | `validate_with_ccx` | bool | Cross-check against CalculiX |
 
-**Auto-routing:** orthotropic constituents or `core.cell_size` force `numpy`
-(ccx/mfem integrators are isotropic two-phase).
+**Auto-routing:** `auto` prefers FEniCSx when that environment is installed,
+then `mfem`. Both handle isotropy, orthotropic constituents, and the graded
+`core.cell_size` halo, and both return displacements. FEniCSx projects the
+periodic image onto the master cell. Without FEniCSx the next stop is `mfem`,
+then CalculiX for an isotropic case, then `numpy`. CalculiX stays isotropic
+two-phase.
 
 ## Minimal complete example
 
@@ -77,7 +85,13 @@ xgr: [[10, 5, 2, 1]]
 ygr: []
 core:  { E: 4e9, nu: 0.3, rho: 100 }
 resin: { E: 3.5e9, nu: 0.35, rho: 1100 }
-backend: mfem
+backend: auto
 ```
 
 Python entry: `from b3_core import CpropInput, Material`.
+
+## Groove mouth and legacy negative depth
+
+Each `xgr` / `ygr` row is `[offset, spacing, depth, width]` (mm). `z = 0` is the
+mould face. A negative depth in that legacy list is only an input alias for
+`mouth: top` (the groove opens at `z = thickness`); `mouth: bottom` opens at `z = 0`.

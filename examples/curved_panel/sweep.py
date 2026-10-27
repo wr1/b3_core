@@ -9,13 +9,12 @@ core; closing pinches the grooves toward the ungrooved foam.
 
     uv run python examples/curved_panel/sweep.py
 
-Requires the optional MFEM stack (`uv sync --extra mfem`).
+Requires PyMFEM (a package dependency, via `uv sync`).
 """
 
 from __future__ import annotations
 
 import copy
-import glob
 import json
 from pathlib import Path
 
@@ -43,11 +42,7 @@ def run_kx(kx: float) -> dict:
     case["curvature"] = {"kx": kx, "ky": 0.0}
     case_path = out_dir / "case.json"
     case_path.write_text(json.dumps(case, indent=2))
-    try:
-        return cprop(str(case_path))
-    except FileExistsError:
-        cached = glob.glob(str(out_dir / "run*.json"))
-        return json.loads(Path(cached[0]).read_text())
+    return cprop(str(case_path))
 
 
 def main() -> int:

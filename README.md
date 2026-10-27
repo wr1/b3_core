@@ -45,7 +45,7 @@ Prefer building the RVE in **Python** (factories / `CpropInput`). JSON/YAML are
 optional interchange for the CLI and frozen fixtures.
 
 ```bash
-uv sync --extra dev
+uv sync --locked --extra dev
 ```
 
 ```python
@@ -59,8 +59,9 @@ from b3_core import (
 
 r = homogenize(plain())
 r = homogenize(uniaxial(depth=8, pitch=10))
-r = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.008))
+r = homogenize(grid_scored(cell_size=0.6), kx=-0.008)  # bottom mouth opens
 r = homogenize(curved_panel(thickness=30, ligament=3, kx=0.012).with_halo(0.6))
+# r.kerfs: curvature applied as kerf taper (root vs mouth half-width)
 
 print(r.material)  # b3_mat.OrthotropicMaterial (Ex, Ey, Ez, Gij, ν, ρ)
 print(r.resin_volume_fraction, r.surface_area_factor)
@@ -83,26 +84,34 @@ GPa in tables. Axes: **x** machine, **y** transverse, **z** thickness.
 
 Structured 3D RVE (PyVista): core vs resin (and optional face / halo). Six
 periodic-BC unit strains → Ex/Ey/Ez, Gxy/Gxz/Gyz, Poisson ratios, infused
-density. Mould curvature (`kx`, `ky`) morphs kerf walls with **`hw(z)`**
-(trapezoidal foam bays on a flat FEA RVE — not voxel painting). Optional
+density. Mould curvature (`kx`, `ky`, via `.with_curvature` or
+`homogenize(..., kx=, ky=)`) morphs kerf walls with **`hw(z)`**
+(trapezoidal foam bays on a flat FEA RVE — not voxel painting). The solved
+`result.kerfs` lists each groove's root and mouth half-width. Optional
 **resin halo** grades stiffness with distance to the cut surface
 (`core.cell_size`); see the [docs graphics](https://wr1.github.io/b3_core/docs/concepts/resin-halo/).
 
-**Default backend: MFEM.** Also CalculiX (`ccx`), FEniCSx, **numpy**. Orthotropic
-foam or halo auto-routes to **numpy**. Optional `validate_with_ccx`.
+**Default backend: FEniCSx** (`auto` picks it when that environment is installed;
+it is the recommended and only curved-capable solver).
+Its periodic constraint is the finite-element projection of the image, including
+a face that is not a tensor grid, and it covers the same maps as MFEM
+(isotropic, orthotropic, graded halo) and returns displacements. Without
+FEniCSx, MFEM is next, then **numpy**. CalculiX (`ccx`) is the isotropic
+validation twin. Optional `validate_with_ccx`.
 
 ## CLI (files still work)
 
 ```bash
 uv run b3_core run examples/simple.json
-uv run b3_core sweep homogenise --root examples/param_sweeps
+uv run b3_core sweep homogenize --root examples/param_sweeps
 uv run b3_core viz view examples/mfem_patterns/two_sided.json --what gallery -o board.png
 uv run b3_core viz halo examples/grid_scored_halo.json -o examples/img
 uv run b3_core skill --stdout
 ```
 
-`homogenize` / `cprop` accept a **path**, **dict**, **`CpropInput`**, or
-**`Textile`**. Runs write `run<HASH>.json` next to the case (or study root).
+`homogenize` / `cprop` accept a **path**, **dict**, **`CaseInput`**
+(`CpropInput`), or **`CoreCase`** (`Textile`). `homogenize` writes nothing
+unless `write=True`. `b3_core run` writes `run<hash12>.json` next to the case.
 
 ## Agent skill
 
@@ -156,27 +165,56 @@ Datasheet needs [`typst`](https://typst.app) on PATH. Halo figure bundle:
 | `examples/offline/` | GIFs, explainer MP4 (not mainline) |
 
 ```bash
-b3_core sweep homogenise --root examples/param_sweeps   # or: make sweep
+b3_core sweep homogenize --root examples/param_sweeps   # or: make sweep
 ```
+
+## Files and caching
+
+The library does not write unless asked. `homogenize(case, cache=DiskCache(".b3cache"))`
+reuses a solve; `cache=None` does not. `homogenize(case, write=True, workdir=...)`
+and `homogenize_to_disk` write one `run<hash12>.json`. Sweep caches live in
+`<study root>/.b3cache`. `b3_core run` caches only when `--cache DIR` is passed.
 
 ## Requirements
 
 - Python ≥ 3.11, `uv`
-- PyMFEM (`mfem`; default backend)
+- FEniCSx (`dolfinx` + `dolfinx_mpc`; optional conda-forge stack, not installed by `uv sync`). When that environment is present, `auto` uses it for isotropic, orthotropic, and graded-halo cases. A curved case uses FEniCSx only
+- PyMFEM (`mfem`; required). On a flat case, `auto` uses it when FEniCSx is not installed
 - CalculiX + `frd2vtu` only for `backend: ccx` / `validate_with_ccx`
-- `treeparse` (PyPI), `b3_mat` (git: `wr1/b3_mat`) via `pyproject.toml`
-- `typst` only for datasheets
+- `treeparse>=0.3.4,<0.4` (PyPI), `b3_mat` (git: `wr1/b3_mat`) via `pyproject.toml`
+- `typst` for datasheets (`uv sync --extra report`, or the `typst` binary on `PATH`)
 
 ```bash
-uv sync --extra dev          # package + pytest + ruff + pre-commit
-uv sync --extra mfem         # if mfem not already a hard dep on your machine
-uv sync --extra anim         # optional GIF/MP4 explainer
+uv sync --locked --extra dev    # package + pytest + ruff + pre-commit
+uv sync --extra anim            # optional GIF/MP4 explainer
+uv sync --extra report          # optional Python typst compiler
 ```
+
+### Python 3.12 and pip
+
+PyMFEM 4.8 declares `numba==0.53`. That release cannot build on Python 3.12.
+`uv sync` overrides the pin (`numba>=0.60` in `[tool.uv] override-dependencies`).
+pip has no equivalent override. On 3.12, install a current numba and PyMFEM
+without that pin, then the rest of the dependencies, and install this tree
+without letting pip re-resolve `numba`:
+
+```bash
+python -m pip install --upgrade pip
+pip install "numba>=0.60"
+pip install "mfem" --no-deps
+pip install "numpy" "scipy" "pandas" "matplotlib~=3.9" "pyvista>=0.44,<0.45" \
+  "pydantic>=2" "pyyaml" "treeparse>=0.3.4,<0.4" "rich>=13" \
+  "frd2vtu @ git+https://github.com/wr1/frd2vtu.git@v0.2.0" \
+  "b3_mat @ git+https://github.com/wr1/b3_mat.git@135fc4d4384d6470045b5776025ab9e41c35a176"
+pip install --no-deps .
+```
+
+Prefer `uv sync` when you can. The CI job `pip-install-smoke` runs the recipe above.
 
 ## Development
 
 ```bash
-make install           # uv sync --extra dev && pre-commit install
+make install           # uv sync --locked --extra dev && git hooks → .githooks (ruff)
 make lint              # ruff check
 make format            # ruff format + fix
 make pre-commit        # full hooks

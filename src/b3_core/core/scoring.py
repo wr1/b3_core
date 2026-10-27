@@ -84,19 +84,24 @@ def parse_surface_halo(inp: dict) -> dict[str, dict[str, Any]]:
     saw_cfg = surfaces_in.get("saw_cut") or {}
     face_cfg = surfaces_in.get("face") or {}
 
-    saw_cs = saw_cfg["cell_size"] if "cell_size" in saw_cfg else core_cs
+    # A missing or null cell size means "not overridden". Typed models dump
+    # every field, so ``cell_size: null`` is the unset value, not a disable.
+    saw_cs = saw_cfg.get("cell_size")
+    if saw_cs is None:
+        saw_cs = core_cs
     saw_enabled = saw_cfg.get("enabled", True) and saw_cs is not None
     if not saw_enabled:
         saw_cs = None
 
     face_enabled = face_cfg.get("enabled", True)
-    if "cell_size" in face_cfg:
-        face_cs = face_cfg["cell_size"]
-        if face_cs is None:
-            face_enabled = False
+    face_cs = face_cfg.get("cell_size")
+    if face_cs is not None:
+        pass
     elif face_enabled and saw_cs is not None:
-        scale = float(face_cfg.get("scale", _DEFAULT_FACE_SCALE))
-        face_cs = _scale_cell_size(saw_cs, scale)
+        scale = face_cfg.get("scale", _DEFAULT_FACE_SCALE)
+        if scale is None:
+            scale = _DEFAULT_FACE_SCALE
+        face_cs = _scale_cell_size(saw_cs, float(scale))
     else:
         face_cs = None
 
@@ -149,6 +154,25 @@ class ScoreField:
                     self.grooves.append(
                         (axis, float(c0), float(hw), float(sl), float(d))
                     )
+        # One lattice per input row. Centres are ``offset + m·pitch`` (the same
+        # lattice as create_grooves before the domain clamp). Distance uses the
+        # pitch minimum image so a boundary kerf matches an interior offset.
+        self.families: list[tuple[float, ...]] = []
+        for axis, cuts, kappa in (
+            (0, inp.get("xgr") or [], kx),
+            (1, inp.get("ygr") or [], ky),
+        ):
+            for row in cuts:
+                offset, pitch, depth, width = (
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                    float(row[3]),
+                )
+                if depth == 0.0 or width <= 0.0 or pitch <= 0.0:
+                    continue
+                slope = -float(np.sign(depth)) * float(kappa) * pitch / 2.0
+                self.families.append((axis, offset, 0.5 * width, slope, depth, pitch))
         self.thickness = thk
         self.surfaces = parse_surface_halo(inp)
         # Legacy aliases (saw-cut only).
@@ -173,16 +197,19 @@ class ScoreField:
 
         Wall half-width uses the same root-hinged ``hw(z)`` law as the mesh
         morph (incl. pinch clamp), so the halo grades off the *open/closed*
-        kerf surface. Evaluate at **physical** post-morph coordinates — after
-        the interval-affine morph, walls sit at ``c0 ± hw(z)``.
+        kerf surface. In the groove's transverse direction the distance is the
+        minimum image on that family's pitch, so the field is periodic and a
+        pure offset is only a phase shift. Evaluate at **physical** post-morph
+        coordinates — after the interval-affine morph, walls sit at
+        ``c0 ± hw(z)``.
         """
-        from b3_core.core.mesh import _MIN_HW
+        from b3_core.core.mesh import MIN_HW as _MIN_HW
 
         pts = np.asarray(points, dtype=float)
         z = pts[:, 2]
         d_min = np.full(len(pts), np.inf)
         th = self.thickness
-        for axis, c0, hw0, slope, depth in self.grooves:
+        for axis, c_ref, hw0, slope, depth, pitch in self.families:
             if depth > 0:
                 z0, z1 = 0.0, depth
                 inside = (z >= z0) & (z <= z1)
@@ -197,7 +224,10 @@ class ScoreField:
                 np.maximum(_MIN_HW, hw0 + slope * zeta),
                 hw0,
             )
-            du = np.maximum(0.0, np.abs(pts[:, axis] - c0) - hw)
+            # Nearest centre on offset + m·pitch, including the image across 0.
+            delta = np.mod(pts[:, axis] - c_ref, pitch)
+            delta = np.minimum(delta, pitch - delta)
+            du = np.maximum(0.0, delta - hw)
             dz = np.maximum(0.0, np.maximum(z0 - z, z - z1))
             d_min = np.minimum(d_min, np.hypot(du, dz))
         return d_min
@@ -227,21 +257,85 @@ class ScoreField:
         return p
 
 
+def halo_reach(inp) -> float:
+    """Resin-halo mesh band (mm): ``damage_cells`` times the widest active reach."""
+    if hasattr(inp, "score_dict"):
+        data = inp.score_dict()
+        scoring = getattr(inp, "scoring", None)
+        damage = 1.0 if scoring is None else float(scoring.damage_cells)
+    else:
+        data = inp
+        damage = float((inp.get("scoring") or {}).get("damage_cells", 1.0))
+    field = ScoreField(data)
+    if not field.active or field.reach <= 0.0:
+        return 0.0
+    return damage * float(field.reach)
+
+
+def score_field_for(inp):
+    """ScoreField for a case, or None when the halo is inactive."""
+    if halo_reach(inp) <= 0.0:
+        return None
+    data = inp.score_dict() if hasattr(inp, "score_dict") else inp
+    return ScoreField(data)
+
+
+_GAUSS = np.array([-1.0, 1.0]) / np.sqrt(3.0)
+# VTK hexahedron node order in reference coordinates.
+_HEX_REF = np.array(
+    [
+        [-1, -1, -1],
+        [1, -1, -1],
+        [1, 1, -1],
+        [-1, 1, -1],
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, 1],
+        [-1, 1, 1],
+    ],
+    dtype=float,
+)
+
+
+def hex_gauss_points(mesh) -> tuple[np.ndarray, np.ndarray]:
+    """2x2x2 Gauss points and weights (|J|·w) per hex cell: (n,8,3), (n,8).
+
+    The same rule the solvers integrate stiffness with, so a volume fraction
+    taken here matches the halo the stiffness sees.
+    """
+    grid = mesh.cast_to_unstructured_grid() if not hasattr(mesh, "cells_dict") else mesh
+    cells = np.asarray(grid.cells_dict[12], dtype=np.int64)
+    xe = np.asarray(grid.points, dtype=float)[cells]  # (n, 8, 3)
+    g = np.stack(np.meshgrid(_GAUSS, _GAUSS, _GAUSS, indexing="ij"), -1).reshape(-1, 3)
+    r = _HEX_REF
+    # Trilinear shape functions and their reference derivatives at each point.
+    terms = 1.0 + g[:, None, :] * r[None, :, :]  # (8q, 8n, 3)
+    shape = 0.125 * terms.prod(-1)
+    dshape = np.empty((len(g), 8, 3))
+    for k in range(3):
+        others = [j for j in range(3) if j != k]
+        dshape[:, :, k] = 0.125 * r[None, :, k] * terms[:, :, others].prod(-1)
+    pts = np.einsum("qn,cnd->cqd", shape, xe)
+    jac = np.einsum("qnk,cnd->cqdk", dshape, xe)
+    weights = np.abs(np.linalg.det(jac))
+    return pts, weights
+
+
 def effective_resin_vf(mesh, field, resin_vf: float):
     """``(effective_resin_vf, halo_vf)``: neat resin plus the halo's resin content.
 
-    Adds the volume integral of P(resin) over the **foam** cells (evaluated at
-    cell centres) to the neat-kerf ``resin_vf``. Returns the inputs unchanged when
-    no field is active.
+    Adds the volume integral of P(resin) over the **foam** cells to the
+    neat-kerf ``resin_vf``. P is integrated with the 2x2x2 Gauss rule the
+    stiffness uses, so density and stiffness see the same halo. Returns the
+    inputs unchanged when no field is active.
     """
     if field is None or not field.active:
         return resin_vf, 0.0
-    ma = mesh.compute_cell_sizes()
-    vol = np.abs(ma.cell_data["Volume"])
     foam = ~(
         np.asarray(mesh.cell_data["resin"], bool)
         | np.asarray(mesh.cell_data["face"], bool)
     )
-    p = field.resin_probability(mesh.cell_centers().points)
-    halo_vf = float((p[foam] * vol[foam]).sum() / vol.sum())
+    pts, w = hex_gauss_points(mesh)
+    p = np.asarray(field.resin_probability(pts.reshape(-1, 3)), float).reshape(w.shape)
+    halo_vf = float((p[foam] * w[foam]).sum() / w.sum())
     return resin_vf + halo_vf, halo_vf
