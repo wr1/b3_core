@@ -1,0 +1,106 @@
+---
+title: Getting started
+description: Install b3_core, write a case file, and run a first homogenization.
+---
+
+## Requirements
+
+- Python ≥ 3.11, `uv`
+- PyMFEM for the default backend (`uv sync --extra mfem`)
+- CalculiX (`ccx`) + `frd2vtu` on PATH if using `backend: ccx` or `validate_with_ccx`
+- `treeparse`, `b3_mat` (resolved via `pyproject.toml`)
+- `typst` on PATH only if you generate datasheets
+
+```bash
+uv sync --extra mfem
+```
+
+## Textile-as-code (preferred)
+
+Geometry is mm; materials are SI. Build the RVE in Python, then homogenize —
+no YAML required:
+
+```python
+from b3_core import homogenize, plain, uniaxial, grid_scored
+
+r = homogenize(plain())
+r = homogenize(uniaxial(depth=8, pitch=10))
+r = homogenize(grid_scored(cell_size=0.6).with_curvature(kx=0.008))
+print(r.material)  # b3_mat.OrthotropicMaterial
+```
+
+Named factories live in `b3_core.cases` (`plain`, `uniaxial`, `crossed`,
+`two_sided`, `curved_panel`, `grid_scored`) and return a `Textile` with fluent
+modifiers (`.with_curvature`, `.with_halo`, `.with_backend`, …). You can also
+construct a raw `CpropInput` / `Material` if you need full control.
+
+Optional JSON snapshot for the CLI or git fixtures:
+
+```python
+grid_scored().to_json("grid_scored.json")
+# then: uv run b3_core run grid_scored.json
+```
+
+```bash
+uv run python examples/textile_grid_scored.py
+```
+
+Grooves: each row in `xgr` / `ygr` is `[offset, spacing, depth, width]` (mm).
+Negative depth opens toward the mould face (useful with curvature).
+Default solver is **MFEM** (`uv sync --extra mfem`); halo / orthotropic foam
+auto-route to **numpy**.
+
+Shipped examples (JSON is interchange; factories are the source of truth):
+
+| Source | What it shows |
+|--------|----------------|
+| `plain()` / `examples/simple.json` | Plain core baseline |
+| `uniaxial` / `crossed` / `two_sided` | Pattern gallery |
+| `grid_scored()` / `grid_scored_halo.json` | Grid-scored foam + resin halo |
+| `curved_panel()` / `examples/curved_panel/` | Groove taper under mould curvature |
+
+## Run (CLI still accepts files)
+
+```bash
+uv run b3_core run examples/simple.json
+uv run b3_core examples/simple.yaml    # YAML still loads; not the preferred authoring form
+```
+
+Each run writes `run<HASH>.json` next to the input (or in the study root for sweeps)
+with engineering constants, geometry metrics, and optional backend-vs-ccx comparison.
+
+If you hit `FileExistsError`, delete the cached `run*.json` or use a fresh output directory.
+
+## Python API
+
+```python
+from b3_core import cprop, grid_scored, homogenize, plain
+
+result = homogenize(plain())                 # CoreResult
+result = homogenize(grid_scored(cell_size=0.6))
+mat = result.material                        # b3_mat.OrthotropicMaterial
+print(result.resin_volume_fraction, result.surface_area_factor)
+
+# path still works (interchange)
+raw = cprop("examples/simple.json")          # full dict + writes run*.json
+```
+
+`homogenize` is the FEA handoff path. Call `cprop` when you need the full pipeline dict.
+See [Resin halo](/docs/concepts/resin-halo) for graphics of `cell_size` / scoring.
+
+## Coordinate system
+
+| Axis | Meaning |
+|------|---------|
+| x | Machine direction (typically along-span tooling) |
+| y | Transverse |
+| z | Through-thickness |
+
+Groove families `xgr` run parallel to **x** (vary in y); `ygr` run parallel to **y** (vary in x).
+
+## Next
+
+- [Homogenize for FEA](/docs/guides/homogenize) — tables, CalculiX cards, matdb JSON.
+- [Input schema](/docs/reference/input-schema) — full field list.
+- [Resin halo](/docs/concepts/resin-halo) — when `core.cell_size` is set.
+- [Halo + curvature](/docs/concepts/halo-curvature) — halo on open/closed kerfs; stiffness vs κ and halo width.

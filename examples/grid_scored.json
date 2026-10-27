@@ -1,0 +1,18 @@
+{
+    "_comment": "Grid-scored foam core (Laustsen-style RVE: both directions, single-sided cuts, scrim on the uncut face). One periodic cell; groove depth leaves a thin uncut ligament. Orthotropic PVC + epoxy; numpy backend (ccx/mfem are isotropic-only).",
+    "dx": 30.6,
+    "dy": 30.6,
+    "thickness": 20.4,
+    "xgr": [[0, 30.6, 17.7, 1.07]],
+    "ygr": [[0, 30.6, 17.7, 1.07]],
+    "core": {
+        "E1": 33400000, "E2": 33400000, "E3": 68800000,
+        "G12": 18400000, "G13": 18400000, "G23": 18400000,
+        "nu12": 0.31, "nu13": 0.31, "nu23": 0.31,
+        "rho": 62.5
+    },
+    "resin": {"E": 3120000000, "nu": 0.32, "rho": 1130},
+    "madd": [-0.15, 0, 0.15],
+    "backend": "numpy",
+    "validate_with_ccx": false
+}

@@ -1,0 +1,13 @@
+{
+    "_comment": "Through-thickness reinforcement: a fine top-down x-groove plus two opposite-sign deep y-groove families (+17 mm from the top, -17 mm from the bottom) that meet near mid-core, forming a near-continuous resin column. Should give the highest Ezz of the gallery.",
+    "dx": 50,
+    "dy": 50,
+    "thickness": 30,
+    "xgr": [[10, 10, 8, 3]],
+    "ygr": [[-2, 25, 17.0, 2.0], [2, 25, -17.0, 2.0]],
+    "core":  {"E": 130000000,  "nu": 0.30, "rho": 100},
+    "resin": {"E": 3000000000, "nu": 0.35, "rho": 1100},
+    "madd":  [-0.3, 0, 0.3],
+    "backend": "mfem",
+    "validate_with_ccx": true
+}
