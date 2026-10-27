@@ -2,8 +2,20 @@ import numpy as np
 import pytest
 
 import b3_core.core.cprop as cprop_module
+from b3_core.api import homogenize, run_case
+from b3_core.cache import MemoryCache
+from b3_core.cases import grid_scored, uniaxial
 from b3_core.core.mesh import create_grooved_mesh
 from b3_core.io import mfem_backend
+from b3_core.pipeline import resolve_backend
+from b3_core.solvers import get_backend
+
+
+def _coarse(t, h=4.0):
+    """Same case on a coarse mesh: these tests check agreement, not accuracy."""
+    from dataclasses import replace
+
+    return replace(t, input=t.input.model_copy(update={"mesh_h_max": h}))
 
 
 def test_mfem_reports_missing_dependency():
@@ -15,24 +27,21 @@ def test_mfem_reports_missing_dependency():
 
 
 def test_cprop_mfem_validation_dispatch(monkeypatch, tmp_path):
-    calls = []
+    from tests.fakes import props, solver_double
 
-    def fake_mfem(mesh, dct, status=None):
-        calls.append("mfem")
-        return {"Exx": 100.0, "Gxy": 50.0}
+    calls: list[str] = []
+    backends = {
+        "mfem": solver_double("mfem", props(100.0, 50.0), calls),
+        "ccx": solver_double("ccx", props(101.0, 49.0), calls),
+    }
 
-    def fake_ccx(mesh, name, dct, status=None):
-        calls.append("ccx")
-        return {"Exx": 101.0, "Gxy": 49.0}
+    def get_backend(name):
+        backend = backends.get(name)
+        if backend is None:
+            raise KeyError(name)
+        return backend
 
-    monkeypatch.setattr(cprop_module, "create_grooved_mesh", lambda *a, **k: object())
-    monkeypatch.setattr(
-        cprop_module,
-        "geom_analysis",
-        lambda mesh: {"area_increase": 1.0, "resin_vf": 0.0},
-    )
-    monkeypatch.setattr(cprop_module, "_run_mfem_backend", fake_mfem)
-    monkeypatch.setattr(cprop_module, "_run_ccx_backend", fake_ccx)
+    monkeypatch.setattr("b3_core.solvers.get_backend", get_backend)
 
     cfg = tmp_path / "case.json"
     cfg.write_text(
@@ -55,6 +64,100 @@ def test_cprop_mfem_validation_dispatch(monkeypatch, tmp_path):
     assert out["ccx_validation"]["passed"] is True
     # the comparison labels the alternate backend by name
     assert "mfem" in out["ccx_validation"]["properties"]["Exx"]
+    assert isinstance(out["stiffness"], list)
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_matches_numpy_for_orthotropic_kerfs():
+    """Orthotropic core, sharp kerfs: the per-GP stiffness path reproduces numpy."""
+    ref = np.asarray(
+        homogenize(
+            _coarse(grid_scored(cell_size=None, with_halo=False)), backend="numpy"
+        ).stiffness,
+        dtype=float,
+    )
+    got = np.asarray(
+        homogenize(
+            _coarse(grid_scored(cell_size=None, with_halo=False)), backend="mfem"
+        ).stiffness,
+        dtype=float,
+    )
+    assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_matches_numpy_for_orthotropic_halo():
+    """Graded resin halo: the per-GP stiffness path reproduces numpy."""
+    # Backend agreement on the same mesh, so a coarse mesh is enough.
+    case = _coarse(grid_scored())
+    ref = np.asarray(homogenize(case, backend="numpy").stiffness, dtype=float)
+    got = np.asarray(homogenize(case, backend="mfem").stiffness, dtype=float)
+    assert np.abs(got - ref).max() / np.abs(ref).max() < 1e-4
+
+
+def _halo_uniaxial():
+    """Small bottom-mouth groove with a saw-cut halo and no face halo."""
+    return uniaxial(
+        dx=20.0,
+        dy=12.0,
+        thickness=10.0,
+        pitch=10.0,
+        depth=8.0,
+        width=2.0,
+        offset=5.0,
+    ).with_halo(0.4, face_enabled=False, sampling={"strategy": "exact"})
+
+
+@pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")
+def test_mfem_halo_curvature_opens_kerf_and_matches_numpy():
+    """auto selects fenicsx when it is installed, otherwise mfem.
+
+    Negative kx opens a bottom-mouth kerf. The stiffness check below is an
+    explicit MFEM solve.
+    """
+    base = _halo_uniaxial()
+    expected = "fenicsx" if get_backend("fenicsx").is_available() else "mfem"
+    assert resolve_backend(base.input) == expected
+    cache = MemoryCache()
+    flat = homogenize(base, backend="mfem", cache=cache)
+    opened = homogenize(
+        base,
+        kx=-0.008,
+        backend="mfem",
+        cache=cache,
+        allow_pair_periodicity=True,
+    )
+    numpy_opened = homogenize(base, kx=-0.008, backend="numpy")
+    if get_backend("fenicsx").is_available():
+        record = run_case(base, kx=-0.008, cache=cache)
+        assert record.result.backend == "fenicsx"
+    else:
+        from b3_core.solvers.protocol import BackendCapabilityError
+
+        with pytest.raises(BackendCapabilityError):
+            run_case(base, kx=-0.008, cache=cache)
+        record = run_case(
+            base,
+            kx=-0.008,
+            backend="mfem",
+            cache=cache,
+            allow_pair_periodicity=True,
+        )
+        assert record.result.backend == "mfem"
+
+    assert flat.kerfs[0]["hw_mouth_mm"] == pytest.approx(flat.kerfs[0]["hw_root_mm"])
+    assert opened.kerfs[0]["mouth"] == "bottom"
+    assert opened.kerfs[0]["hw_mouth_mm"] > opened.kerfs[0]["hw_root_mm"]
+    assert opened.resin_volume_fraction > flat.resin_volume_fraction
+    scale = np.abs(numpy_opened.stiffness).max()
+    # Tapered hexes, z face interpolated. The two integrators differ by
+    # O(kappa^2) on the distorted elements (about 3e-3 here). An untied z
+    # face moves Ezz by tens of percent.
+    assert np.abs(opened.stiffness - numpy_opened.stiffness).max() / scale < 5e-3
+    assert record.result.backend == expected
+    assert record.geometry["kerfs"][0]["hw_mouth_mm"] == pytest.approx(
+        opened.kerfs[0]["hw_mouth_mm"]
+    )
 
 
 @pytest.mark.skipif(not mfem_backend.is_mfem_available(), reason="MFEM not installed")

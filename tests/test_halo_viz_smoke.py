@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pytest
 
 from b3_core.viz import halo
+from b3_core.viz.halo import curvature_figs
 
 CASE = json.loads(
     Path(__file__)
@@ -49,7 +50,7 @@ def test_cross_section_strip_inactive_raises():
 def test_sample_halo_plane():
     import numpy as np
 
-    mesh, mat, field = halo._mesh_and_field(CASE)
+    mesh, mat, field = halo.mesh_and_field(CASE)
     ux = np.linspace(float(mesh.bounds[0]) + 1e-3, float(mesh.bounds[1]) - 1e-3, 20)
     uz = np.linspace(float(mesh.bounds[4]) + 1e-3, float(mesh.bounds[5]) - 1e-3, 15)
     p, phase = halo.sample_halo_plane(
@@ -120,9 +121,9 @@ def test_stiffness_plots_from_tiny_grid():
 
 
 def test_helpers_with_kx_and_default_case():
-    base = halo._default_halo_curvature_case(cell_size=0.5)
+    base = curvature_figs._default_halo_curvature_case(cell_size=0.5)
     assert base["core"].get("cell_size") == 0.5 or "cell_size" in base["core"]
-    opened = halo._with_kx(base, 0.01)
+    opened = curvature_figs._with_kx(base, 0.01)
     assert opened["curvature"]["kx"] == 0.01
-    cmap = halo._halo_band_cmap()
+    cmap = curvature_figs._halo_band_cmap()
     assert cmap is not None

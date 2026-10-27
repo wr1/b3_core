@@ -140,22 +140,22 @@ def test_collect_sweep_empty(tmp_path):
 
 
 def test_sweep_run_dispatch(monkeypatch, tmp_path):
-    from b3_core.sweep import homogenise
+    from b3_core.sweep import homogenize
     from b3_core.sweep import run as sweep_run
 
     calls: list[str] = []
 
     monkeypatch.setattr(
-        homogenise, "run_thickness", lambda ctx: calls.append("thickness") or 0
+        homogenize, "run_thickness", lambda ctx: calls.append("thickness") or 0
     )
     monkeypatch.setattr(
-        homogenise, "run_curvature", lambda ctx: calls.append("curvature") or 0
+        homogenize, "run_curvature", lambda ctx: calls.append("curvature") or 0
     )
     monkeypatch.setattr(
-        homogenise, "run_patterns", lambda ctx: calls.append("patterns") or 0
+        homogenize, "run_patterns", lambda ctx: calls.append("patterns") or 0
     )
     monkeypatch.setattr(
-        homogenise,
+        homogenize,
         "run_all_homogenise",
         lambda ctx: calls.append("homogenise") or 0,
     )
@@ -164,7 +164,8 @@ def test_sweep_run_dispatch(monkeypatch, tmp_path):
     assert sweep_run("curvature", root=tmp_path) == 0
     assert sweep_run("patterns", root=tmp_path) == 0
     assert sweep_run("homogenise", root=tmp_path) == 0
-    assert calls == ["thickness", "curvature", "patterns", "homogenise"]
+    assert sweep_run("homogenize", root=tmp_path) == 0
+    assert calls == ["thickness", "curvature", "patterns", "homogenise", "homogenise"]
     assert sweep_run("not-a-stage", root=tmp_path) == 1
 
 
@@ -175,11 +176,13 @@ def test_run_case_merges_overrides_and_uses_cache(tmp_path, monkeypatch):
     out_dir = tmp_path / "run1"
     calls: list[str] = []
 
-    def fake_cprop(path):
-        calls.append(path)
-        return {"ok": True, "Exx": 1.0}
+    def fake_disk(case, **_kwargs):
+        calls.append(str(case))
+        path = out_dir / "runabc.json"
+        path.write_text(json.dumps({"ok": True, "Exx": 1.0}))
+        return None, path
 
-    monkeypatch.setattr(ctx_mod, "cprop", fake_cprop)
+    monkeypatch.setattr(ctx_mod, "homogenize_to_disk", fake_disk)
     result = ctx_mod.run_case(base, {"nested": {"y": 2}, "b": 3}, out_dir)
     assert result["ok"] is True
     assert calls
@@ -187,19 +190,13 @@ def test_run_case_merges_overrides_and_uses_cache(tmp_path, monkeypatch):
     assert case["nested"] == {"x": 1, "y": 2}
     assert case["b"] == 3
 
-    # Second call hits FileExistsError path via cached run*.json
-    (out_dir / "runcached.json").write_text(json.dumps({"cached": True}))
-
-    def boom(_path):
-        raise FileExistsError("exists")
-
-    monkeypatch.setattr(ctx_mod, "cprop", boom)
-    cached = ctx_mod.run_case(base, {}, out_dir)
-    assert cached["cached"] is True
+    again = ctx_mod.run_case(base, {}, out_dir)
+    assert again["ok"] is True
+    assert len(calls) == 2
 
 
 def test_homogenise_drivers_with_mocked_run_case(monkeypatch, tmp_path):
-    from b3_core.sweep import homogenise
+    from b3_core.sweep import homogenize as homogenise
 
     fake_out = {
         "resin_vf": 0.1,

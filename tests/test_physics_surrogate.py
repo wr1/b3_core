@@ -12,6 +12,16 @@ from b3_core.physics_surrogate import (
 )
 
 
+def test_min_hw_matches_mesh_floor():
+    from b3_core.core.mesh import MIN_HW
+
+    assert GeometrySpec().min_hw == MIN_HW
+    # A close that would cross the old 0.05 floor now stops at the mesh floor.
+    g = GeometrySpec()
+    closed = physics_base({"kx": np.array([-0.02]), "cell_size": np.array([0.0])}, g)
+    assert float(closed["resin_vf"][0]) > 0.0
+
+
 def test_physics_base_open_raises_resin_and_eyy():
     """Top-mouth: kx>0 opens → higher resin_vf and Eyy base."""
     g = GeometrySpec()
@@ -75,7 +85,8 @@ def test_predict_accepts_ndarray_and_dataframe():
         kx_values=[-0.008, 0.0, 0.008],
         cell_sizes=[0.0, 0.6],
     )
-    X = np.array([[0.0, 0.6], [0.008, 0.6]])
+    # Feature order is kx, ky, cell_size (schema 2).
+    X = np.array([[0.0, 0.0, 0.6], [0.008, 0.0, 0.6]])
     a = surr.predict(X, targets=["Eyy", "rho_infused"])
     df = pd.DataFrame({"kx": [0.0, 0.008], "cell_size": [0.6, 0.6]})
     b = surr.predict(df, targets=["Eyy", "rho_infused"])

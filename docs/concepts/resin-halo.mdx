@@ -115,8 +115,9 @@ Prefer factories over hand-written JSON. Halo is one modifier (or built into
 ```python
 from b3_core import grid_scored, homogenize, uniaxial
 
-# Grid score + 0.6 mm halo (numpy backend auto)
-case = grid_scored(cell_size=0.6)
+# Grid score + 0.6 mm halo. auto uses mfem.
+# Bottom mouth: negative kx opens the kerf. result.kerfs lists the half-widths.
+case = grid_scored(cell_size=0.6).with_curvature(kx=-0.008)
 result = homogenize(case)
 
 # Any textile: add halo later
@@ -162,8 +163,8 @@ block; override via `CpropInput` only when needed.
 
 ## Backend and outputs
 
-Halo needs per-Gauss-point stiffness → cases with `core.cell_size` **auto-route
-to `numpy`**. Results include:
+Halo needs per-Gauss-point stiffness. `auto` keeps `core.cell_size` on **mfem**
+(`numpy` is the fallback and uses the same map). Results include:
 
 | Field | Meaning |
 |-------|---------|
@@ -175,8 +176,10 @@ to `numpy`**. Results include:
 Engineering constants already embed the grade — **no separate halo layer** in
 the global FEA model.
 
-When mould curvature is set, the halo grades off the **tapered** wall `hw(z)` —
-see [Halo + curvature](/docs/concepts/halo-curvature) (compose figures + Eyy vs
+When mould curvature is set (`homogenize(case, kx=, ky=)` or `.with_curvature`),
+the halo grades off the **tapered** wall `hw(z)`. `result.kerfs` lists each
+groove's root and mouth half-width. See
+[Halo + curvature](/docs/concepts/halo-curvature) (compose figures + Eyy vs
 κ × cell_size).
 
 See also [Visualization](/docs/guides/visualization#resin-halo-figures) and

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from b3_core.viz._deps import ensure_headless, require_pyvista
+from b3_core.viz.deps import ensure_headless, require_pyvista
 from b3_core.viz.model import CoreModel
 from b3_core.viz.theme import DEFAULT_THEME, CoreTheme
 

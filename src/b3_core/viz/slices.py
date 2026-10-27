@@ -39,10 +39,18 @@ def _draw_panel(ax, grid, extent, cmap, norm, lines_u, lines_v, title):
     ax.tick_params(labelsize=6)
 
 
-def plot_orthogonal_cuts(model, *, px: int = 240, theme: CoreTheme = DEFAULT_THEME):
+def plot_orthogonal_cuts(
+    model,
+    *,
+    px: int = 240,
+    theme: CoreTheme = DEFAULT_THEME,
+    at: dict[int, float] | None = None,
+):
     """Render plan + two side cuts coloured by phase, with the mesh overlaid.
 
     Returns ``(fig, aspect)`` where ``aspect`` is width/height (for layout).
+    ``at`` pins the cut coordinate per axis (0 = x, 1 = y, 2 = z); unset axes
+    use the slab richest in resin.
     """
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
@@ -55,9 +63,10 @@ def plot_orthogonal_cuts(model, *, px: int = 240, theme: CoreTheme = DEFAULT_THE
     Lx, Ly, Lz = x1 - x0, y1 - y0, z1 - z0
     ref = max(Lx, Ly, Lz)
 
-    zc = geometry.best_slab(mesh, mat, 2, centers)
-    yc = geometry.best_slab(mesh, mat, 1, centers)
-    xc = geometry.best_slab(mesh, mat, 0, centers)
+    at = at or {}
+    zc = float(at[2]) if 2 in at else geometry.best_slab(mesh, mat, 2, centers)
+    yc = float(at[1]) if 1 in at else geometry.best_slab(mesh, mat, 1, centers)
+    xc = float(at[0]) if 0 in at else geometry.best_slab(mesh, mat, 0, centers)
     ux = _lin(x0, x1, Lx, ref, px)
     uy = _lin(y0, y1, Ly, ref, px)
     uz = _lin(z0, z1, Lz, ref, px)

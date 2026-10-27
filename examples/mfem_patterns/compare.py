@@ -9,12 +9,11 @@ MFEM-vs-CCX relative error so the table doubles as a smoke test.
 
     uv run python examples/mfem_patterns/compare.py
 
-Requires the optional MFEM stack (``uv sync --extra mfem``) and CalculiX on PATH.
+Requires PyMFEM (a package dependency) and CalculiX on PATH.
 """
 
 from __future__ import annotations
 
-import glob
 import json
 import sys
 from pathlib import Path
@@ -34,18 +33,13 @@ MODULI = ["Exx", "Eyy", "Ezz", "Gxy", "Gxz", "Gyz"]
 def run_case(name: str) -> dict:
     """Run one case into its own out/<name>/ dir, reusing a cached result.
 
-    ``cprop`` writes run<HASH>.json next to the input file and refuses to
-    overwrite it, so on a rerun we read the cached output back instead.
+    ``cprop`` writes run<hash12>.json next to the input and overwrites a repeat.
     """
     out_dir = HERE / "out" / name
     out_dir.mkdir(parents=True, exist_ok=True)
     case_path = out_dir / f"{name}.json"
     case_path.write_text((HERE / f"{name}.json").read_text())
-    try:
-        return cprop(str(case_path))
-    except FileExistsError:
-        cached = glob.glob(str(out_dir / "run*.json"))
-        return json.loads(Path(cached[0]).read_text())
+    return cprop(str(case_path))
 
 
 def max_rel_err(output: dict) -> tuple[float, bool]:

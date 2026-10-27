@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from b3_core.viz import geometry, tensor
-from b3_core.viz._deps import ensure_headless, require_pyvista, require_trame
+from b3_core.viz.deps import ensure_headless, require_pyvista, require_trame
 from b3_core.viz.theme import DEFAULT_THEME, CoreTheme
 
 
@@ -40,23 +40,23 @@ class CoreScene:
         self.theme = theme
         self.off_screen = off_screen
         self.window_size = window_size
-        self._plotter = None
+        self.plotter_handle = None
         self.actors: dict[str, object] = {}
 
     @property
     def plotter(self):
-        if self._plotter is None:
+        if self.plotter_handle is None:
             pv = require_pyvista()
             if self.off_screen:
                 ensure_headless()
-            self._plotter = pv.Plotter(
+            self.plotter_handle = pv.Plotter(
                 off_screen=self.off_screen, window_size=list(self.window_size)
             )
-            self._plotter.set_background(self.theme.background)
-        return self._plotter
+            self.plotter_handle.set_background(self.theme.background)
+        return self.plotter_handle
 
     # -- phase geometry -----------------------------------------------------
-    def _add_phase_meshes(self, phases: dict, *, edges: bool, prefix: str = "") -> None:
+    def add_phase_meshes(self, phases: dict, *, edges: bool, prefix: str = "") -> None:
         t = self.theme
         if phases["core"].n_cells:
             self.actors[prefix + "core"] = self.plotter.add_mesh(
@@ -83,7 +83,7 @@ class CoreScene:
 
     def add_phases(self, *, edges: bool = False) -> "CoreScene":
         """Core (translucent), resin grooves (solid) and face skin."""
-        self._add_phase_meshes(
+        self.add_phase_meshes(
             geometry.split_phases(self.model.mesh, self.model.material_codes),
             edges=edges,
         )
@@ -135,7 +135,7 @@ class CoreScene:
             k: (v.clip(normal=axis, origin=origin) if v.n_cells else v)
             for k, v in phases.items()
         }
-        self._add_phase_meshes(clipped, edges=edges, prefix="cut_")
+        self.add_phase_meshes(clipped, edges=edges, prefix="cut_")
         return self
 
     def add_deformation(self, case: str, *, warp: float = 0.3) -> "CoreScene":
@@ -222,6 +222,6 @@ class CoreScene:
         return path
 
     def close(self) -> None:
-        if self._plotter is not None:
-            self._plotter.close()
-            self._plotter = None
+        if self.plotter_handle is not None:
+            self.plotter_handle.close()
+            self.plotter_handle = None

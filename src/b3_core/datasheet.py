@@ -7,7 +7,8 @@ with the engineering constants + 6x6 effective stiffness.
 
 The figures are produced by the shared :mod:`b3_core.viz` layer; the composition
 is Typst (vector tables + embedded PNG panels). Data comes from a cached
-:class:`b3_core.viz.CoreModel` (MFEM backend).
+:class:`b3_core.viz.CoreModel`, using the case's own backend through the
+shared pipeline.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 
-from b3_core import __version__
 from b3_core.viz import slices
 from b3_core.viz.model import CoreModel
 from b3_core.viz.scene import CoreScene
@@ -31,6 +31,17 @@ from b3_core.viz.scene import CoreScene
 matplotlib.use("Agg")
 
 logger = logging.getLogger(__name__)
+
+
+def _datasheet_version() -> str:
+    """Footer: package version, commit, and a dirty mark when the tree is dirty."""
+    from b3_core.provenance import identity
+
+    current = identity(solver_stamp="")
+    commit = current.commit or "unknown"
+    dirty = " dirty" if current.dirty else ""
+    return f"b3_core {current.version} {commit}{dirty}"
+
 
 _FIG_DPI = 150
 
@@ -70,9 +81,26 @@ def _groove_rows(prefix: str, grooves: list[list[float]]) -> list[tuple[str, str
     return rows
 
 
-def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name: str):
+def _prop(props: dict, canonical: str, legacy: str) -> float:
+    if canonical in props:
+        return float(props[canonical])
+    return float(props[legacy])
+
+
+def collect_spec(
+    inp: dict,
+    mesh,
+    geom: dict,
+    details,
+    *,
+    name: str,
+    config_name: str,
+    backend: str | None = None,
+):
     """Build the three header-table row lists + the result block from a run."""
     import numpy as np
+
+    from b3_core.units import curvature_tick
 
     rve_rows: list[tuple[str, str]] = [
         (
@@ -88,8 +116,21 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     if cur.get("kx") or cur.get("ky"):
         rve_rows.append(
             (
-                "curvature [1/mm]",
-                f"kx {cur.get('kx', 0):.4g}, ky {cur.get('ky', 0):.4g}",
+                "curvature",
+                "kx "
+                + curvature_tick(float(cur.get("kx") or 0))
+                + ", ky "
+                + curvature_tick(float(cur.get("ky") or 0)),
+            )
+        )
+    for kerf in geom.get("kerfs") or []:
+        opens = kerf.get("opens_for")
+        family = f", opens for {opens}" if opens else ""
+        rve_rows.append(
+            (
+                f"{kerf['axis']}-kerf half-width [mm]",
+                f"root {kerf['hw_root_mm']:.3g} → mouth {kerf['hw_mouth_mm']:.3g}"
+                f" ({kerf['mouth']}{family})",
             )
         )
     face = inp.get("face") or {}
@@ -97,7 +138,11 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     rve_rows.append(("mesh refine (madd)", ", ".join(f"{m:.2g}" for m in inp["madd"])))
 
     def _mat(label, m):
-        return (label, f"E {m['E'] / 1e9:.3g} GPa, ν {m['nu']:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
+        modulus = m.get("E") if m.get("E") else m.get("Ex")
+        nu = m.get("nu") if m.get("nu") is not None else m.get("nuxy")
+        from b3_core.report.engineering import fmt_modulus
+
+        return (label, f"E {fmt_modulus(modulus)}, ν {nu:.3g}, ρ {m['rho']:.0f}")  # noqa: RUF001
 
     material_rows = [
         _mat("core", inp["core"]),
@@ -107,7 +152,7 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
         ("groove area factor", f"{geom['area_increase']:.3f}"),
     ]
     analysis_rows = [
-        ("backend", "mfem (periodic)"),
+        ("backend", f"{backend or 'auto'} (periodic)"),
         ("element type", inp["element_type"]),
         ("mesh cells", f"{mesh.n_cells}"),
         ("BC", "periodic, 6 unit strains"),
@@ -115,20 +160,20 @@ def collect_spec(inp: dict, mesh, geom: dict, details, *, name: str, config_name
     ]
     p = details.properties
     eng = {
-        "E_x": p["Exx"],
-        "E_y": p["Eyy"],
-        "E_z": p["Ezz"],
-        "G_xy": p["Gxy"],
-        "G_xz": p["Gxz"],
-        "G_yz": p["Gyz"],
-        "nu_xy": p["nuxy"],
-        "nu_xz": p["nuxz"],
-        "nu_yz": p["nuyz"],
+        "E_x": _prop(p, "Ex", "Exx"),
+        "E_y": _prop(p, "Ey", "Eyy"),
+        "E_z": _prop(p, "Ez", "Ezz"),
+        "G_xy": float(p["Gxy"]),
+        "G_xz": float(p["Gxz"]),
+        "G_yz": float(p["Gyz"]),
+        "nu_xy": float(p["nuxy"]),
+        "nu_xz": float(p["nuxz"]),
+        "nu_yz": float(p["nuyz"]),
     }
     return DatasheetSpec(
         title=f"Grooved core — {name}",
         config_path=config_name,
-        version=f"b3_core {__version__}",
+        version=_datasheet_version(),
         rve_rows=rve_rows,
         material_rows=material_rows,
         analysis_rows=analysis_rows,
@@ -149,6 +194,8 @@ def _typst_escape(text: str) -> str:
         .replace("[", "\\[")
         .replace("]", "\\]")
         .replace("_", "\\_")
+        .replace("@", "\\@")
+        .replace("<", "\\<")
     )
 
 
@@ -190,15 +237,17 @@ def build_typst(spec: DatasheetSpec) -> str:
         eng_block = (
             '#text(weight: "bold", size: 7pt)[Engineering constants]\n'
             "#text(size: 6.5pt)["
-            f"$E$ = ({ec['E_x'] / 1e9:.1f}, {ec['E_y'] / 1e9:.1f}, {ec['E_z'] / 1e9:.1f}) GPa; "
-            f"$G$ = ({ec['G_xy'] / 1e9:.2f}, {ec['G_xz'] / 1e9:.2f}, {ec['G_yz'] / 1e9:.2f}) GPa; "
+            f"$E$ = ({ec['E_x'] / 1e6:.3g}, {ec['E_y'] / 1e6:.3g}, {ec['E_z'] / 1e6:.3g}) MPa; "
+            f"$G$ = ({ec['G_xy'] / 1e6:.3g}, {ec['G_xz'] / 1e6:.3g}, {ec['G_yz'] / 1e6:.3g}) MPa; "
             f"$nu$ = ({ec['nu_xy']:.2f}, {ec['nu_xz']:.2f}, {ec['nu_yz']:.2f})]\n"
         )
         labels = ["11", "22", "33", "23", "13", "12"]
         c = spec.c_eff_gpa
         matrix_rows = [("", *labels)]
         for i in range(6):
-            matrix_rows.append((labels[i], *(f"{c[i, j]:.2f}" for j in range(6))))
+            matrix_rows.append(
+                (labels[i], *(f"{1000 * c[i, j]:.3g}" for j in range(6)))
+            )
         mcells = ", ".join(
             f"[#text(size: 6pt)[{_typst_escape(str(x))}]]"
             for row in matrix_rows
@@ -212,7 +261,7 @@ def build_typst(spec: DatasheetSpec) -> str:
             "#grid(\n  columns: (1fr, 1fr),\n  column-gutter: 0.25cm,\n"
             "  align: (left + top, left + top),\n"
             f"  [{eng_block}],\n"
-            f'  [#text(weight: "bold", size: 7pt)[$C_"eff"$ [GPa]] #v(0.5pt) {matrix_block}],\n)\n'
+            f'  [#text(weight: "bold", size: 7pt)[$C_"eff"$ [MPa]] #v(0.5pt) {matrix_block}],\n)\n'
         )
     else:
         footer = '#text(size: 7pt)[(homogenisation skipped — no $C_"eff"$)]\n'
@@ -302,8 +351,43 @@ def generate(
     name: str | None = None,
     workdir: str | Path | None = None,
     skip_compile: bool = False,
-) -> DatasheetSpec:
-    """Build a datasheet for a CpropInput JSON case (figures via b3_core.viz)."""
+    engineering: bool = False,
+    calibration=None,
+    radii_m=None,
+    subtitle: str = "",
+    backend: str = "fenicsx",
+):
+    """Build a datasheet for a CpropInput JSON case (figures via b3_core.viz).
+
+    ``engineering=True`` writes the multi-page engineering sheet instead
+    (:mod:`b3_core.report.engineering`): plain-foam baseline, curvature map
+    over ``radii_m``, provenance, and an optional ``calibration`` page. It
+    returns the PDF path; ``workdir`` (or the PDF's folder) gets the figures
+    and ``numbers.json``.
+    """
+    if engineering:
+        from b3_core.report.engineering import DEFAULT_RADII_M, generate_engineering
+
+        folder = (
+            Path(workdir)
+            if workdir
+            else Path(out_pdf or "datasheet.pdf").with_suffix("")
+        )
+        pdf = generate_engineering(
+            json_path,
+            folder,
+            title=name,
+            subtitle=subtitle,
+            radii_m=radii_m or DEFAULT_RADII_M,
+            calibration=calibration,
+            backend=backend,
+            compile=not skip_compile,
+        )
+        if out_pdf is not None and not skip_compile and Path(out_pdf) != pdf:
+            Path(out_pdf).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(pdf, out_pdf)
+            return Path(out_pdf)
+        return pdf
     model = CoreModel.from_json(json_path)
     if name:
         model.name = name
@@ -330,13 +414,15 @@ def generate(
     a_iso, a_mod = _png_aspect(fig_iso), _png_aspect(fig_mod)
     total = a_cuts + a_iso + a_mod
 
+    details = model.details
     spec = collect_spec(
         model.inp,
         model.mesh,
         model.geom,
-        model.details,
+        details,
         name=model.name,
         config_name=model.config_path or Path(json_path).name,
+        backend=getattr(model, "resolved_backend", None),
     )
     spec.figure_cuts, spec.figure_iso, spec.figure_modulus = fig_cuts, fig_iso, fig_mod
     spec.figure_col_fracs = (a_cuts / total, a_iso / total, a_mod / total)

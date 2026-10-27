@@ -1,5 +1,7 @@
-# Deploy prebuilt static docs (site/) to GitHub Pages.
-# Build locally with `make docs-build` (dockb-export, basePath=/b3_core), commit site/, push.
+# Build the DocKB static export and deploy it to GitHub Pages.
+# site/ is a build artifact (gitignored). dockb is not on npm. The
+# repository variable DOCKB_RUNTIME_REPO is the fumano runtime git URL
+# (https://github.com/wr1/fumano.git).
 # Repo Settings → Pages → Source: GitHub Actions.
 
 name: Pages
@@ -8,7 +10,10 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "site/**"
+      - "docs/**"
+      - "public/**"
+      - "dockb.json"
+      - "Makefile"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -23,27 +28,48 @@ concurrency:
 
 jobs:
   deploy:
-    name: deploy site/
-    runs-on: ubuntu-latest
+    name: build and deploy site/
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Require prebuilt site/
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install dockb runtime
+        env:
+          DOCKB_RUNTIME_REPO: ${{ vars.DOCKB_RUNTIME_REPO }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCKB_RUNTIME_REPO}" ]; then
+            echo "::error::Set repository variable DOCKB_RUNTIME_REPO to the fumano/dockb git URL. The runtime is not published to npm."
+            exit 1
+          fi
+          git clone --depth 1 "$DOCKB_RUNTIME_REPO" "$HOME/apps/dockb-runtime"
+          npm ci --prefix "$HOME/apps/dockb-runtime"
+          mkdir -p "$HOME/.local/bin"
+          ln -sfn "$HOME/apps/dockb-runtime/bin/dockb-export" "$HOME/.local/bin/dockb-export"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build site
+        run: make docs-build
+
+      - name: Require export
         run: |
           test -f site/index.html
           test -d site/docs
           test -d site/figures
-          # basePath must match the project Pages URL (/b3_core)
           grep -q '/b3_core/' site/index.html
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

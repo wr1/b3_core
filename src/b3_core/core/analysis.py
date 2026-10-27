@@ -12,7 +12,11 @@ def geom_analysis(mesh):
     resin_volume = volumes[res == 1].sum()
     resin_vf = resin_volume / total_volume
     core_domain = ma.extract_cells((res == 0).nonzero()[0])
-    core_surface = core_domain.extract_surface().compute_cell_sizes()
+    try:  # pyvista >= 0.47 warns unless the algorithm is explicit
+        surface = core_domain.extract_surface(algorithm="dataset_surface")
+    except TypeError:  # pragma: no cover - pyvista < 0.47
+        surface = core_domain.extract_surface()
+    core_surface = surface.compute_cell_sizes()
     csc = core_surface.cell_centers().points
     xmin, xmax, ymin, ymax, _, _ = ma.bounds
     dx, dy = xmax - xmin, ymax - ymin

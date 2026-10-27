@@ -10,12 +10,14 @@ taper ``hw(z)`` — open/close is geometry motion, not voxel property painting.
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 import numpy as np
 import pyvista as pv
 
 # Minimum half-width after pinch (mm) so cells keep positive volume.
 _MIN_HW = 1e-3
+MIN_HW = _MIN_HW
 
 
 def create_grooves(cuts, bnd, meshadd=(-0.5, -0.2, 0, 0.2, 0.5), tol=1e-6, kappa=0.0):
@@ -149,6 +151,37 @@ def _collapse_lines(vals, tol=1e-6):
     return v[keep]
 
 
+def _at_least_three_elements(vals, length: float) -> np.ndarray:
+    """Grid stations with at least three elements on ``[0, length]``.
+
+    MFEM's periodic mesh needs three elements along each axis. Two elements
+    make ``MakePeriodic`` treat an interior face as a boundary. An ungrooved
+    case with ``madd=[0]`` otherwise collapses to a single hex.
+    """
+    lines = _collapse_lines(
+        np.concatenate([np.asarray(vals, dtype=float), [0.0, float(length)]])
+    )
+    while len(lines) < 4:
+        gaps = np.diff(lines)
+        index = int(np.argmax(gaps))
+        midpoint = 0.5 * (lines[index] + lines[index + 1])
+        lines = np.insert(lines, index + 1, midpoint)
+    return lines
+
+
+def _cap_spacing(lines: np.ndarray, h_max: float | None) -> np.ndarray:
+    """Split every interval longer than ``h_max`` into equal sub-intervals."""
+    if h_max is None or h_max <= 0:
+        return lines
+    out = [lines[0]]
+    for a, b in zip(lines[:-1], lines[1:], strict=True):
+        n = int(np.ceil((b - a) / h_max - 1e-9))
+        if n > 1:
+            out.extend(a + (b - a) * np.arange(1, n) / n)
+        out.append(b)
+    return np.asarray(out, dtype=float)
+
+
 def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
     """Groove instances that intersect the domain (including edge partials).
 
@@ -186,18 +219,71 @@ def _physical_grooves(cuts, bnd, kappa: float, tol: float = 1e-6):
     return out
 
 
-def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
-    """Half-width at height z; flat nominal outside the groove z-band."""
+def hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
+    """Public name for the root-hinged half-width law."""
+    return _hw_at(hw0, depth, slope, z, thickness)
+
+
+def kerf_openings(case: Any) -> list[dict[str, Any]]:
+    """Mouth and root half-widths after mould curvature is applied as ``hw(z)``.
+
+    One row per groove family. ``hw_root_mm`` is the cut half-width (the hinge).
+    ``hw_mouth_mm`` is the half-width at the open face. Positive ``kx`` opens a
+    top-mouth x-groove and pinches a bottom-mouth one; ``ky`` does the same
+    for y-grooves. At zero curvature the two widths match.
+    """
+    thickness = float(case.thickness)
+    curvature = case.curvature
+    kx = float(curvature.kx)
+    ky = float(curvature.ky)
+    rows: list[dict[str, Any]] = []
+    for axis, grooves, kappa in (
+        ("x", case.xgr, kx),
+        ("y", case.ygr, ky),
+    ):
+        for groove in grooves:
+            depth = float(groove.signed_depth)
+            hw0 = 0.5 * float(groove.width)
+            slope = -float(np.sign(depth)) * float(kappa) * float(groove.pitch) / 2.0
+            z_mouth = 0.0 if groove.mouth == "bottom" else thickness
+            z_root = depth if depth > 0.0 else thickness + depth
+            rows.append(
+                {
+                    "axis": axis,
+                    "mouth": groove.mouth,
+                    # Positive k opens a top mouth and pinches a bottom mouth.
+                    "opens_for": "k>0" if groove.mouth == "top" else "k<0",
+                    "pitch_mm": float(groove.pitch),
+                    "hw_root_mm": hw_at(hw0, depth, slope, z_root, thickness),
+                    "hw_mouth_mm": hw_at(hw0, depth, slope, z_mouth, thickness),
+                }
+            )
+    return rows
+
+
+def hw_unclamped(
+    hw0: float, depth: float, slope: float, z: float, thickness: float
+) -> float:
+    """Half-width at height z before the ``MIN_HW`` floor.
+
+    Flat nominal outside the groove z-band. A negative value means the walls
+    crossed; the mesher still builds with ``max(MIN_HW, this)``.
+    """
     if depth > 0:
         if z < 0.0 or z > depth:
-            return hw0
+            return float(hw0)
         zeta = depth - z
     else:
         z_root = thickness + depth
         if z < z_root or z > thickness:
-            return hw0
+            return float(hw0)
         zeta = z - z_root
-    return float(max(_MIN_HW, hw0 + slope * zeta))
+    return float(hw0 + slope * zeta)
+
+
+def _hw_at(hw0: float, depth: float, slope: float, z: float, thickness: float) -> float:
+    """Half-width at height z; flat nominal outside the groove z-band."""
+    return float(max(_MIN_HW, hw_unclamped(hw0, depth, slope, z, thickness)))
 
 
 def _ordered_breaks(grooves, length: float, hw_of) -> np.ndarray:
@@ -319,10 +405,19 @@ def create_grooved_mesh(
     kx=0.0,
     ky=0.0,
     s_halo=0.0,
+    *,
+    wall_morph: bool = True,
+    s_face_halo: float = 0.0,
+    h_max: float | None = None,
+    kerf_z_elems: int = 1,
 ):
     """Build a structured RVE; open/close via wall-aligned morph when κ ≠ 0.
 
     1. Rectangular flat grid (walls = grid faces, rectangular resin tags).
+       ``s_face_halo`` adds z lines inside the outer-face halo band and
+       ``h_max`` caps every element edge (mm); ``None`` keeps the coarse grid.
+       ``kerf_z_elems`` sets the elements over each groove depth (flat and
+       curved alike).
     2. If ``kx``/``ky`` nonzero, interval-affine morph so walls track ``hw(z)``.
        Foam bays become trapezoidal on the flat RVE (intended FEA geometry).
     """
@@ -347,21 +442,41 @@ def create_grooved_mesh(
         if roots:
             fz = np.append(fz, np.clip(np.concatenate(roots), 0.0, thickness + tface))
 
-    # Through-thickness stations so morphed walls are piecewise-linear.
-    if abs(kx) > 0.0 or abs(ky) > 0.0:
-        n_z_taper = 9
-        taper_z = []
-        for cut in list(xcuts) + list(ycuts):
+    # Through-thickness stations along every groove depth, identical for the
+    # flat and the curved mesh: the k -> 0 curved mesh must be the flat mesh,
+    # or the curved path shows a discretisation step at vanishing curvature.
+    # The tapered wall hw(z) is linear in z, so one element over the depth
+    # already represents the open/closed wedge exactly; ``kerf_z_elems`` only
+    # sets convergence. A groove that pinches shut has a kink where hw(z) hits
+    # MIN_HW, and only that groove gets one extra station at the kink.
+    n_elems = max(1, int(kerf_z_elems))
+    taper_z = []
+    for cuts, kappa in ((xcuts, kx), (ycuts, ky)):
+        for cut in cuts:
             d = float(cut[2])
             if d == 0.0:
                 continue
             if d > 0:
                 z0, z1 = 0.0, d
+                z_root, sign = d, -1.0
             else:
                 z0, z1 = thickness + d, thickness
-            taper_z.append(np.linspace(z0, z1, n_z_taper))
-        if taper_z:
-            fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
+                z_root, sign = thickness + d, 1.0
+            taper_z.append(np.linspace(z0, z1, n_elems + 1))
+            hw0 = 0.5 * float(cut[3])
+            slope = -float(np.sign(d)) * float(kappa) * float(cut[1]) / 2.0
+            if slope < 0.0:
+                zeta = (_MIN_HW - hw0) / slope
+                if 0.0 < zeta < abs(d):
+                    taper_z.append(np.array([z_root + sign * zeta]))
+    if taper_z:
+        fz = np.append(fz, np.clip(np.concatenate(taper_z), 0.0, thickness + tface))
+
+    if s_face_halo > 0:
+        hf = np.linspace(0.0, 1.0, 3)[1:]
+        fz = np.append(
+            fz, np.concatenate([s_face_halo * hf, thickness - s_face_halo * hf])
+        )
 
     xc, xhw = 0.5 * (bx + tx), 0.5 * (tx - bx)
     yc, yhw = 0.5 * (by + ty), 0.5 * (ty - by)
@@ -412,8 +527,17 @@ def create_grooved_mesh(
         0,
         dy,
     )
+    if h_max is not None and h_max > 0:
+        # At least two elements across every kerf: with one linear hex across
+        # the width the resin wedge locks in bending, and opening Ezz is ~10 %
+        # off whenever h_max happens to exceed the kerf width (see the docs'
+        # convergence table). The centreline is the cheapest second element.
+        xlines = np.concatenate([xlines, np.clip(xc, 0, dx)])
+        ylines = np.concatenate([ylines, np.clip(yc, 0, dy)])
     X, Y, Z = np.meshgrid(
-        _collapse_lines(xlines), _collapse_lines(ylines), _collapse_lines(fz)
+        _cap_spacing(_at_least_three_elements(xlines, dx), h_max),
+        _cap_spacing(_at_least_three_elements(ylines, dy), h_max),
+        _cap_spacing(_at_least_three_elements(fz, thickness + tface), h_max),
     )
     grd = pv.StructuredGrid(X, Y, Z)
     c = grd.cell_centers().points
@@ -431,7 +555,8 @@ def create_grooved_mesh(
     grd.point_data["z_mat"] = np.ascontiguousarray(grd.points[:, 2])
 
     # Flattened-for-FEA morph: walls track hw(z); foam bays become trapezoidal.
-    if abs(kx) > 0.0 or abs(ky) > 0.0:
+    # ``wall_morph=False`` keeps the curved z stations and leaves the walls square.
+    if wall_morph and (abs(kx) > 0.0 or abs(ky) > 0.0):
         morph_kerf_walls(grd, xcuts, ycuts, thickness, dx, dy, kx=kx, ky=ky, madd=madd)
 
     # Halo after morph so the band sits outside the *physical* tapered walls

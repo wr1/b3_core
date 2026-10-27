@@ -1,5 +1,5 @@
-# Pre-commit: ruff lint + format. Install once:
-#   uv sync --extra dev && uv run pre-commit install
+# CI + `make pre-commit`: ruff lint + format (and trailing-whitespace etc).
+# Local git hook (staged src/tests): `make install` sets core.hooksPath=.githooks
 # Run all files:
 #   uv run pre-commit run --all-files
 # Or: make pre-commit

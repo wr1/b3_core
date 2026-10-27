@@ -4,7 +4,8 @@
 #        PORT=3011 DOCKB=dockb  DOCS_BASE=/b3_core  PREVIEW_PORT=4173
 
 UV ?= uv
-RUN ?= $(UV) run
+# --no-sync: this checkout's .venv is a shared environment. `uv sync` prunes it.
+RUN ?= UV_NO_SYNC=1 $(UV) run --no-sync
 B3 ?= $(RUN) b3_core
 DOCKB ?= dockb
 DOCKB_EXPORT ?= dockb-export
@@ -17,8 +18,9 @@ SITE_DIR ?= site
 CASE ?= examples/simple.yaml
 SWEEP_ROOT ?= examples/param_sweeps
 
-.PHONY: help install test cov lint format pre-commit run sweep \
-	selfdoc docs docs-serve docs-open docs-static docs-build docs-preview
+.PHONY: help install test cov lint format pre-commit skill-sync run sweep \
+	env-fenicsx \
+	selfdoc tree docs docs-serve docs-open docs-static docs-build docs-preview
 
 .DEFAULT_GOAL := help
 
@@ -41,9 +43,9 @@ help: ## List targets (default goal)
 		'Viz: b3_core viz --help' \
 		'Offline: examples/offline/README.md'
 
-install: ## uv sync (+ dev extras)
-	$(UV) sync --extra dev
-	$(RUN) pre-commit install
+install: ## uv sync --locked (+ dev extras) and enable .githooks (ruff lint + format)
+	$(UV) sync --locked --extra dev
+	git config core.hooksPath .githooks
 
 test: ## pytest (+ coverage; fail under pyproject threshold)
 	$(RUN) pytest
@@ -52,8 +54,13 @@ cov: ## pytest with coverage JSON + refresh badges/coverage.json
 	$(RUN) pytest --cov-report=json:coverage.json
 	$(RUN) python scripts/update_coverage_badge.py
 
-lint: ## ruff check (src + tests)
+lint: ## ruff, import-linter, and the SKILL.md sync check
 	$(RUN) ruff check src tests
+	$(RUN) lint-imports --verbose
+	$(RUN) python scripts/sync_skill_md.py --check
+
+skill-sync: ## packaged SKILL.md matches the repo-root source
+	$(RUN) python scripts/sync_skill_md.py --check
 
 format: ## ruff format (src + tests)
 	$(RUN) ruff format src tests
@@ -66,13 +73,22 @@ run: ## b3_core run — homogenise one case
 	$(B3) run $(CASE)
 
 sweep: ## b3_core sweep homogenise
-	$(B3) sweep homogenise --root $(SWEEP_ROOT)
+	$(B3) sweep homogenize --root $(SWEEP_ROOT)
+
+env-fenicsx: ## Print the micromamba line for environment-fenicsx.yml
+	@printf '%s\n' \
+		'micromamba create -n fenicsx -f environment-fenicsx.yml' \
+		'PYTHONNOUSERSITE=1 micromamba run -n fenicsx python -c "import dolfinx"' \
+		'This does not modify ~/envs/b3.'
 
 # ---------------------------------------------------------------------------
 # DocKB (fumano) — docs/*.mdx (+ optional kb/) via shared dockb runtime
 # ---------------------------------------------------------------------------
 
-selfdoc: docs-static ## list docs tree + serve hints (no server)
+selfdoc: tree docs-static ## directory tree, then docs list + serve hints (no server)
+
+tree: ## Python source tree (gitignored paths omitted)
+	@tree --gitignore --dirsfirst --noreport --prune -P '*.py' .
 
 docs: docs-serve ## serve DocKB site with dockb (default PORT=3000)
 
@@ -133,7 +149,7 @@ docs-build: ## static HTML export → site/ (basePath=$(DOCS_BASE); needs dockb-
 	@test -f $(SITE_DIR)/index.html && test -d $(SITE_DIR)/docs && test -d $(SITE_DIR)/figures || { \
 		echo "docs-build: incomplete export under $(SITE_DIR)/"; exit 1; \
 	}
-	@echo "docs-build: ready — make docs-preview, or commit $(SITE_DIR)/ for GitHub Pages"
+	@echo "docs-build: ready — make docs-preview, or push so Pages runs make docs-build"
 	@echo "  live URL: https://wr1.github.io/b3_core/"
 
 docs-preview: ## serve prebuilt site/ with basePath (default port $(PREVIEW_PORT))

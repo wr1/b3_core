@@ -5,7 +5,7 @@ response curves and 3D gallery renders.
 
 ## Running
 
-Requires MFEM (`uv sync --extra mfem`). Pattern sweep also needs CalculiX on PATH.
+Requires PyMFEM (a package dependency: `uv sync`). Pattern sweep also needs CalculiX on PATH.
 
 ```bash
 b3_core sweep homogenise --root examples/param_sweeps
